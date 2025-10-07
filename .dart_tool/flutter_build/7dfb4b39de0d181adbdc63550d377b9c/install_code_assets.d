@@ -1,0 +1,1 @@
+ /Users/holgerheidkamp/Development/nextdeck/.dart_tool/flutter_build/7dfb4b39de0d181adbdc63550d377b9c/native_assets.json: 
