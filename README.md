@@ -22,12 +22,6 @@ Ein schlanker, schneller und datenschutzfreundlicher Nextcloud‑Deck‑Client m
 - Dark Mode & smarte Farben: Angenehme Kontraste, gute Lesbarkeit
 - Mehrsprachig: Deutsch, Englisch, Spanisch (manuell wählbar oder Systemsprache)
 
-
-## Screenshots
-
-Noch nicht enthalten. Wenn gewünscht, können wir hier später Bilder ergänzen (`assets/icon.png` ist bereits vorhanden).
-
-
 ## Installation (lokal)
 
 - Erforderlich: Flutter SDK (Dart ≥ 3.3), Xcode/Android Studio je nach Zielplattform
