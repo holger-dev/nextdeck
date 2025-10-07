@@ -1,0 +1,159 @@
+
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Datenschutz – Nextdeck</title>
+    <meta name="description" content="Datenschutzrichtlinie der iOS‑App Nextdeck (Nextcloud Deck Client)." />
+    <style>
+      :root {
+        --bg: #ffffff;
+        --text: #1f2937; /* slate-800 */
+        --muted: #6b7280; /* gray-500 */
+        --card: #f9fafb; /* gray-50 */
+        --border: #e5e7eb; /* gray-200 */
+        --primary: #8b5cf6; /* violet-500 */
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0b0e13;
+          --text: #e5e7eb;
+          --muted: #9ca3af;
+          --card: #111827;
+          --border: #1f2937;
+          --primary: #a78bfa;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        line-height: 1.6;
+        color: var(--text);
+        background: var(--bg);
+      }
+      .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 56px; }
+      header {
+        display: flex; align-items: center; gap: 12px; margin-bottom: 16px;
+      }
+      .badge { color: #fff; background: var(--primary); padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+      h1 { margin: 0; font-size: 28px; letter-spacing: -.01em; }
+      .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; margin: 16px 0; }
+      h2 { font-size: 18px; margin: 0 0 8px; }
+      h3 { font-size: 16px; margin: 18px 0 8px; }
+      p { margin: 10px 0; }
+      ul { margin: 8px 0 8px 18px; }
+      footer { margin-top: 24px; color: var(--muted); font-size: 14px; }
+      a { color: var(--primary); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+      @media (min-width: 720px) {
+        .grid { grid-template-columns: 1fr 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <header>
+        <span class="badge">Datenschutz</span>
+        <h1>Nextdeck – Datenschutzrichtlinie</h1>
+      </header>
+
+      <div class="card">
+        <p><strong>Stand:</strong> 22.09.2025</p>
+        <p>
+          Nextdeck ist ein moderner Nextcloud‑Deck‑Client, der sich mit Ihrer <strong>eigenen Nextcloud</strong> verbindet.
+          Die App sendet <strong>keine Daten</strong> an Server der Entwickler. Verantwortlich für die Verarbeitung ist
+          der Betreiber Ihrer angebundenen Nextcloud‑Instanz.
+        </p>
+      </div>
+
+      <section class="grid">
+        <div class="card">
+          <h2>1) Verantwortlicher</h2>
+          <p>
+            <strong>Holger Heidkamp</strong><br />
+            E‑Mail: <a href="mailto:holger@heidkamp.dev">holger@heidkamp.dev</a>
+          </p>
+          <h3>App‑Support</h3>
+          <p>Für technische Anfragen zur App verwenden Sie bitte die obige E‑Mail.</p>
+        </div>
+        <div class="card">
+          <h2>2) Kurzfassung</h2>
+          <ul>
+            <li>Keine Werbung, kein Tracking, keine Analyse‑Dienste.</li>
+            <li>Synchronisation ausschließlich mit Ihrer Nextcloud per OCS‑API.</li>
+            <li>Lokale Speicherung im App‑Sandkasten; Zugangsdaten im Secure Storage.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>3) Datenkategorien & Zwecke</h2>
+        <ul>
+          <li><strong>Zugangsdaten</strong> (Nextcloud‑URL, Benutzername, App‑Passwort) – zur Verbindung mit Ihrer Instanz.</li>
+          <li><strong>Deck‑Daten</strong> (Boards, Spalten, Karten inkl. Titel, Beschreibung, Fälligkeiten, Labels, Zuständige) – zur Anzeige, Bearbeitung und Synchronisation.</li>
+          <li><strong>Metadaten</strong> (Board/Stack‑IDs, Sync‑Zeitpunkte, Kommentar‑/Anhangszähler, kurze App‑Logs) – zur Bedienbarkeit und Fehlerdiagnose.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>4) Rechtsgrundlage</h2>
+        <p>
+          Privatnutzung: Art. 6 Abs. 1 lit. b DSGVO (Vertrag) bzw. lit. a (Einwilligung durch Nutzung). In Organisationen obliegt
+          die Rechtsgrundlage dem jeweiligen Betreiber der Nextcloud‑Instanz.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>5) Speicherorte & Dauer</h2>
+        <ul>
+          <li><strong>Lokal:</strong> SQLite‑Datenbank; Zugangsdaten in Keychain/Keystore. Löschung durch Abmelden, DB‑Reset oder Deinstallation.</li>
+          <li><strong>Server:</strong> In Ihrer Nextcloud (Deck‑App). Speicherfristen legt der Betreiber fest.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>6) Empfänger & Übermittlungen</h2>
+        <p>Keine Weitergabe an Dritte. Übertragung ausschließlich via HTTPS/TLS zwischen App und Ihrer Nextcloud.</p>
+      </section>
+
+      <section class="card">
+        <h2>7) Sicherheit</h2>
+        <ul>
+          <li>Transport: HTTPS/TLS; REST/OCS‑API mit Basic Auth (App‑Passwort empfohlen).</li>
+          <li>Speicherung: Zugangsdaten im Secure Storage; lokale DB im App‑Sandbox‑Bereich.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>8) Kontrolle & Löschung</h2>
+        <ul>
+          <li>In der App: Abmelden (Zugangsdaten löschen), lokale Datenbank löschen, App deinstallieren.</li>
+          <li>In Nextcloud: Einträge/Bücher verwalten, App‑Passwörter widerrufen.</li>
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>9) Betroffenenrechte (DSGVO)</h2>
+        <p>
+          Auskunft, Berichtigung, Löschung, Einschränkung, Übertragbarkeit, Widerspruch. Diese Rechte sind gegenüber dem Betreiber
+          der angebundenen Nextcloud‑Instanz geltend zu machen.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>10) Protokolle & Diagnose</h2>
+        <p>
+          Die App führt nur minimale lokale Logs (max. 100 Einträge) zur Nachvollziehbarkeit von Synchronisationen/Fehlern. Es
+          werden keine Nutzungs‑ oder Crashdaten an Dritte gesendet.
+        </p>
+      </section>
+
+      <footer>
+        © 2025 Holger Heidkamp – Nextdeck. Diese Richtlinie kann bei Funktions‑/Rechtsänderungen angepasst werden.
+      </footer>
+    </main>
+  </body>
+  </html>
