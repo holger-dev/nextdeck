@@ -120,7 +120,7 @@ class L10n {
   // Overview
   String get overview => _isDe ? 'Übersicht' : _isEs ? 'Resumen' : 'Overview';
   String get noBoardsLoaded => _isDe ? 'Keine Boards geladen.' : _isEs ? 'No hay tableros cargados.' : 'No boards loaded.';
-  String get activeBoard => _isDe ? 'Aktives Board' : _isEs ? 'Tablero activo' : 'Active board';
+  String get activeBoard => _isDe ? 'Standard Board' : _isEs ? 'Tablero predeterminado' : 'Default Board';
   String get moreBoards => _isDe ? 'Weitere Boards' : _isEs ? 'Más tableros' : 'More boards';
   String get yourBoards => _isDe ? 'Deine Boards' : _isEs ? 'Tus tableros' : 'Your boards';
   String get hiddenBoards => _isDe ? 'Ausgeblendete Boards' : _isEs ? 'Tableros ocultos' : 'Hidden boards';
@@ -147,7 +147,7 @@ class L10n {
           ? 'Se creará un tablero local. No habrá sincronización con Nextcloud. Puedes volver a Nextcloud más tarde introduciendo tus credenciales nuevamente.'
           : 'A local board will be created. There is no synchronization with Nextcloud. You can switch back later by entering your credentials again.';
   String get enable => _isDe ? 'Aktivieren' : _isEs ? 'Activar' : 'Enable';
-  String get nextcloudAccess => _isDe ? 'Konto' : _isEs ? 'Acceso a Nextcloud' : 'Nextcloud access';
+  String get nextcloudAccess => _isDe ? 'Konto' : _isEs ? 'Cuenta' : 'Account';
   String get urlPlaceholder => 'cloud.example.com';
   String get username => _isDe ? 'Benutzername' : _isEs ? 'Usuario' : 'Username';
   String get password => _isDe ? 'Passwort' : _isEs ? 'Contraseña' : 'Password';
@@ -190,7 +190,7 @@ class L10n {
   String listsProgress(int done, int total) => _isDe ? 'Listen: $done / $total' : _isEs ? 'Listas: $done / $total' : 'Lists: $done / $total';
   String get loginOkNoBoards => _isDe ? 'Login ok – keine Boards gefunden' : _isEs ? 'Inicio ok – no se encontraron tableros' : 'Login ok – no boards found';
   String errorMsg(String msg) => _isDe ? 'Fehler: $msg' : _isEs ? 'Error: $msg' : 'Error: $msg';
-  String get activeBoardSection => _isDe ? 'Aktives Board' : _isEs ? 'Tablero activo' : 'Active board';
+  String get activeBoardSection => _isDe ? 'Standard Board' : _isEs ? 'Tablero predeterminado' : 'Default Board';
   String get noBoardsPleaseTest => _isDe ? 'Keine Boards geladen. Bitte Login testen.' : _isEs ? 'No hay tableros cargados. Por favor, prueba el inicio de sesión.' : 'No boards loaded. Please test login.';
   String get appearance => _isDe ? 'Darstellung' : _isEs ? 'Apariencia' : 'Appearance';
   String get darkMode => _isDe ? 'Dark Mode' : _isEs ? 'Modo oscuro' : 'Dark mode';
@@ -218,10 +218,10 @@ class L10n {
   String get spanish => _isDe ? 'Spanisch' : _isEs ? 'Español' : 'Spanish';
   // Security / Network
   String get httpsEnforcedInfo => _isDe
-      ? 'Sicherheit: Nextdeck verwendet immer HTTPS. Bitte kein Protokoll (http/https) eingeben.'
+      ? 'Next Deck nutzt immer HTTPS. Kein Protokoll (http/https) eingeben.'
       : _isEs
-          ? 'Seguridad: Nextdeck siempre usa HTTPS. No introduzcas ningún protocolo (http/https).'
-          : 'Security: Nextdeck always uses HTTPS. Please do not enter a protocol (http/https).';
+          ? 'Next Deck usa siempre HTTPS. No introduzcas protocolo (http/https).'
+          : 'Next Deck always uses HTTPS. Do not enter a protocol (http/https).';
   // Navigation
   String get navUpcoming => _isDe ? 'Anstehend' : _isEs ? 'Próximas' : 'Upcoming';
   String get upcomingTitle => _isDe ? 'Anstehende Karten' : _isEs ? 'Tarjetas próximas' : 'Upcoming cards';

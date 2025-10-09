@@ -192,17 +192,29 @@ Nextcloud, Deck, Kanban, Tareas, Proyectos, Gestión de Proyectos, Tableros, Tar
 - Navegación: Tras seleccionar un tablero, la app salta directamente al tablero (no a “Próximas”).
 - Marcar como no hecho: Mover tarjetas desde “Hecho” de vuelta a una lista por hacer.
 
-# DE – Version 1.4 (Geplant)
+# DE – Version 1.4
 
-- [ ] Hintergrund‑Warmup & lokaler Cache für Boards/Karten (schnellere Ansicht in „Anstehend“ und Boards).
+- Übersicht: „Weitere Boards“ alphabetisch sortiert; Pull‑down‑Suche zum Filtern.
+- Sprachen: Texte überarbeitet und vereinheitlicht.
+- Start: Ohne Zugangsdaten öffnet die App direkt die Einstellungsseite.
+- Dark Mode: bessere Lesbarkeit bei Personenauswahl und Spaltentiteln.
+- Zugewiesene: Suche findet jetzt Anzeigenamen und Kontonamen; Anzeige „Name (Konto)“.
 
-# EN – Version 1.4 (Planned)
+# EN – Version 1.4
 
-- [ ] Background warmup & local caching of boards/cards (faster “Upcoming” and boards views).
+- Overview: “More boards” sorted alphabetically; pull‑down search to filter.
+- Language: refined and unified copy.
+- Launch: when no credentials are set, open Settings first.
+- Dark mode: improved readability in assignee picker and column titles.
+- Assignees: search now matches display name and account; shows “Name (account)”.
 
-# ES – Versión 1.4 (Planificado)
+# ES – Versión 1.4
 
-- [ ] Precarga en segundo plano y caché local de tableros/tarjetas (vista más rápida en “Próximas” y tableros).
+- Resumen: “Más tableros” ordenados alfabéticamente; búsqueda al deslizar para filtrar.
+- Idiomas: textos revisados y unificados.
+- Inicio: si no hay credenciales, abrir Ajustes primero.
+- Modo oscuro: mejor legibilidad en selector de responsables y títulos de columnas.
+- Asignados: la búsqueda coincide por nombre para mostrar y cuenta; muestra “Nombre (cuenta)”.
 # Nextdeck Store Listing
 ## Version 2.0 (Planned)
 

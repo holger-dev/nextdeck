@@ -19,6 +19,10 @@ class OverviewPage extends StatefulWidget {
 class _OverviewPageState extends State<OverviewPage> {
   bool _hiddenExpanded = false;
   bool _archivedExpanded = false;
+  final ScrollController _scroll = ScrollController();
+  bool _showSearch = false;
+  String _query = '';
+  final FocusNode _searchFocus = FocusNode();
 
   @override
   Widget build(BuildContext context) {
@@ -51,23 +55,51 @@ class _OverviewPageState extends State<OverviewPage> {
         ),
       ),
       child: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (n) {
+            // Show search on pull-down (overscroll up)
+            if (!_showSearch) {
+              if (n is OverscrollNotification && n.overscroll < 0) {
+                setState(() => _showSearch = true);
+              } else if (n.metrics.pixels < -20) {
+                setState(() => _showSearch = true);
+              }
+            }
+            // Hide only after user scrolls down a bit, no query, and not focusing the field
+            if (_showSearch && _query.isEmpty && n.metrics.pixels > 60 && !_searchFocus.hasFocus) {
+              setState(() => _showSearch = false);
+            }
+            return false;
+          },
+          child: ListView(
+            controller: _scroll,
+            padding: const EdgeInsets.all(16),
+            children: [
+              if (_showSearch || _query.isNotEmpty) ...[
+                CupertinoSearchTextField(
+                  placeholder: L10n.of(context).search,
+                  focusNode: _searchFocus,
+                  onChanged: (v) => setState(() => _query = v.trim()),
+                  onSubmitted: (v) => setState(() => _query = v.trim()),
+                ),
+                const SizedBox(height: 12),
+              ],
             if (app.boards.isEmpty) ...[
               Text(L10n.of(context).noBoardsLoaded),
             ] else if (app.activeBoard != null) ...[
-              Text(L10n.of(context).activeBoard, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 12),
-              _BoardSummary(
-                index: app.boards.indexWhere((b) => b.id == app.activeBoard!.id),
-                boardId: app.activeBoard!.id,
-                title: app.activeBoard!.title,
-                isActive: true,
-              ),
-              const SizedBox(height: 16),
-              Container(height: 1, color: CupertinoColors.separator),
-              const SizedBox(height: 16),
+              if (_query.isEmpty || app.activeBoard!.title.toLowerCase().contains(_query.toLowerCase())) ...[
+                Text(L10n.of(context).activeBoard, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 12),
+                _BoardSummary(
+                  index: app.boards.indexWhere((b) => b.id == app.activeBoard!.id),
+                  boardId: app.activeBoard!.id,
+                  title: app.activeBoard!.title,
+                  isActive: true,
+                ),
+                const SizedBox(height: 16),
+                Container(height: 1, color: CupertinoColors.separator),
+                const SizedBox(height: 16),
+              ],
               Text(L10n.of(context).moreBoards, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: CupertinoColors.systemGrey)),
               const SizedBox(height: 12),
               LayoutBuilder(
@@ -76,7 +108,9 @@ class _OverviewPageState extends State<OverviewPage> {
                   final visibleBoards = app.boards
                       .where((b) => !b.archived)
                       .where((b) => b.id != app.activeBoard!.id && !app.isBoardHidden(b.id))
-                      .toList();
+                      .where((b) => _query.isEmpty || b.title.toLowerCase().contains(_query.toLowerCase()))
+                      .toList()
+                    ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
                   if (!isTablet) {
                     return Column(
                       children: visibleBoards
@@ -110,7 +144,11 @@ class _OverviewPageState extends State<OverviewPage> {
               LayoutBuilder(
                 builder: (ctx, cns) {
                   final isTablet = MediaQuery.of(ctx).size.shortestSide >= 600;
-                  final visibleBoards = app.boards.where((b) => !b.archived && !app.isBoardHidden(b.id)).toList();
+                  final visibleBoards = app.boards
+                      .where((b) => !b.archived && !app.isBoardHidden(b.id))
+                      .where((b) => _query.isEmpty || b.title.toLowerCase().contains(_query.toLowerCase()))
+                      .toList()
+                    ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
                   if (!isTablet) {
                     return Column(
                       children: visibleBoards.asMap().entries
@@ -139,6 +177,7 @@ class _OverviewPageState extends State<OverviewPage> {
           ],
         ),
       ),
+    ),
     );
   }
 

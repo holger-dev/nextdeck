@@ -1150,7 +1150,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
       context: context,
       builder: (sheetContext) => Container(
         height: 260,
-        color: CupertinoColors.systemBackground,
+        color: CupertinoColors.systemBackground.resolveFrom(sheetContext),
         child: Column(
           children: [
             Expanded(
@@ -1158,7 +1158,14 @@ class _CardDetailPageState extends State<CardDetailPage> {
                 itemExtent: 36,
                 scrollController: FixedExtentScrollController(initialItem: sel),
                 onSelectedItemChanged: (v) => sel = v,
-                children: _columns.map((c) => Center(child: Text(c.title))).toList(),
+                children: _columns
+                    .map((c) => Center(
+                          child: Text(
+                            c.title,
+                            style: TextStyle(color: CupertinoColors.label.resolveFrom(sheetContext)),
+                          ),
+                        ))
+                    .toList(),
               ),
             ),
             CupertinoButton(
@@ -1431,7 +1438,16 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                 Navigator.of(ctx).pop();
                                 await _toggleAssignee(u, remove: false);
                               },
-                              child: Text(u.displayName.isEmpty ? u.id : u.displayName),
+                              child: Text(
+                                (() {
+                                  final dn = u.displayName.trim();
+                                  final id = u.id.trim();
+                                  if (dn.isEmpty) return id;
+                                  if (dn.toLowerCase() == id.toLowerCase()) return dn;
+                                  return '$dn ($id)';
+                                })(),
+                                style: TextStyle(color: CupertinoColors.label.resolveFrom(ctx)),
+                              ),
                             ))
                         .toList(),
                   ),
@@ -1764,21 +1780,25 @@ class _AssigneePill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bg = CupertinoColors.tertiarySystemFill.resolveFrom(context);
+    final fg = CupertinoColors.label.resolveFrom(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: CupertinoColors.systemGrey4,
+        color: bg,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(user.displayName.isEmpty ? user.id : user.displayName,
-              style: const TextStyle(color: CupertinoColors.black, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(
+            user.displayName.isEmpty ? user.id : user.displayName,
+            style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w600),
+          ),
           const SizedBox(width: 6),
           GestureDetector(
             onTap: onRemove,
-            child: const Icon(CupertinoIcons.clear_circled_solid, size: 16, color: CupertinoColors.black),
+            child: Icon(CupertinoIcons.clear_circled_solid, size: 16, color: fg),
           ),
         ],
       ),

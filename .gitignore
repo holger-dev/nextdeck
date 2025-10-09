@@ -1,0 +1,61 @@
+# OS
+.DS_Store
+*.swp
+*.swo
+
+# IDEs / Editors
+.idea/
+*.iml
+.vscode/
+*.code-workspace
+
+# Dart / Flutter tool state
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+.flutter-version
+.pub/
+.pub-cache/
+
+# Build outputs (all platforms)
+build/
+coverage/
+*.log
+
+# iOS specific (keep source, ignore generated)
+ios/.symlinks/
+ios/Flutter/.last_build_id
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.*
+ios/Pods/
+
+# macOS specific (keep source, ignore generated)
+macos/.symlinks/
+macos/Flutter/ephemeral/
+macos/Flutter/Flutter-Debug.xcconfig
+macos/Flutter/Flutter-Release.xcconfig
+macos/Flutter/GeneratedPluginRegistrant.swift
+macos/Flutter/flutter_export_environment.sh
+macos/Pods/
+
+# Android (keep source, ignore local/derived)
+**/local.properties
+**/.gradle/
+**/build/
+*.keystore
+*.jks
+
+# Linux/Windows (keep source, ignore ephemeral)
+linux/flutter/ephemeral/
+windows/flutter/ephemeral/
+
+# Web/Chrome dev artifacts (keep web/ source)
+.webdev/
+.dart_tool/chrome-device/
+.dart_tool/dartpad/
+

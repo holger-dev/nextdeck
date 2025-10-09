@@ -1267,49 +1267,71 @@ class NextcloudDeckApi {
   Future<List<UserRef>> searchSharees(String baseUrl, String user, String pass, String query, {int perPage = 20}) async {
     final path = '/ocs/v2.php/apps/files_sharing/api/v1/sharees';
     final itemTypes = ['deck-card', 'deck', 'file', ''];
-    http.Response? res;
+    http.Response? lastRes;
     Map<String, dynamic>? data;
+    // Try both lookup=false and lookup=true as some servers differ in matching behavior (id vs. display name)
     for (final it in itemTypes) {
-      final uri = _buildUri(baseUrl, path, false).replace(queryParameters: {
-        ..._buildUri(baseUrl, path, false).queryParameters,
-        'search': query,
-        'page': '1',
-        'perPage': perPage.toString(),
-        if (it.isNotEmpty) 'itemType': it,
-        'lookup': 'false',
-        'format': 'json',
-      });
-      try {
-        res = await _send('GET', uri, {..._ocsHeader, 'authorization': _basicAuth(user, pass)}, body: null);
-      } catch (_) {}
-      if (res == null || !_isOk(res)) {
-        final uri2 = _buildUri(baseUrl, path, true).replace(queryParameters: {
-          ..._buildUri(baseUrl, path, true).queryParameters,
-          'search': query,
-          'page': '1',
-          'perPage': perPage.toString(),
-          if (it.isNotEmpty) 'itemType': it,
-          'lookup': 'false',
-          'format': 'json',
-        });
+      Map<String, dynamic>? merged;
+      for (final lookup in ['false', 'true']) {
+        Uri uri(bool ocs) => _buildUri(baseUrl, path, ocs).replace(queryParameters: {
+              ..._buildUri(baseUrl, path, ocs).queryParameters,
+              'search': query,
+              'page': '1',
+              'perPage': perPage.toString(),
+              if (it.isNotEmpty) 'itemType': it,
+              'lookup': lookup,
+              'format': 'json',
+            });
+        http.Response? res;
         try {
-          res = await _send('GET', uri2, {..._ocsHeader, 'authorization': _basicAuth(user, pass)}, body: null);
+          res = await _send('GET', uri(false), {..._ocsHeader, 'authorization': _basicAuth(user, pass)}, body: null);
         } catch (_) {}
+        if (res == null || !_isOk(res)) {
+          try {
+            res = await _send('GET', uri(true), {..._ocsHeader, 'authorization': _basicAuth(user, pass)}, body: null);
+          } catch (_) {}
+        }
+        if (res != null && _isOk(res)) {
+          lastRes = res;
+          final ok = _ensureOk(res, 'Sharees-Suche fehlgeschlagen');
+          final parsed = _parseBodyOk(ok);
+          if (parsed is Map) {
+            final cur = parsed.cast<String, dynamic>();
+            if (merged == null) {
+              merged = cur;
+            } else {
+              // Merge 'users' and 'groups' lists from both responses
+              List mergeList(dynamic a, dynamic b) {
+                final la = (a as List?) ?? const [];
+                final lb = (b as List?) ?? const [];
+                return [...la, ...lb];
+              }
+              final exactA = (merged['exact'] as Map?)?.cast<String, dynamic>();
+              final exactB = (cur['exact'] as Map?)?.cast<String, dynamic>();
+              merged['users'] = mergeList(merged['users'], cur['users']);
+              merged['groups'] = mergeList(merged['groups'], cur['groups']);
+              if (exactA != null || exactB != null) {
+                final m = <String, dynamic>{};
+                m['users'] = mergeList(exactA?['users'], exactB?['users']);
+                m['groups'] = mergeList(exactA?['groups'], exactB?['groups']);
+                merged['exact'] = m;
+              }
+            }
+          }
+        }
       }
-      if (res != null && _isOk(res)) {
-        final ok = _ensureOk(res, 'Sharees-Suche fehlgeschlagen');
-        final parsed = _parseBodyOk(ok);
-        if (parsed is Map) {
-          data = parsed.cast<String, dynamic>();
-          // If any results, break; else try next itemType
-          final users = (data['users'] as List?) ?? (data['exact']?['users'] as List?) ?? const [];
-          final groups = (data['groups'] as List?) ?? (data['exact']?['groups'] as List?) ?? const [];
-          if (users.isNotEmpty || groups.isNotEmpty) break;
+      if (merged != null) {
+        // If any results for this itemType, use them and stop trying others
+        final users = (merged['users'] as List?) ?? (merged['exact']?['users'] as List?) ?? const [];
+        final groups = (merged['groups'] as List?) ?? (merged['exact']?['groups'] as List?) ?? const [];
+        if (users.isNotEmpty || groups.isNotEmpty) {
+          data = merged;
+          break;
         }
       }
     }
     if (data == null) {
-      _ensureOk(res, 'Sharees-Suche fehlgeschlagen');
+      _ensureOk(lastRes, 'Sharees-Suche fehlgeschlagen');
       return const [];
     }
     final out = <UserRef>[];
@@ -1334,7 +1356,13 @@ class NextcloudDeckApi {
     }
     pickList(data['users']);
     pickList(data['groups']);
-    return out;
+    // Deduplicate by id (prefer first occurrence)
+    final seen = <String>{};
+    final dedup = <UserRef>[];
+    for (final u in out) {
+      if (seen.add(u.id)) dedup.add(u);
+    }
+    return dedup;
   }
 
   // Internal helpers

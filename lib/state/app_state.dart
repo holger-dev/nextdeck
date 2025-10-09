@@ -128,6 +128,10 @@ class AppState extends ChangeNotifier {
         }
       }
     }
+    // Wenn keine Zugangsdaten gesetzt sind (und nicht im lokalen Modus), zur Einstellungs-Registerkarte springen
+    if (!_localMode && (_baseUrl == null || _username == null || _password == null)) {
+      tabController.index = 3; // Settings tab
+    }
     notifyListeners();
     _startAutoSync();
   }
