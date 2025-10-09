@@ -1138,28 +1138,41 @@ class NextcloudDeckApi {
 
   // Card assignees (robust: try multiple endpoint variants)
   Future<void> addAssigneeToCard(String baseUrl, String user, String pass, int cardId, String userId) async {
-    final payload = jsonEncode({'userId': userId});
+    final payloads = [
+      jsonEncode({'userId': userId}),
+      jsonEncode({'user': userId}),
+      jsonEncode({'uid': userId}),
+    ];
     final paths = [
       '/apps/deck/api/v1.0/cards/$cardId/assignments',
       '/apps/deck/api/v1.0/cards/$cardId/members',
+      '/ocs/v1.php/apps/deck/api/v1.0/cards/$cardId/assignments',
+      '/ocs/v1.php/apps/deck/api/v1.0/cards/$cardId/members',
     ];
     http.Response? last;
     for (final p in paths) {
-      last = await _post(baseUrl, user, pass, p, payload);
-      if (last != null && _isOk(last)) return;
+      for (final body in payloads) {
+        last = await _post(baseUrl, user, pass, p, body);
+        if (last != null && _isOk(last)) return;
+      }
     }
     _ensureOk(last, 'Zuweisung hinzufügen fehlgeschlagen');
   }
 
   Future<void> removeAssigneeFromCard(String baseUrl, String user, String pass, int cardId, String userId) async {
-    final headers = {'Accept': 'application/json', 'authorization': _basicAuth(user, pass)};
+    final headersRest = {'Accept': 'application/json', 'authorization': _basicAuth(user, pass)};
+    final headersOcs = {..._ocsHeader, 'authorization': _basicAuth(user, pass)};
     final paths = [
       '/apps/deck/api/v1.0/cards/$cardId/assignments/$userId',
       '/apps/deck/api/v1.0/cards/$cardId/members/$userId',
+      '/ocs/v1.php/apps/deck/api/v1.0/cards/$cardId/assignments/$userId',
+      '/ocs/v1.php/apps/deck/api/v1.0/cards/$cardId/members/$userId',
     ];
     http.Response? last;
     for (final p in paths) {
       try {
+        final isOcs = p.startsWith('/ocs/');
+        final headers = isOcs ? headersOcs : headersRest;
         last = await http.delete(_buildUri(baseUrl, p, false), headers: headers);
         if (_isOk(last)) return;
         last = await http.delete(_buildUri(baseUrl, p, true), headers: headers);
@@ -1176,10 +1189,14 @@ class NextcloudDeckApi {
     required int cardId,
     required String userId,
   }) async {
-    final body = jsonEncode({'userId': userId});
     final paths = <String>[
       '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/assignUser',
       '/ocs/v1.php/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/assignUser',
+    ];
+    final payloads = [
+      jsonEncode({'userId': userId}),
+      jsonEncode({'user': userId}),
+      jsonEncode({'uid': userId}),
     ];
     http.Response? last;
     for (final p in paths) {
@@ -1190,12 +1207,16 @@ class NextcloudDeckApi {
         'Content-Type': 'application/json',
         'authorization': _basicAuth(user, pass),
       };
-      try {
-        last = await _send('PUT', _buildUri(baseUrl, p, false), headers, body: body);
-        if (_isOk(last)) { _parseBodyOk(last!); return; }
-        last = await _send('PUT', _buildUri(baseUrl, p, true), headers, body: body);
-        if (_isOk(last)) { _parseBodyOk(last!); return; }
-      } catch (_) {}
+      for (final method in ['PUT', 'POST']) {
+        for (final body in payloads) {
+          try {
+            last = await _send(method, _buildUri(baseUrl, p, false), headers, body: body);
+            if (_isOk(last)) { _parseBodyOk(last!); return; }
+            last = await _send(method, _buildUri(baseUrl, p, true), headers, body: body);
+            if (_isOk(last)) { _parseBodyOk(last!); return; }
+          } catch (_) {}
+        }
+      }
     }
     _ensureOk(last, 'Benutzer zuweisen fehlgeschlagen');
   }
@@ -1206,10 +1227,14 @@ class NextcloudDeckApi {
     required int cardId,
     required String userId,
   }) async {
-    final body = jsonEncode({'userId': userId});
     final paths = <String>[
       '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/unassignUser',
       '/ocs/v1.php/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/unassignUser',
+    ];
+    final payloads = [
+      jsonEncode({'userId': userId}),
+      jsonEncode({'user': userId}),
+      jsonEncode({'uid': userId}),
     ];
     http.Response? last;
     for (final p in paths) {
@@ -1220,12 +1245,16 @@ class NextcloudDeckApi {
         'Content-Type': 'application/json',
         'authorization': _basicAuth(user, pass),
       };
-      try {
-        last = await _send('PUT', _buildUri(baseUrl, p, false), headers, body: body);
-        if (_isOk(last)) { _parseBodyOk(last!); return; }
-        last = await _send('PUT', _buildUri(baseUrl, p, true), headers, body: body);
-        if (_isOk(last)) { _parseBodyOk(last!); return; }
-      } catch (_) {}
+      for (final method in ['PUT', 'POST']) {
+        for (final body in payloads) {
+          try {
+            last = await _send(method, _buildUri(baseUrl, p, false), headers, body: body);
+            if (_isOk(last)) { _parseBodyOk(last!); return; }
+            last = await _send(method, _buildUri(baseUrl, p, true), headers, body: body);
+            if (_isOk(last)) { _parseBodyOk(last!); return; }
+          } catch (_) {}
+        }
+      }
     }
     _ensureOk(last, 'Benutzer entfernen fehlgeschlagen');
   }
@@ -1266,31 +1295,29 @@ class NextcloudDeckApi {
   // Sharees search (users/groups) via OCS sharees API
   Future<List<UserRef>> searchSharees(String baseUrl, String user, String pass, String query, {int perPage = 20}) async {
     final path = '/ocs/v2.php/apps/files_sharing/api/v1/sharees';
-    final itemTypes = ['deck-card', 'deck', 'file', ''];
+    // Some servers require itemType and return 400 otherwise; avoid empty value
+    final itemTypes = ['deck', 'deck-card', 'file'];
     http.Response? lastRes;
     Map<String, dynamic>? data;
     // Try both lookup=false and lookup=true as some servers differ in matching behavior (id vs. display name)
     for (final it in itemTypes) {
       Map<String, dynamic>? merged;
       for (final lookup in ['false', 'true']) {
-        Uri uri(bool ocs) => _buildUri(baseUrl, path, ocs).replace(queryParameters: {
-              ..._buildUri(baseUrl, path, ocs).queryParameters,
+        // Avoid index.php variants for sharees to prevent some servers returning HTML/500
+        Uri uri() => _buildUri(baseUrl, path, false).replace(queryParameters: {
+              ..._buildUri(baseUrl, path, false).queryParameters,
               'search': query,
               'page': '1',
               'perPage': perPage.toString(),
-              if (it.isNotEmpty) 'itemType': it,
+              'itemType': it,
               'lookup': lookup,
               'format': 'json',
             });
         http.Response? res;
         try {
-          res = await _send('GET', uri(false), {..._ocsHeader, 'authorization': _basicAuth(user, pass)}, body: null);
+          res = await _send('GET', uri(), {..._ocsHeader, 'authorization': _basicAuth(user, pass)}, body: null);
         } catch (_) {}
-        if (res == null || !_isOk(res)) {
-          try {
-            res = await _send('GET', uri(true), {..._ocsHeader, 'authorization': _basicAuth(user, pass)}, body: null);
-          } catch (_) {}
-        }
+        // Do not try index.php fallback here
         if (res != null && _isOk(res)) {
           lastRes = res;
           final ok = _ensureOk(res, 'Sharees-Suche fehlgeschlagen');
@@ -1322,9 +1349,12 @@ class NextcloudDeckApi {
       }
       if (merged != null) {
         // If any results for this itemType, use them and stop trying others
-        final users = (merged['users'] as List?) ?? (merged['exact']?['users'] as List?) ?? const [];
-        final groups = (merged['groups'] as List?) ?? (merged['exact']?['groups'] as List?) ?? const [];
-        if (users.isNotEmpty || groups.isNotEmpty) {
+        final users = (merged['users'] as List?) ?? const [];
+        final groups = (merged['groups'] as List?) ?? const [];
+        final exactM = (merged['exact'] as Map?)?.cast<String, dynamic>();
+        final exactUsers = (exactM?['users'] as List?) ?? const [];
+        final exactGroups = (exactM?['groups'] as List?) ?? const [];
+        if (users.isNotEmpty || groups.isNotEmpty || exactUsers.isNotEmpty || exactGroups.isNotEmpty) {
           data = merged;
           break;
         }
@@ -1343,8 +1373,9 @@ class NextcloudDeckApi {
           if (value == null) continue;
           final shareType = (value['shareType'] as num?)?.toInt();
           final shareWith = (value['shareWith'] ?? '').toString();
+          final unique = (e['shareWithDisplayNameUnique'] ?? '').toString();
           if (shareType == 0 || shareType == 1) {
-            out.add(UserRef(id: shareWith, displayName: label, shareType: shareType));
+            out.add(UserRef(id: shareWith, displayName: label, shareType: shareType, altId: unique.isEmpty ? null : unique));
           }
         }
       }

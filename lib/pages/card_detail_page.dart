@@ -240,7 +240,8 @@ class _CardDetailPageState extends State<CardDetailPage> {
   Future<void> _savePatch(Map<String, dynamic> patch, {int? useStackId, bool optimistic = false}) async {
     if (!mounted) return;
     final app = context.read<AppState>();
-    final boardId = app.activeBoard?.id ?? widget.boardId;
+    // Prefer the boardId of the card when provided, else fall back to active board
+    final boardId = widget.boardId ?? app.activeBoard?.id;
     final stackId = useStackId ?? _currentStackId ?? widget.stackId;
     if (boardId == null || stackId == null) return;
     // Always include key fields to avoid PUT clearing other properties
@@ -1181,7 +1182,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
     setState(() { _currentStackId = newStack; });
     // Optimistic local move
     final app = context.read<AppState>();
-    final boardId = app.activeBoard?.id ?? widget.boardId;
+    final boardId = widget.boardId ?? app.activeBoard?.id;
     if (boardId != null) {
       app.updateLocalCard(boardId: boardId, stackId: prevStack!, cardId: widget.cardId, moveToStackId: newStack);
     }
@@ -1396,9 +1397,19 @@ class _CardDetailPageState extends State<CardDetailPage> {
     bool searching = false;
     // Restrict to board members when available
     Set<String> members = {};
-    final boardId = app.activeBoard?.id ?? widget.boardId;
+    final boardId = widget.boardId ?? app.activeBoard?.id;
     if (boardId != null) {
       try { members = await app.api.fetchBoardMemberUids(baseUrl, user, pass, boardId); } catch (_) {}
+      // Normalize to lowercase to avoid case-mismatch between sharees.id and board member uids
+      members = members.map((e) => e.toLowerCase()).toSet();
+    }
+    Future<void> doSearch(StateSetter setS) async {
+      setS(() { searching = true; });
+      try {
+        results = await app.api.searchSharees(baseUrl, user, pass, queryCtrl.text.trim());
+      } finally {
+        setS(() { searching = false; });
+      }
     }
     await showCupertinoModalPopup(
       context: context,
@@ -1411,6 +1422,15 @@ class _CardDetailPageState extends State<CardDetailPage> {
             setS(() { searching = false; });
           }
         }
+        final filtered = results
+            .where((r) => (r.shareType ?? 0) == 0)
+            .where((r) {
+              if (members.isEmpty) return true;
+              final id = r.id.toLowerCase();
+              final alt = (r.altId ?? '').toLowerCase();
+              return members.contains(id) || (alt.isNotEmpty && members.contains(alt));
+            })
+            .toList();
         return CupertinoActionSheet(
           title: Text(L10n.of(context).assignTo),
           message: Column(
@@ -1430,9 +1450,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                 SizedBox(
                   height: 260,
                   child: ListView(
-                    children: results
-                        .where((r) => (r.shareType ?? 0) == 0) // nur Benutzer
-                        .where((r) => members.isEmpty ? true : members.contains(r.id))
+                    children: filtered
                         .map((u) => CupertinoActionSheetAction(
                               onPressed: () async {
                                 Navigator.of(ctx).pop();
