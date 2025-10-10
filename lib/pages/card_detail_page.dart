@@ -1422,13 +1422,15 @@ class _CardDetailPageState extends State<CardDetailPage> {
             setS(() { searching = false; });
           }
         }
+        final q = queryCtrl.text.trim().toLowerCase();
         final filtered = results
             .where((r) => (r.shareType ?? 0) == 0)
+            // Client-side name matching: ONLY display name or account id (case-insensitive)
             .where((r) {
-              if (members.isEmpty) return true;
+              if (q.isEmpty) return true;
+              final dn = r.displayName.toLowerCase();
               final id = r.id.toLowerCase();
-              final alt = (r.altId ?? '').toLowerCase();
-              return members.contains(id) || (alt.isNotEmpty && members.contains(alt));
+              return dn.contains(q) || id.contains(q);
             })
             .toList();
         return CupertinoActionSheet(

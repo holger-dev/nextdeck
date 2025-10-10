@@ -1,6 +1,6 @@
 {
-    "name": "nextdeck",
-    "short_name": "nextdeck",
+    "name": "Next Deck",
+    "short_name": "Next Deck",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
