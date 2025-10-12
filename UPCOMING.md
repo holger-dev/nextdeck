@@ -7,3 +7,4 @@ Nächste version: 1.4
 - Wenn die App startet und keine Login-Daten hat, wird die Einstellungsseite geöffnet
 - Dark Mode Fehler korrigiert bei Personenauswahl und Listennamen
 - Suche bei Zugewiesenen Personen findet nun auch Anzeigenamen und Kontonamen
+- Peformanceverbesserungen

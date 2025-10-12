@@ -1,7 +1,7 @@
 name: nextdeck
 description: Nextcloud Deck Client (Flutter, Cupertino)
 publish_to: 'none'
-version: 1.4.3+4
+version: 1.4.4+4
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

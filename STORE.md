@@ -194,27 +194,31 @@ Nextcloud, Deck, Kanban, Tareas, Proyectos, Gestión de Proyectos, Tableros, Tar
 
 # DE – Version 1.4
 
-- Übersicht: „Weitere Boards“ alphabetisch sortiert; Pull‑down‑Suche zum Filtern.
+- Übersicht: Alle Boards A–Z sortiert; Pull‑down‑Suche zum schnellen Filtern.
 - Sprachen: Texte überarbeitet und vereinheitlicht.
 - Start: Ohne Zugangsdaten öffnet die App direkt die Einstellungsseite.
-- Dark Mode: bessere Lesbarkeit bei Personenauswahl und Spaltentiteln.
+- Dark Mode: bessere Lesbarkeit bei Personenauswahl und Listennamen.
 - Zugewiesene: Suche findet jetzt Anzeigenamen und Kontonamen; Anzeige „Name (Konto)“.
+- Performance: spürbar schneller durch Caching und weniger Netzwerkaufrufe.
 
 # EN – Version 1.4
 
-- Overview: “More boards” sorted alphabetically; pull‑down search to filter.
+- Overview: All boards sorted A–Z; pull‑down search to quickly filter.
 - Language: refined and unified copy.
-- Launch: when no credentials are set, open Settings first.
-- Dark mode: improved readability in assignee picker and column titles.
+- Launch: opens Settings first if no credentials are configured.
+- Dark mode: improved readability in assignee picker and list titles.
 - Assignees: search now matches display name and account; shows “Name (account)”.
+- Performance: noticeably faster via caching and fewer network calls.
 
 # ES – Versión 1.4
 
-- Resumen: “Más tableros” ordenados alfabéticamente; búsqueda al deslizar para filtrar.
+- Resumen: todos los tableros ordenados de la A a la Z; búsqueda al deslizar para filtrar rápido.
 - Idiomas: textos revisados y unificados.
-- Inicio: si no hay credenciales, abrir Ajustes primero.
-- Modo oscuro: mejor legibilidad en selector de responsables y títulos de columnas.
-- Asignados: la búsqueda coincide por nombre para mostrar y cuenta; muestra “Nombre (cuenta)”.
+- Inicio: si no hay credenciales, se abre primero Ajustes.
+- Modo oscuro: mejor legibilidad en el selector de responsables y nombres de listas.
+- Asignados: la búsqueda coincide por nombre para mostrar y por cuenta; muestra “Nombre (cuenta)”.
+- Rendimiento: notablemente más rápido gracias a caché y menos llamadas de red.
+- 
 # Nextdeck Store Listing
 ## Version 2.0 (Planned)
 

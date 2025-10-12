@@ -14,6 +14,35 @@ class NextcloudDeckApi {
   static const _ocsHeader = {'OCS-APIRequest': 'true', 'Accept': 'application/json'};
   static const _restHeader = {'Accept': 'application/json'};
 
+  // In-memory TTL caches to speed up frequent lookups
+  final Map<String, _CacheEntry<UserRef?>> _meCache = {};
+  final Map<String, _CacheEntry<Map<String, dynamic>?>> _boardDetailCache = {};
+  final Map<String, _CacheEntry<Set<String>>> _boardMemberCache = {};
+  final Map<String, _CacheEntry<List<UserRef>>> _shareesCache = {};
+  static const _defaultTtlMs = 60 * 1000; // 60s for most endpoints
+  static const _meTtlMs = 10 * 60 * 1000; // 10min for current user
+  static const _maxCacheEntries = 120;
+
+  T? _getCached<T>(Map<String, _CacheEntry<T>> m, String key) {
+    final e = m[key];
+    if (e == null) return null;
+    if (e.expires.isBefore(DateTime.now())) { m.remove(key); return null; }
+    return e.value;
+  }
+
+  void _setCached<T>(Map<String, _CacheEntry<T>> m, String key, T value, {int ttlMs = _defaultTtlMs}) {
+    m[key] = _CacheEntry(value: value, expires: DateTime.now().add(Duration(milliseconds: ttlMs)));
+    if (m.length > _maxCacheEntries) {
+      // prune expired, then oldest
+      final now = DateTime.now();
+      m.removeWhere((_, v) => v.expires.isBefore(now));
+      if (m.length > _maxCacheEntries) {
+        final oldest = m.entries.toList()..sort((a, b) => a.value.expires.compareTo(b.value.expires));
+        for (int i = 0; i < oldest.length - _maxCacheEntries; i++) { m.remove(oldest[i].key); }
+      }
+    }
+  }
+
   Future<bool> testLogin(String baseUrl, String username, String password) async {
     final res = await _get(baseUrl, username, password, '/ocs/v2.php/cloud/user');
     if (res == null) return false;
@@ -23,6 +52,30 @@ class NextcloudDeckApi {
     } catch (_) {
       return false;
     }
+  }
+
+  Future<UserRef?> fetchCurrentUser(String baseUrl, String username, String password) async {
+    final cacheKey = 'me|$baseUrl|$username';
+    final cached = _getCached(_meCache, cacheKey);
+    if (cached != null) return cached;
+    final res = await _get(baseUrl, username, password, '/ocs/v2.php/cloud/user');
+    final ok = _ensureOk(res, 'Benutzerinfo laden fehlgeschlagen');
+    final data = _parseBodyOk(ok);
+    try {
+      if (data is Map) {
+        final ocs = (data['ocs'] as Map?)?.cast<String, dynamic>();
+        final d = (ocs?['data'] as Map?)?.cast<String, dynamic>();
+        final id = (d?['id'] ?? '').toString();
+        final dn = (d?['display-name'] ?? d?['displayName'] ?? '').toString();
+        if (id.isNotEmpty) {
+          final out = UserRef(id: id, displayName: dn.isEmpty ? id : dn, shareType: 0);
+          _setCached(_meCache, cacheKey, out, ttlMs: _meTtlMs);
+          return out;
+        }
+      }
+    } catch (_) {}
+    _setCached(_meCache, cacheKey, null, ttlMs: 5 * 1000);
+    return null;
   }
 
   Future<bool> hasDeckEnabled(String baseUrl, String username, String password) async {
@@ -80,6 +133,9 @@ class NextcloudDeckApi {
   }
 
   Future<Map<String, dynamic>?> fetchBoardDetail(String baseUrl, String user, String pass, int boardId) async {
+    final cacheKey = 'board|$baseUrl|$user|$boardId';
+    final cached = _getCached(_boardDetailCache, cacheKey);
+    if (cached != null) return cached;
     // Use REST endpoint only; OCS variants are unreliable on many Deck installations
     final headers = {
       'Accept': 'application/json',
@@ -90,7 +146,11 @@ class NextcloudDeckApi {
         final res = await _send('GET', _buildUri(baseUrl, '/apps/deck/api/v1.0/boards/$boardId', withIndex), headers);
         if (_isOk(res)) {
           final data = _parseBodyOk(res);
-          if (data is Map) return data.cast<String, dynamic>();
+          if (data is Map) {
+            final out = data.cast<String, dynamic>();
+            _setCached(_boardDetailCache, cacheKey, out);
+            return out;
+          }
         }
       } catch (_) {
         // try next variant
@@ -100,6 +160,9 @@ class NextcloudDeckApi {
   }
 
   Future<Set<String>> fetchBoardMemberUids(String baseUrl, String user, String pass, int boardId) async {
+    final cacheKey = 'members|$baseUrl|$user|$boardId';
+    final cached = _getCached(_boardMemberCache, cacheKey);
+    if (cached != null) return cached;
     final out = <String>{};
     final detail = await fetchBoardDetail(baseUrl, user, pass, boardId);
     if (detail == null) return out;
@@ -122,6 +185,7 @@ class NextcloudDeckApi {
     addFrom(detail['acl']);
     // activeSessions (may carry participants)
     addFrom(detail['activeSessions']);
+    _setCached(_boardMemberCache, cacheKey, out);
     return out;
   }
 
@@ -1294,71 +1358,53 @@ class NextcloudDeckApi {
 
   // Sharees search (users/groups) via OCS sharees API
   Future<List<UserRef>> searchSharees(String baseUrl, String user, String pass, String query, {int perPage = 20}) async {
+    final normQ = query.trim();
+    final cacheKey = 'sharees|$baseUrl|$user|$perPage|$normQ';
+    final cached = _getCached(_shareesCache, cacheKey);
+    if (cached != null) return cached;
     final path = '/ocs/v2.php/apps/files_sharing/api/v1/sharees';
     // Some servers require itemType and return 400 otherwise; avoid empty value
     final itemTypes = ['deck', 'deck-card', 'file'];
     http.Response? lastRes;
     Map<String, dynamic>? data;
-    // Try both lookup=false and lookup=true as some servers differ in matching behavior (id vs. display name)
+    // Prefer lookup=false (fewer results but faster), fallback to lookup=true only if empty
     for (final it in itemTypes) {
       Map<String, dynamic>? merged;
-      for (final lookup in ['false', 'true']) {
-        // Avoid index.php variants for sharees to prevent some servers returning HTML/500
-        Uri uri() => _buildUri(baseUrl, path, false).replace(queryParameters: {
-              ..._buildUri(baseUrl, path, false).queryParameters,
-              'search': query,
-              'page': '1',
-              'perPage': perPage.toString(),
-              'itemType': it,
-              'lookup': lookup,
-              'format': 'json',
-            });
+      Future<Map<String, dynamic>?> run(String lookup) async {
+        final base = _buildUri(baseUrl, path, false);
+        final uri = base.replace(queryParameters: {
+          ...base.queryParameters,
+          'search': normQ,
+          'page': '1',
+          'perPage': perPage.toString(),
+          'itemType': it,
+          'lookup': lookup,
+          'format': 'json',
+        });
         http.Response? res;
-        try {
-          res = await _send('GET', uri(), {..._ocsHeader, 'authorization': _basicAuth(user, pass)}, body: null);
-        } catch (_) {}
-        // Do not try index.php fallback here
+        try { res = await _send('GET', uri, {..._ocsHeader, 'authorization': _basicAuth(user, pass)}); } catch (_) {}
         if (res != null && _isOk(res)) {
           lastRes = res;
           final ok = _ensureOk(res, 'Sharees-Suche fehlgeschlagen');
           final parsed = _parseBodyOk(ok);
-          if (parsed is Map) {
-            final cur = parsed.cast<String, dynamic>();
-            if (merged == null) {
-              merged = cur;
-            } else {
-              // Merge 'users' and 'groups' lists from both responses
-              List mergeList(dynamic a, dynamic b) {
-                final la = (a as List?) ?? const [];
-                final lb = (b as List?) ?? const [];
-                return [...la, ...lb];
-              }
-              final exactA = (merged['exact'] as Map?)?.cast<String, dynamic>();
-              final exactB = (cur['exact'] as Map?)?.cast<String, dynamic>();
-              merged['users'] = mergeList(merged['users'], cur['users']);
-              merged['groups'] = mergeList(merged['groups'], cur['groups']);
-              if (exactA != null || exactB != null) {
-                final m = <String, dynamic>{};
-                m['users'] = mergeList(exactA?['users'], exactB?['users']);
-                m['groups'] = mergeList(exactA?['groups'], exactB?['groups']);
-                merged['exact'] = m;
-              }
-            }
-          }
+          if (parsed is Map) return parsed.cast<String, dynamic>();
         }
+        return null;
       }
-      if (merged != null) {
-        // If any results for this itemType, use them and stop trying others
-        final users = (merged['users'] as List?) ?? const [];
-        final groups = (merged['groups'] as List?) ?? const [];
-        final exactM = (merged['exact'] as Map?)?.cast<String, dynamic>();
+      bool hasAny(Map<String, dynamic>? m) {
+        if (m == null) return false;
+        final users = (m['users'] as List?) ?? const [];
+        final groups = (m['groups'] as List?) ?? const [];
+        final exactM = (m['exact'] as Map?)?.cast<String, dynamic>();
         final exactUsers = (exactM?['users'] as List?) ?? const [];
         final exactGroups = (exactM?['groups'] as List?) ?? const [];
-        if (users.isNotEmpty || groups.isNotEmpty || exactUsers.isNotEmpty || exactGroups.isNotEmpty) {
-          data = merged;
-          break;
-        }
+        return users.isNotEmpty || groups.isNotEmpty || exactUsers.isNotEmpty || exactGroups.isNotEmpty;
       }
+      merged = await run('false');
+      if (!hasAny(merged)) {
+        merged = await run('true');
+      }
+      if (hasAny(merged)) { data = merged; break; }
     }
     if (data == null) {
       _ensureOk(lastRes, 'Sharees-Suche fehlgeschlagen');
@@ -1393,6 +1439,7 @@ class NextcloudDeckApi {
     for (final u in out) {
       if (seen.add(u.id)) dedup.add(u);
     }
+    _setCached(_shareesCache, cacheKey, dedup);
     return dedup;
   }
 
@@ -1548,4 +1595,10 @@ class NextcloudDeckApi {
       rethrow;
     }
   }
+}
+
+class _CacheEntry<T> {
+  final T value;
+  final DateTime expires;
+  _CacheEntry({required this.value, required this.expires});
 }

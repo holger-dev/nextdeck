@@ -63,6 +63,8 @@ class _CardDetailPageState extends State<CardDetailPage> {
   bool _dueDirty = false;
   bool _labelsDirty = false;
   bool _assigneesDirty = false;
+  final Set<String> _assigneesHide = <String>{};
+  bool _assigneesLoading = true;
   bool _initialFetchDone = false;
 
   @override
@@ -171,7 +173,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
         _due = _card!.due;
       }
       // If we have cached data, show immediately; otherwise keep spinner until fetch completes
-      if (mounted) setState(() { _loading = _card == null; });
+      if (mounted) setState(() { _loading = _card == null; _assigneesLoading = true; });
       // Background: fetch fresh single card if we have stack/board
       final stackId = widget.stackId ?? _currentStackId;
       if (widget.boardId != null && stackId != null && stackId != -1) {
@@ -203,12 +205,12 @@ class _CardDetailPageState extends State<CardDetailPage> {
             }
           } catch (_) {}
           finally {
-            if (mounted) setState(() { _loading = false; _initialFetchDone = true; });
+            if (mounted) setState(() { _loading = false; _initialFetchDone = true; _assigneesLoading = false; });
           }
         }());
       } else {
         // No way to fetch a single card (missing ids); mark fetch done
-        if (mounted) setState(() { _initialFetchDone = true; });
+        if (mounted) setState(() { _initialFetchDone = true; _assigneesLoading = false; });
       }
       // Background: prefetch board labels (detail) to speed up label sheet
       unawaited(() async {
@@ -385,13 +387,17 @@ class _CardDetailPageState extends State<CardDetailPage> {
                           ],
                         ),
                         const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: (_card?.assignees ?? const <UserRef>[]) 
-                              .map<Widget>((u) => _AssigneePill(user: u, onRemove: () => _toggleAssignee(u, remove: true)))
-                              .toList(),
-                        ),
+                        _assigneesLoading
+                            ? const CupertinoActivityIndicator()
+                            : Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: ((_card?.assignees ?? const <UserRef>[]) 
+                                        .where((u) => !_assigneesHide.contains(u.id.toLowerCase()))
+                                        .toList())
+                                    .map<Widget>((u) => _AssigneePill(user: u, onRemove: () => _toggleAssignee(u, remove: true)))
+                                    .toList(),
+                              ),
                   const SizedBox(height: 8),
                   Container(height: 1, color: CupertinoColors.separator),
                   const SizedBox(height: 16),
@@ -768,13 +774,17 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 6,
-                                  children: (_card?.assignees ?? const <UserRef>[]) 
-                                      .map<Widget>((u) => _AssigneePill(user: u, onRemove: () => _toggleAssignee(u, remove: true)))
-                                      .toList(),
-                                ),
+                                _assigneesLoading
+                                    ? const CupertinoActivityIndicator()
+                                    : Wrap(
+                                        spacing: 6,
+                                        runSpacing: 6,
+                                        children: ((_card?.assignees ?? const <UserRef>[]) 
+                                                .where((u) => !_assigneesHide.contains(u.id.toLowerCase()))
+                                                .toList())
+                                            .map<Widget>((u) => _AssigneePill(user: u, onRemove: () => _toggleAssignee(u, remove: true)))
+                                            .toList(),
+                                      ),
                                 const SizedBox(height: 8),
                                 Container(height: 1, color: CupertinoColors.separator),
                                 const SizedBox(height: 16),
@@ -1395,6 +1405,9 @@ class _CardDetailPageState extends State<CardDetailPage> {
     List<UserRef> results = const [];
     Timer? debounce;
     bool searching = false;
+    // Persist current user and board owner across StatefulBuilder rebuilds
+    UserRef? meRef;
+    UserRef? ownerRef;
     // Restrict to board members when available
     Set<String> members = {};
     final boardId = widget.boardId ?? app.activeBoard?.id;
@@ -1403,27 +1416,46 @@ class _CardDetailPageState extends State<CardDetailPage> {
       // Normalize to lowercase to avoid case-mismatch between sharees.id and board member uids
       members = members.map((e) => e.toLowerCase()).toSet();
     }
-    Future<void> doSearch(StateSetter setS) async {
+    // Preload current user and board owner once to avoid per-keystroke requests
+    try { meRef = await app.api.fetchCurrentUser(baseUrl, user, pass); } catch (_) {}
+    if (boardId != null) {
+      try {
+        final detail = await app.api.fetchBoardDetail(baseUrl, user, pass, boardId);
+        if (detail != null) {
+          final owner = detail['owner'];
+          if (owner is Map) {
+            final uid = (owner['uid'] ?? owner['id'] ?? '').toString();
+            final dnRaw = (owner['displayname'] ?? owner['displayName'] ?? owner['name'] ?? owner['label'] ?? '').toString();
+            if (uid.isNotEmpty) {
+              final dn = dnRaw.isEmpty ? uid : dnRaw;
+              ownerRef = UserRef(id: uid, displayName: dn, shareType: 0);
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    // Start with a visible spinner and trigger initial search once the sheet is shown
+    searching = true;
+    bool _initialSearchTriggered = false;
+    await showCupertinoModalPopup(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
+    Future<void> Function()? runSearch;
+    runSearch = () async {
       setS(() { searching = true; });
       try {
         results = await app.api.searchSharees(baseUrl, user, pass, queryCtrl.text.trim());
       } finally {
         setS(() { searching = false; });
       }
+    };
+    if (!_initialSearchTriggered) {
+      _initialSearchTriggered = true;
+      // run once after build
+      Future.microtask(() => runSearch?.call());
     }
-    await showCupertinoModalPopup(
-      context: context,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setS) {
-        Future<void> doSearch() async {
-          setS(() { searching = true; });
-          try {
-            results = await app.api.searchSharees(baseUrl, user, pass, queryCtrl.text.trim());
-          } finally {
-            setS(() { searching = false; });
-          }
-        }
         final q = queryCtrl.text.trim().toLowerCase();
-        final filtered = results
+        var filtered = results
             .where((r) => (r.shareType ?? 0) == 0)
             // Client-side name matching: ONLY display name or account id (case-insensitive)
             .where((r) {
@@ -1433,6 +1465,32 @@ class _CardDetailPageState extends State<CardDetailPage> {
               return dn.contains(q) || id.contains(q);
             })
             .toList();
+        // Restrict to board members when we have the set
+        if (members.isNotEmpty) {
+          filtered = filtered.where((r) => members.contains(r.id.toLowerCase())).toList();
+        }
+        // Ensure current user is visible when query matches own name/id
+        if (meRef != null) {
+          final meId = meRef!.id.toLowerCase();
+          final meDn = meRef!.displayName.toLowerCase();
+          final match = q.isEmpty || meId.contains(q) || meDn.contains(q);
+          final already = filtered.any((r) => r.id.toLowerCase() == meId);
+          final allowed = members.isEmpty || members.contains(meId);
+          if (match && !already && allowed) {
+            filtered = [meRef!, ...filtered];
+          }
+        }
+        // Ensure board owner is also visible if matches and not present
+        if (ownerRef != null) {
+          final oid = ownerRef!.id.toLowerCase();
+          final odn = ownerRef!.displayName.toLowerCase();
+          final match = q.isEmpty || oid.contains(q) || odn.contains(q);
+          final already = filtered.any((r) => r.id.toLowerCase() == oid);
+          final allowed = members.isEmpty || members.contains(oid);
+          if (match && !already && allowed) {
+            filtered = [ownerRef!, ...filtered];
+          }
+        }
         return CupertinoActionSheet(
           title: Text(L10n.of(context).assignTo),
           message: Column(
@@ -1443,9 +1501,9 @@ class _CardDetailPageState extends State<CardDetailPage> {
                 placeholder: L10n.of(context).userOrGroupSearch,
                 onChanged: (v) {
                   debounce?.cancel();
-                  debounce = Timer(const Duration(milliseconds: 350), () => doSearch());
+                  debounce = Timer(const Duration(milliseconds: 500), () => runSearch?.call());
                 },
-                onSubmitted: (_) => doSearch(),
+                onSubmitted: (_) => runSearch?.call(),
               ),
               const SizedBox(height: 8),
               if (searching) const CupertinoActivityIndicator() else ...[
@@ -1491,6 +1549,13 @@ class _CardDetailPageState extends State<CardDetailPage> {
     if (baseUrl == null || user == null || pass == null) return;
     if (_card == null) return;
     setState(() { _saving = true; _assigneesDirty = true; });
+    // Immediate visual feedback: hide pill optimistically on remove; unhide on add
+    final idLower = userRef.id.toLowerCase();
+    if (remove) {
+      setState(() { _assigneesHide.add(idLower); });
+    } else {
+      setState(() { _assigneesHide.remove(idLower); });
+    }
     // optimistic local update
     final current = List<UserRef>.from(_card!.assignees);
     final next = remove ? current.where((u) => u.id != userRef.id).toList() : (current..removeWhere((u) => u.id == userRef.id))..add(userRef);
@@ -1564,6 +1629,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
       if (!ok) {
         // revert
         setState(() {
+          _assigneesHide.remove(idLower); // show back if operation failed
           _card = CardItem(
             id: _card!.id,
             title: _card!.title,
