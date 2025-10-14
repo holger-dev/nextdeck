@@ -105,7 +105,7 @@ A lean, fast and privacy-friendly Nextcloud Deck client with native Cupertino UI
 - Push notifications for overdue cards
 - Create new lists and boards (planned for v2.0)
 
-For details and history see `TODO.md` and `STORE.md`.
+For details about store content see `STORE.md`.
 
 
 ## Frequently asked questions (FAQ)
