@@ -105,7 +105,7 @@ Ein schlanker, schneller und datenschutzfreundlicher Nextcloud‑Deck‑Client m
 - Push‑Benachrichtigungen für überfällige Karten
 - Listen und Boards neu anlegen (für v2.0 geplant)
 
-Details und Historie siehe `TODO.md` und `STORE.md`.
+Details zum App Store inhalt finden Sie in `STORE.md`.
 
 
 ## Häufige Fragen (FAQ)
