@@ -34,6 +34,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
   final PageController _pageController = PageController();
   int _page = 0;
   int? _lastSeenTabIndex;
+  int _lastScanDone = -1;
 
   @override
   void initState() {
@@ -184,6 +185,13 @@ class _UpcomingPageState extends State<UpcomingPage> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final l10n = L10n.of(context);
+    // When background scan advances, rebuild lists from cache to show new hits
+    if (app.upcomingScanDone != _lastScanDone) {
+      _lastScanDone = app.upcomingScanDone;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _rebuildFromCacheAndTrackLoading();
+      });
+    }
     final currentTab = app.tabController.index;
     if (_lastSeenTabIndex != currentTab) {
       // Trigger auto-load when this tab becomes active
