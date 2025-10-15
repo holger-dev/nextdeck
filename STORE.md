@@ -207,6 +207,9 @@ Nextcloud, Deck, Kanban, Tareas, Proyectos, Gestión de Proyectos, Tableros, Tar
 - Übersicht smarter: Kleiner „Cache“-Hinweis pro Board (Spalten/Karten), Refresh lädt nur das aktive Board.
 - Einstellungen: Startseite wählbar (Anstehend/Board/Übersicht); Schalter für „Spalten im Hintergrund vorladen“; Erklärung zum Anstehend‑Fortschritt.
 - Lokale Speicherung: Option „Boards lokal speichern“ (Standard AN) – speichert Boards/Spalten lokal und nutzt ETags, um beim Start nur geänderte Boards erneut zu laden (deutlich weniger Requests).
+- Einstellungen überarbeitet: Konto ganz oben; Bereiche thematisch sortiert (Start & Board, Performance, Darstellung, Sprache, Entwickler); kürzere, übersetzte Labels/Hilfen.
+- Persistenz verbessert: Spalten/Karten werden nach jedem Stack‑Ladevorgang direkt lokal gespeichert; nach App‑Neustart wird der Cache aller Boards geladen (Anstehend sofort gefüllt).
+- Schnellere Navigation: Beim Wechsel in ein Board sofortiger Tab‑Wechsel nach Spalten‑Load; Karten laden priorisiert im Hintergrund (ohne Vorwärm‑Wartezeit).
 - Robuster gegen 403/405: OCS‑Fallbacks für Stacks/Karten, automatischer OCS‑Header‑Retry, bessere `index.php`‑Varianten, erzwungenes HTTPS.
 - „Als erledigt/unerledigt“ stabil: Fallbacks ohne Fehlhinweis (Done → letzte Spalte; Undone → erste Spalte); Dialoge sicher über Root‑Navigator (kein „deactivated context“).
 - Kleines UI‑Feintuning: Sehr lange Boardtitel werden ab 20 Zeichen auf 18+„…“ gekürzt.
@@ -219,6 +222,9 @@ Nextcloud, Deck, Kanban, Tareas, Proyectos, Gestión de Proyectos, Tableros, Tar
 - Smarter overview: tiny “Cache” hint per board (Columns/Cards), refresh only updates the active board.
 - Settings: selectable startup tab (Upcoming/Board/Overview); toggle for background stacks preload; explanation of the Upcoming progress.
 - Local storage: option “Store boards locally” (default ON) — caches boards/columns and uses ETags to only reload changed boards on launch (far fewer requests).
+- Settings revamped: account section moved to the top; sections grouped (Startup & Board, Performance, Appearance, Language, Developer); shorter, localized labels/help.
+- Better persistence: columns/cards are written to local storage after each stack load; on app start all board caches are hydrated (Upcoming immediately populated).
+- Faster navigation: switching to a board happens right after columns load; cards load with priority in the background (no pre‑warm delay).
 - More robust to 403/405: OCS fallbacks for stacks/cards, automatic OCS‑header retry, better `index.php` variants, enforced HTTPS.
 - “Mark as done/undone” solid: graceful fallbacks (Done → last column; Undone → first column); dialogs use the root navigator (no “deactivated context”).
 - UI polish: very long board titles are truncated (over 20 chars → 18 + “…”).
@@ -231,6 +237,9 @@ Nextcloud, Deck, Kanban, Tareas, Proyectos, Gestión de Proyectos, Tableros, Tar
 - Vista general más inteligente: pequeño indicador “Cache” por tablero (Columnas/Tarjetas), actualizar solo recarga el tablero activo.
 - Ajustes: pestaña de inicio seleccionable (Próximas/Tablero/Vista general); interruptor para precargar columnas en segundo plano; explicación del progreso en Próximas.
 - Almacenamiento local: opción “Guardar tableros localmente” (activada por defecto) — guarda tableros/columnas y usa ETags para recargar solo los tableros cambiados al iniciar (muchas menos peticiones).
+- Ajustes reorganizados: cuenta arriba; secciones agrupadas (Inicio y Tablero, Rendimiento, Apariencia, Idioma, Desarrollador); etiquetas/ayudas cortas y traducidas.
+- Mejor persistencia: columnas/tarjetas se guardan tras cada carga de lista; al iniciar la app se hidratan los cachés de todos los tableros (Próximas aparece al instante).
+- Navegación más rápida: cambio al tablero justo tras cargar columnas; tarjetas se cargan con prioridad en segundo plano (sin espera de “precalentamiento”).
 - Más robusto ante 403/405: fallbacks OCS para columnas/tarjetas, reintento automático con cabecera OCS, mejores variantes con `index.php`, HTTPS forzado.
 - “Marcar como hecho/no hecho” fiable: retrocesos elegantes (Hecho → última columna; No hecho → primera columna); diálogos usando el navegador raíz (sin “deactivated context”).
 - Detalles de UI: títulos de tableros muy largos se truncan (más de 20 caracteres → 18 + “…”).
