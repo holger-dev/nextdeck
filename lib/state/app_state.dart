@@ -104,8 +104,8 @@ class AppState extends ChangeNotifier {
       } catch (_) {
         // Ignorieren beim Start; Nutzer kann in den Einstellungen erneut testen
       }
-      // Warm up columns and cards for all non-archived boards in background (conservative concurrency)
-      unawaited(warmAllBoards());
+      // Kein globales Warmup mehr: Performance-Schwerpunkt auf aktives Board
+      // Optionales Warmup kann der Nutzer manuell triggern (z. B. über Refresh)
       if (activeBoardIdStr != null) {
         final id = int.tryParse(activeBoardIdStr);
         _activeBoard = _boards.firstWhere(
@@ -146,43 +146,29 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       final active = List<Board>.from(_boards.where((b) => !b.archived));
-      // Process boards in small batches to avoid serial slowness
+      // Process boards in small batches; nur Spalten (Stacks) laden, Karten lazy
       for (int bi = 0; bi < active.length; bi += boardConcurrency) {
         final slice = active.skip(bi).take(boardConcurrency).toList();
         await Future.wait(slice.map((b) async {
           try {
-            List<deck.Column> cols = _columnsByBoard[b.id] ?? const <deck.Column>[];
-            if (cols.isEmpty) {
-              // Try eager fetch to reduce per-stack requests (inline cards if server supports it)
-              try {
-                final fetched = await api.fetchColumns(_baseUrl!, _username!, _password!, b.id, lazyCards: false);
-                _columnsByBoard[b.id] = fetched;
-                cols = fetched;
-                // Cache Columns + Cards pro Board
-                cache.put('columns_${b.id}', fetched.map((c) => {
-                      'id': c.id,
-                      'title': c.title,
-                      'cards': c.cards
-                          .map((k) => {
-                                'id': k.id,
-                                'title': k.title,
-                                'description': k.description,
-                                'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                                'labels': k.labels
-                                    .map((l) => {'id': l.id, 'title': l.title, 'color': l.color})
-                                    .toList(),
-                              })
-                          .toList(),
-                    }).toList());
-              } catch (_) {
-                await refreshColumnsFor(b);
-                cols = _columnsByBoard[b.id] ?? const <deck.Column>[];
-              }
-            }
-            for (int i = 0; i < cols.length; i += listConcurrency) {
-              final s2 = cols.skip(i).take(listConcurrency).toList();
-              await Future.wait(s2.map((c) => ensureCardsFor(b.id, c.id)));
-            }
+            // Spalten schlank laden (lazyCards=true) und cachen
+            final fetched = await api.fetchColumns(_baseUrl!, _username!, _password!, b.id, lazyCards: true);
+            _columnsByBoard[b.id] = fetched;
+            cache.put('columns_${b.id}', fetched.map((c) => {
+                  'id': c.id,
+                  'title': c.title,
+                  'cards': c.cards
+                      .map((k) => {
+                            'id': k.id,
+                            'title': k.title,
+                            'description': k.description,
+                            'duedate': k.due?.toUtc().millisecondsSinceEpoch,
+                            'labels': k.labels
+                                .map((l) => {'id': l.id, 'title': l.title, 'color': l.color})
+                                .toList(),
+                          })
+                      .toList(),
+                }).toList());
           } catch (_) {}
         }));
       }

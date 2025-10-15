@@ -42,11 +42,10 @@ class _OverviewPageState extends State<OverviewPage> {
             CupertinoButton(
               padding: EdgeInsets.zero,
               onPressed: () async {
-                // First refresh the boards list to include newly created boards
+                // Refresh only boards list and the active board to reduce load
                 await app.refreshBoards();
-                // Then refresh columns for all known boards (lightweight due to lazy cards)
-                for (final b in app.boards) {
-                  await app.refreshColumnsFor(b);
+                if (app.activeBoard != null) {
+                  await app.refreshColumnsFor(app.activeBoard!);
                 }
               },
               child: const Icon(CupertinoIcons.refresh),

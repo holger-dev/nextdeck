@@ -40,7 +40,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
     super.initState();
     // Prime with already loaded data; background warm-up handled by AppState
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _buildFromLoaded();
+      _rebuildFromCacheAndTrackLoading();
     });
   }
 
@@ -157,28 +157,15 @@ class _UpcomingPageState extends State<UpcomingPage> {
       if (mySeq != _seq) return;
       _currentBoardTitle = b.title;
       setState(() {});
-      if (app.columnsForBoard(b.id).isEmpty) {
-        await app.refreshColumnsFor(b);
-        if (mySeq != _seq) return;
-      }
+      // Nur Spalten aus Cache oder bereits geladenem Zustand verwenden
       final cols = app.columnsForBoard(b.id);
-      const pool = 3;
-      for (int i = 0; i < cols.length; i += pool) {
-        if (mySeq != _seq) return;
-        final slice = cols.skip(i).take(pool).toList();
-        await Future.wait(slice.map((c) async {
-          if (mySeq != _seq) return;
-          await app.ensureCardsFor(b.id, c.id);
-          if (mySeq != _seq) return;
-          final fresh = app.columnsForBoard(b.id).firstWhere((x) => x.id == c.id, orElse: () => c);
-          final ct = fresh.title.toLowerCase();
-          if (ct.contains('done') || ct.contains('erledigt')) return;
-          for (final k in fresh.cards) {
-            if (k.due == null) continue;
-            _addHit(b.id, b.title, c.id, c.title, k);
-          }
-          if (mounted) setState(() {});
-        }));
+      for (final c in cols) {
+        final ct = c.title.toLowerCase();
+        if (ct.contains('done') || ct.contains('erledigt')) continue;
+        for (final k in c.cards) {
+          if (k.due == null) continue;
+          _addHit(b.id, b.title, c.id, c.title, k);
+        }
       }
       _doneBoards++;
       if (mounted) setState(() {});
@@ -201,7 +188,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
       // Trigger auto-load when this tab becomes active
       if (currentTab == 0) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _ensureAllAndRebuild();
+          if (mounted) _rebuildFromCacheAndTrackLoading();
         });
       }
       _lastSeenTabIndex = currentTab;

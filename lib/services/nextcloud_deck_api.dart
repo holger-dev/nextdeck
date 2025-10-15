@@ -13,6 +13,30 @@ import 'log_service.dart';
 class NextcloudDeckApi {
   static const _ocsHeader = {'OCS-APIRequest': 'true', 'Accept': 'application/json'};
   static const _restHeader = {'Accept': 'application/json'};
+  // Concurrency limiter and request timeout to reduce server load
+  static int _maxConcurrent = 6;
+  static int _inFlight = 0;
+  static final List<Completer<void>> _waiters = [];
+  static const Duration _defaultTimeout = Duration(seconds: 30);
+
+  Future<void> _acquireSlot() async {
+    if (_inFlight < _maxConcurrent) {
+      _inFlight++;
+      return;
+    }
+    final c = Completer<void>();
+    _waiters.add(c);
+    await c.future;
+  }
+
+  void _releaseSlot() {
+    if (_waiters.isNotEmpty) {
+      final c = _waiters.removeAt(0);
+      c.complete();
+    } else {
+      _inFlight = (_inFlight - 1).clamp(0, 1 << 20);
+    }
+  }
 
   // In-memory TTL caches to speed up frequent lookups
   final Map<String, _CacheEntry<UserRef?>> _meCache = {};
@@ -306,22 +330,32 @@ class NextcloudDeckApi {
   }
 
   Future<List<CardItem>> fetchCards(String baseUrl, String username, String password, int boardId, int stackId) async {
-    // Focus on REST only. Non-200 treated as empty for robustness (empty stacks often return 404/405 on some setups).
+    // Try REST first; fallback to OCS variants. Return empty only if all fail.
     final headers = {..._restHeader, 'authorization': _basicAuth(username, password)};
+    http.Response? last;
     for (final withIndex in [false, true]) {
       try {
         final uri = _buildUri(baseUrl, '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards', withIndex);
         final res = await _send('GET', uri, headers);
+        last = res;
         if (_isOk(res)) {
           return _parseCardsList(res.body);
-        } else {
-          // Non-2xx: interpret as empty for empty stacks
-          return const <CardItem>[];
         }
-      } catch (_) {
-        // try next variant
+      } catch (_) {}
+    }
+    for (final ocsPrefix in ['/ocs/v2.php', '/ocs/v1.php']) {
+      for (final withIndex in [false, true]) {
+        try {
+          final uri = _buildUri(baseUrl, '$ocsPrefix/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards', withIndex);
+          final res = await _send('GET', uri, {..._ocsHeader, 'authorization': _basicAuth(username, password)});
+          last = res;
+          if (_isOk(res)) {
+            return _parseCardsList(res.body);
+          }
+        } catch (_) {}
       }
     }
+    // Interpret as empty if every variant failed
     return const <CardItem>[];
   }
 
@@ -1550,24 +1584,25 @@ class NextcloudDeckApi {
     final t0 = DateTime.now();
     http.Response res;
     try {
+      await _acquireSlot();
       switch (method) {
         case 'GET':
-          res = await http.get(uri, headers: headers);
+          res = await http.get(uri, headers: headers).timeout(_defaultTimeout);
           break;
         case 'POST':
-          res = await http.post(uri, headers: headers, body: body);
+          res = await http.post(uri, headers: headers, body: body).timeout(_defaultTimeout);
           break;
         case 'PUT':
-          res = await http.put(uri, headers: headers, body: body);
+          res = await http.put(uri, headers: headers, body: body).timeout(_defaultTimeout);
           break;
         case 'PATCH':
-          res = await http.patch(uri, headers: headers, body: body);
+          res = await http.patch(uri, headers: headers, body: body).timeout(_defaultTimeout);
           break;
         case 'DELETE':
-          res = await http.delete(uri, headers: headers);
+          res = await http.delete(uri, headers: headers).timeout(_defaultTimeout);
           break;
         default:
-          res = await http.get(uri, headers: headers);
+          res = await http.get(uri, headers: headers).timeout(_defaultTimeout);
       }
       final dur = DateTime.now().difference(t0).inMilliseconds;
       final snippet = (res.body.length > 400) ? res.body.substring(0, 400) + '…' : res.body;
@@ -1593,6 +1628,8 @@ class NextcloudDeckApi {
         error: e.toString(),
       ));
       rethrow;
+    } finally {
+      _releaseSlot();
     }
   }
 }
