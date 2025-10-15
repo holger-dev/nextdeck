@@ -206,6 +206,7 @@ Nextcloud, Deck, Kanban, Tareas, Proyectos, Gestión de Proyectos, Tableros, Tar
 - Anstehend überarbeitet: Hintergrund‑Scan startet beim App‑Start, Fortschritt „X / Y“ im Titel, Liste aktualisiert sich live; Langdruck auf Aktualisieren startet Vollscan; aktives Board wird dabei nicht erneut geladen.
 - Übersicht smarter: Kleiner „Cache“-Hinweis pro Board (Spalten/Karten), Refresh lädt nur das aktive Board.
 - Einstellungen: Startseite wählbar (Anstehend/Board/Übersicht); Schalter für „Spalten im Hintergrund vorladen“; Erklärung zum Anstehend‑Fortschritt.
+- Lokale Speicherung: Option „Boards lokal speichern“ (Standard AN) – speichert Boards/Spalten lokal und nutzt ETags, um beim Start nur geänderte Boards erneut zu laden (deutlich weniger Requests).
 - Robuster gegen 403/405: OCS‑Fallbacks für Stacks/Karten, automatischer OCS‑Header‑Retry, bessere `index.php`‑Varianten, erzwungenes HTTPS.
 - „Als erledigt/unerledigt“ stabil: Fallbacks ohne Fehlhinweis (Done → letzte Spalte; Undone → erste Spalte); Dialoge sicher über Root‑Navigator (kein „deactivated context“).
 - Kleines UI‑Feintuning: Sehr lange Boardtitel werden ab 20 Zeichen auf 18+„…“ gekürzt.
@@ -217,6 +218,7 @@ Nextcloud, Deck, Kanban, Tareas, Proyectos, Gestión de Proyectos, Tableros, Tar
 - Upcoming revamped: background scan starts on app launch, progress “X / Y” in the title, lists update live; long‑press refresh to force a full scan; active board is not reloaded during scanning.
 - Smarter overview: tiny “Cache” hint per board (Columns/Cards), refresh only updates the active board.
 - Settings: selectable startup tab (Upcoming/Board/Overview); toggle for background stacks preload; explanation of the Upcoming progress.
+- Local storage: option “Store boards locally” (default ON) — caches boards/columns and uses ETags to only reload changed boards on launch (far fewer requests).
 - More robust to 403/405: OCS fallbacks for stacks/cards, automatic OCS‑header retry, better `index.php` variants, enforced HTTPS.
 - “Mark as done/undone” solid: graceful fallbacks (Done → last column; Undone → first column); dialogs use the root navigator (no “deactivated context”).
 - UI polish: very long board titles are truncated (over 20 chars → 18 + “…”).
@@ -228,6 +230,7 @@ Nextcloud, Deck, Kanban, Tareas, Proyectos, Gestión de Proyectos, Tableros, Tar
 - Próximas mejorado: el escaneo en segundo plano comienza al iniciar la app, progreso “X / Y” en el título, listas se actualizan en vivo; pulsación larga en actualizar inicia escaneo completo; el tablero activo no se recarga durante el escaneo.
 - Vista general más inteligente: pequeño indicador “Cache” por tablero (Columnas/Tarjetas), actualizar solo recarga el tablero activo.
 - Ajustes: pestaña de inicio seleccionable (Próximas/Tablero/Vista general); interruptor para precargar columnas en segundo plano; explicación del progreso en Próximas.
+- Almacenamiento local: opción “Guardar tableros localmente” (activada por defecto) — guarda tableros/columnas y usa ETags para recargar solo los tableros cambiados al iniciar (muchas menos peticiones).
 - Más robusto ante 403/405: fallbacks OCS para columnas/tarjetas, reintento automático con cabecera OCS, mejores variantes con `index.php`, HTTPS forzado.
 - “Marcar como hecho/no hecho” fiable: retrocesos elegantes (Hecho → última columna; No hecho → primera columna); diálogos usando el navegador raíz (sin “deactivated context”).
 - Detalles de UI: títulos de tableros muy largos se truncan (más de 20 caracteres → 18 + “…”).
