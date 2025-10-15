@@ -418,8 +418,8 @@ class _BoardSummary extends StatelessWidget {
                         _StatChip(icon: CupertinoIcons.exclamationmark_triangle, label: L10n.of(context).overdueLabel, value: overdue.toString(), color: CupertinoColors.destructiveRed),
                         _StatChip(
                           icon: CupertinoIcons.cloud_download,
-                          label: 'Cache',
-                          value: hasAnyCards ? 'Karten' : (hasStacks ? 'Spalten' : '—'),
+                          label: L10n.of(context).cacheLabel,
+                          value: hasAnyCards ? L10n.of(context).cardsLabel : (hasStacks ? L10n.of(context).columnsLabel : '—'),
                           color: hasAnyCards ? CupertinoColors.activeGreen : (hasStacks ? CupertinoColors.activeBlue : CupertinoColors.systemGrey),
                         ),
                         if (app.boardMemberCount(boardId) != null)

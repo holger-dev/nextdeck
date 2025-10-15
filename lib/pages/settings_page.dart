@@ -195,7 +195,7 @@ class _SettingsPageState extends State<SettingsPage> {
             const _Divider(),
             const SizedBox(height: 20),
             // Startup tab selection
-            Text('Startseite', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text(L10n.of(context).startupPage, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Builder(builder: (ctx) {
               final options = <int, Widget>{
@@ -215,12 +215,12 @@ class _SettingsPageState extends State<SettingsPage> {
             const _Divider(),
             const SizedBox(height: 20),
             // Performance
-            Text('Performance', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text(L10n.of(context).performance, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Expanded(child: Text('Hintergrund: Spalten vorladen (schont Server, lädt ohne Karten)')),
+                Expanded(child: Text(L10n.of(context).bgPreloadLabel)),
                 CupertinoSwitch(
                   value: app.backgroundPreload,
                   onChanged: (v) => app.setBackgroundPreload(v),
@@ -228,14 +228,14 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
             const SizedBox(height: 6),
-            const Text('Lädt im Hintergrund nur die Spalten (Stacks) aller Boards in den Cache. Karten werden weiterhin nur bei Bedarf geladen.', style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            Text(L10n.of(context).bgPreloadHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 8),
-            const Text('Hinweis zu "Anstehende Karten": Die Anzeige neben dem Titel (z. B. 4 / 12) zeigt den Fortschritt eines Hintergrund-Scans über alle Boards. Mit langem Druck auf den Aktualisieren-Button wird ein vollständiger Scan gestartet.', style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            Text(L10n.of(context).upcomingProgressHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Expanded(child: Text('Boards lokal speichern (schnelles Wiederöffnen, nur geänderte Boards prüfen)')),
+                Expanded(child: Text(L10n.of(context).cacheBoardsLocalLabel)),
                 CupertinoSwitch(
                   value: app.cacheBoardsLocal,
                   onChanged: (v) => app.setCacheBoardsLocal(v),
@@ -243,7 +243,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
             const SizedBox(height: 6),
-            const Text('Speichert Boards lokal und nutzt ETags, um beim Start nur geänderte Boards neu zu prüfen. Deaktivieren, wenn dein Server keine ETags liefert.', style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            Text(L10n.of(context).cacheBoardsLocalHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),
