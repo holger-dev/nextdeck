@@ -143,6 +143,9 @@ class _SettingsPageState extends State<SettingsPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // Konto
+            const _Divider(),
+            const SizedBox(height: 20),
             // Lokaler Modus Hinweis
             if (app.localMode) ...[
               Container(
@@ -217,33 +220,15 @@ class _SettingsPageState extends State<SettingsPage> {
             // Performance
             Text(L10n.of(context).performance, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: Text(L10n.of(context).bgPreloadLabel)),
-                CupertinoSwitch(
-                  value: app.backgroundPreload,
-                  onChanged: (v) => app.setBackgroundPreload(v),
-                ),
-              ],
-            ),
+            Row(children: [ Expanded(child: Text(L10n.of(context).bgPreloadShort)), CupertinoSwitch(value: app.backgroundPreload, onChanged: (v) => app.setBackgroundPreload(v)) ]),
             const SizedBox(height: 6),
-            Text(L10n.of(context).bgPreloadHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            Text(L10n.of(context).bgPreloadHelpShort, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 8),
             Text(L10n.of(context).upcomingProgressHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: Text(L10n.of(context).cacheBoardsLocalLabel)),
-                CupertinoSwitch(
-                  value: app.cacheBoardsLocal,
-                  onChanged: (v) => app.setCacheBoardsLocal(v),
-                ),
-              ],
-            ),
+            Row(children: [ Expanded(child: Text(L10n.of(context).cacheBoardsLocalShort)), CupertinoSwitch(value: app.cacheBoardsLocal, onChanged: (v) => app.setCacheBoardsLocal(v)) ]),
             const SizedBox(height: 6),
-            Text(L10n.of(context).cacheBoardsLocalHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            Text(L10n.of(context).cacheBoardsLocalHelpShort, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),

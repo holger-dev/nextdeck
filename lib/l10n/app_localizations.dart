@@ -218,11 +218,13 @@ class L10n {
       : _isEs
           ? 'Segundo plano: precargar columnas (ahorra servidor, sin tarjetas)'
           : 'Background: preload columns (saves server, no cards)';
+  String get bgPreloadShort => _isDe ? 'Spalten vorladen' : _isEs ? 'Precargar columnas' : 'Preload columns';
   String get bgPreloadHelp => _isDe
       ? 'Lädt im Hintergrund nur die Spalten (Stacks) aller Boards in den Cache. Karten werden weiterhin nur bei Bedarf geladen.'
       : _isEs
           ? 'Carga en segundo plano solo las columnas (stacks) de todos los tableros en caché. Las tarjetas se cargan bajo demanda.'
           : 'Preloads only columns (stacks) of all boards into cache. Cards still load on demand.';
+  String get bgPreloadHelpShort => _isDe ? 'Hintergrund: nur Spalten laden.' : _isEs ? 'Segundo plano: solo columnas.' : 'Background: columns only.';
   String get upcomingProgressHelp => _isDe
       ? 'Hinweis zu „Anstehende Karten“: Die Anzeige neben dem Titel (z. B. 4 / 12) zeigt den Fortschritt eines Hintergrund-Scans über alle Boards. Mit langem Druck auf den Aktualisieren-Button wird ein vollständiger Scan gestartet.'
       : _isEs
@@ -233,11 +235,13 @@ class L10n {
       : _isEs
           ? 'Guardar tableros localmente (apertura rápida, solo comprobar tableros cambiados)'
           : 'Store boards locally (fast reopen, only check changed boards)';
+  String get cacheBoardsLocalShort => _isDe ? 'Boards lokal speichern' : _isEs ? 'Guardar tableros localmente' : 'Store boards locally';
   String get cacheBoardsLocalHelp => _isDe
       ? 'Speichert Boards lokal und nutzt ETags, um beim Start nur geänderte Boards neu zu prüfen. Deaktivieren, wenn dein Server keine ETags liefert.'
       : _isEs
           ? 'Guarda los tableros localmente y usa ETags para comprobar solo los tableros cambiados al iniciar. Desactívalo si tu servidor no proporciona ETags.'
           : 'Stores boards locally and uses ETags to check only changed boards on launch. Disable if your server does not provide ETags.';
+  String get cacheBoardsLocalHelpShort => _isDe ? 'Nur geänderte Boards prüfen (ETag).' : _isEs ? 'Solo tableros cambiados (ETag).' : 'Only changed boards (ETag).';
   // Overview – cache indicator
   String get cacheLabel => _isDe ? 'Cache' : _isEs ? 'Caché' : 'Cache';
   // Language
