@@ -313,6 +313,68 @@ class NextcloudDeckApi {
     return columns;
   }
 
+  Future<FetchStacksResult> fetchStacksWithEtag(String baseUrl, String username, String password, int boardId, {String? ifNoneMatch, bool priority = false}) async {
+    http.Response? res;
+    dynamic data;
+    Map<String, String> restHeaders = {..._restHeader, 'authorization': _basicAuth(username, password)};
+    Map<String, String> ocsHeaders = {..._ocsHeader, 'authorization': _basicAuth(username, password)};
+    if (ifNoneMatch != null && ifNoneMatch.isNotEmpty) {
+      restHeaders['If-None-Match'] = ifNoneMatch;
+      ocsHeaders['If-None-Match'] = ifNoneMatch;
+    }
+    for (final withIndex in [false, true]) {
+      try {
+        final uri = _buildUri(baseUrl, '/apps/deck/api/v1.0/boards/$boardId/stacks', withIndex);
+        final r = await _send('GET', uri, restHeaders, priority: priority);
+        if (r.statusCode == 304) {
+          return const FetchStacksResult(columns: [], etag: null, notModified: true);
+        }
+        if (_isOk(r)) { res = r; data = _parseBodyOk(r); break; }
+      } catch (_) {}
+    }
+    if (res == null || !_isOk(res)) {
+      for (final ocs in ['/ocs/v2.php', '/ocs/v1.php']) {
+        for (final withIndex in [false, true]) {
+          try {
+            final uri = _buildUri(baseUrl, '$ocs/apps/deck/api/v1.0/boards/$boardId/stacks', withIndex);
+            final r = await _send('GET', uri, ocsHeaders, priority: priority);
+            if (r.statusCode == 304) {
+              return const FetchStacksResult(columns: [], etag: null, notModified: true);
+            }
+            if (_isOk(r)) { res = r; data = _parseBodyOk(r); break; }
+          } catch (_) {}
+        }
+        if (res != null && _isOk(res)) break;
+      }
+    }
+    if (res == null || !_isOk(res)) {
+      _ensureOk(res, 'Spalten laden fehlgeschlagen');
+      return const FetchStacksResult(columns: [], etag: null, notModified: false);
+    }
+    final etag = res.headers['etag'] ?? res.headers['ETag'] ?? res.headers['Etag'];
+    final List<Map<String, dynamic>> stacks;
+    if (data is List) {
+      stacks = data.map((e) => (e as Map).cast<String, dynamic>()).toList();
+    } else if (data is Map && data['stacks'] is List) {
+      stacks = (data['stacks'] as List).map((e) => (e as Map).cast<String, dynamic>()).toList();
+    } else {
+      return FetchStacksResult(columns: const [], etag: etag, notModified: false);
+    }
+    final List<deck.Column> columns = [];
+    for (final stack in stacks) {
+      final stackId = stack['id'] as int;
+      final title = (stack['title'] ?? stack['name'] ?? '').toString();
+      final inline = stack['cards'];
+      if (inline is List) {
+        final cards = inline.map((e) => CardItem.fromJson((e as Map).cast<String, dynamic>())).toList();
+        columns.add(deck.Column(id: stackId, title: title, cards: cards));
+      } else {
+        columns.add(deck.Column(id: stackId, title: title, cards: const []));
+      }
+    }
+    return FetchStacksResult(columns: columns, etag: etag, notModified: false);
+  }
+
   Future<deck.Column?> createStack(String baseUrl, String user, String pass, int boardId, {required String title, int? order}) async {
     // Build body including optional ordering
     final Map<String, dynamic> payload = {'title': title, if (order != null) 'order': order};
@@ -1679,6 +1741,14 @@ class NextcloudDeckApi {
     }
   }
 }
+
+class FetchStacksResult {
+  final List<deck.Column> columns;
+  final String? etag;
+  final bool notModified;
+  const FetchStacksResult({required this.columns, required this.etag, required this.notModified});
+}
+
 
 class _CacheEntry<T> {
   final T value;

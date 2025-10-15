@@ -30,6 +30,7 @@ class AppState extends ChangeNotifier {
   static const int localBoardId = -1;
   bool _isWarming = false;
   bool _backgroundPreload = false; // user setting: warm stacks in background
+  bool _cacheBoardsLocal = true; // user setting: store boards locally + conditional sync
   int _startupTabIndex = 1; // 0=Upcoming,1=Board,2=Overview
 
   List<Board> _boards = const [];
@@ -55,6 +56,7 @@ class AppState extends ChangeNotifier {
   bool get isSyncing => _isSyncing;
   bool get isWarming => _isWarming;
   bool get backgroundPreload => _backgroundPreload;
+  bool get cacheBoardsLocal => _cacheBoardsLocal;
   int get startupTabIndex => _startupTabIndex;
   String? get baseUrl => _baseUrl;
   String? get username => _username;
@@ -92,6 +94,7 @@ class AppState extends ChangeNotifier {
     _smartColors = (await storage.read(key: 'smartColors')) != '0';
     _showDescriptionText = (await storage.read(key: 'showDescriptionText')) != '0';
     _backgroundPreload = (await storage.read(key: 'bg_preload')) == '1';
+    _cacheBoardsLocal = (await storage.read(key: 'cache_boards_local')) != '0';
     _localMode = (await storage.read(key: 'local_mode')) == '1';
     _localeCode = await storage.read(key: 'locale');
     _baseUrl = await storage.read(key: 'baseUrl');
@@ -272,13 +275,43 @@ class AppState extends ChangeNotifier {
         _upScanBoardTitle = b.title;
         notifyListeners();
         if (b.id != activeId) {
-          if ((_columnsByBoard[b.id] ?? const <deck.Column>[]).isEmpty) {
-            try { await refreshColumnsFor(b); } catch (_) {}
-          }
-          final cols = _columnsByBoard[b.id] ?? const <deck.Column>[];
-          for (int i = 0; i < cols.length; i += listConcurrency) {
-            final slice = cols.skip(i).take(listConcurrency).toList();
-            await Future.wait(slice.map((c) => ensureCardsFor(b.id, c.id)));
+          if (_cacheBoardsLocal) {
+            final etagKey = 'etag_stacks_${b.id}';
+            final prevEtag = cache.get(etagKey) as String?;
+            FetchStacksResult? res;
+            try {
+              res = await api.fetchStacksWithEtag(_baseUrl!, _username!, _password!, b.id, ifNoneMatch: prevEtag, priority: false);
+            } catch (_) {}
+            if (res != null && !res.notModified) {
+              _columnsByBoard[b.id] = res.columns;
+              cache.put('columns_${b.id}', res.columns.map((c) => {
+                'id': c.id,
+                'title': c.title,
+                'cards': c.cards.map((k) => {
+                  'id': k.id,
+                  'title': k.title,
+                  'description': k.description,
+                  'duedate': k.due?.toUtc().millisecondsSinceEpoch,
+                  'labels': k.labels.map((l) => {'id': l.id, 'title': l.title, 'color': l.color}).toList(),
+                }).toList(),
+              }).toList());
+              if (res.etag != null) cache.put(etagKey, res.etag);
+              final cols = _columnsByBoard[b.id] ?? const <deck.Column>[];
+              for (int i = 0; i < cols.length; i += listConcurrency) {
+                final slice = cols.skip(i).take(listConcurrency).toList();
+                await Future.wait(slice.map((c) => ensureCardsFor(b.id, c.id)));
+              }
+            }
+            // If notModified: keep old columns/cards from cache
+          } else {
+            if ((_columnsByBoard[b.id] ?? const <deck.Column>[]).isEmpty) {
+              try { await refreshColumnsFor(b); } catch (_) {}
+            }
+            final cols = _columnsByBoard[b.id] ?? const <deck.Column>[];
+            for (int i = 0; i < cols.length; i += listConcurrency) {
+              final slice = cols.skip(i).take(listConcurrency).toList();
+              await Future.wait(slice.map((c) => ensureCardsFor(b.id, c.id)));
+            }
           }
         }
         _upScanDone += 1;
@@ -599,6 +632,12 @@ class AppState extends ChangeNotifier {
     _backgroundPreload = enabled;
     storage.write(key: 'bg_preload', value: enabled ? '1' : '0');
     // Do not immediately kick off heavy work here; user can use refresh
+    notifyListeners();
+  }
+
+  void setCacheBoardsLocal(bool enabled) {
+    _cacheBoardsLocal = enabled;
+    storage.write(key: 'cache_boards_local', value: enabled ? '1' : '0');
     notifyListeners();
   }
 
