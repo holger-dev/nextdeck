@@ -194,6 +194,24 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),
+            // Performance
+            Text('Performance', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Expanded(child: Text('Hintergrund: Spalten vorladen (schont Server, lädt ohne Karten)')),
+                CupertinoSwitch(
+                  value: app.backgroundPreload,
+                  onChanged: (v) => app.setBackgroundPreload(v),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text('Lädt im Hintergrund nur die Spalten (Stacks) aller Boards in den Cache. Karten werden weiterhin nur bei Bedarf geladen.', style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            const SizedBox(height: 12),
+            const _Divider(),
+            const SizedBox(height: 20),
             // Language selector
             Text(l10n.language, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),

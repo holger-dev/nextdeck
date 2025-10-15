@@ -324,6 +324,10 @@ class _BoardSummary extends StatelessWidget {
       }
     }
 
+    // Cache indicator: stacks/cards loaded
+    final hasStacks = cols.isNotEmpty;
+    final hasAnyCards = hasStacks && cols.any((c) => c.cards.isNotEmpty);
+
     // Use Nextcloud board color when available; fallback to app palette
     final b = app.boards.firstWhere((x) => x.id == boardId, orElse: () => Board(id: boardId, title: title));
     final strong = AppTheme.boardColorFrom(b.color) ?? AppTheme.boardStrongColor(index);
@@ -412,6 +416,12 @@ class _BoardSummary extends StatelessWidget {
                         _StatChip(icon: CupertinoIcons.list_bullet, label: L10n.of(context).cardsLabel, value: cards.toString()),
                         _StatChip(icon: CupertinoIcons.time, label: L10n.of(context).dueSoonLabel, value: dueSoon.toString(), color: CupertinoColors.activeOrange, emphasize: true),
                         _StatChip(icon: CupertinoIcons.exclamationmark_triangle, label: L10n.of(context).overdueLabel, value: overdue.toString(), color: CupertinoColors.destructiveRed),
+                        _StatChip(
+                          icon: CupertinoIcons.cloud_download,
+                          label: 'Cache',
+                          value: hasAnyCards ? 'Karten' : (hasStacks ? 'Spalten' : '—'),
+                          color: hasAnyCards ? CupertinoColors.activeGreen : (hasStacks ? CupertinoColors.activeBlue : CupertinoColors.systemGrey),
+                        ),
                         if (app.boardMemberCount(boardId) != null)
                           _StatChip(icon: CupertinoIcons.person_2, label: L10n.of(context).membersLabel, value: app.boardMemberCount(boardId)!.toString(), color: CupertinoColors.activeGreen),
                       ],

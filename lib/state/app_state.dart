@@ -29,6 +29,7 @@ class AppState extends ChangeNotifier {
   bool _localMode = false;
   static const int localBoardId = -1;
   bool _isWarming = false;
+  bool _backgroundPreload = false; // user setting: warm stacks in background
 
   List<Board> _boards = const [];
   Board? _activeBoard;
@@ -47,6 +48,7 @@ class AppState extends ChangeNotifier {
   String? get localeCode => _localeCode;
   bool get isSyncing => _isSyncing;
   bool get isWarming => _isWarming;
+  bool get backgroundPreload => _backgroundPreload;
   String? get baseUrl => _baseUrl;
   String? get username => _username;
   bool get localMode => _localMode;
@@ -78,6 +80,7 @@ class AppState extends ChangeNotifier {
     _themeIndex = int.tryParse(await storage.read(key: 'themeIndex') ?? '') ?? 0;
     _smartColors = (await storage.read(key: 'smartColors')) != '0';
     _showDescriptionText = (await storage.read(key: 'showDescriptionText')) != '0';
+    _backgroundPreload = (await storage.read(key: 'bg_preload')) == '1';
     _localMode = (await storage.read(key: 'local_mode')) == '1';
     _localeCode = await storage.read(key: 'locale');
     _baseUrl = await storage.read(key: 'baseUrl');
@@ -104,8 +107,10 @@ class AppState extends ChangeNotifier {
       } catch (_) {
         // Ignorieren beim Start; Nutzer kann in den Einstellungen erneut testen
       }
-      // Kein globales Warmup mehr: Performance-Schwerpunkt auf aktives Board
-      // Optionales Warmup kann der Nutzer manuell triggern (z. B. über Refresh)
+      // Kein globales Karten-Warmup mehr. Optional: Stacks im Hintergrund, wenn aktiviert.
+      if (_backgroundPreload) {
+        unawaited(warmAllBoards());
+      }
       if (activeBoardIdStr != null) {
         final id = int.tryParse(activeBoardIdStr);
         _activeBoard = _boards.firstWhere(
@@ -521,6 +526,13 @@ class AppState extends ChangeNotifier {
     _syncTimer = null;
   }
 
+  void setBackgroundPreload(bool enabled) {
+    _backgroundPreload = enabled;
+    storage.write(key: 'bg_preload', value: enabled ? '1' : '0');
+    // Do not immediately kick off heavy work here; user can use refresh
+    notifyListeners();
+  }
+
   final Set<int> _stackLoading = {};
   final Set<int> _stackLoaded = {};
   bool isStackLoading(int stackId) => _stackLoading.contains(stackId);
@@ -555,10 +567,12 @@ class AppState extends ChangeNotifier {
     final b = _activeBoard;
     if (b == null) return;
     if (_baseUrl == null || _username == null || _password == null) return;
-    // Ensure cards are present
+    // Ensure cards are present in small batches (2-3 stacks parallel)
     final cols = columnsForActiveBoard();
-    for (final c in cols) {
-      await ensureCardsFor(b.id, c.id);
+    const pool = 3;
+    for (int i = 0; i < cols.length; i += pool) {
+      final slice = cols.skip(i).take(pool).toList();
+      await Future.wait(slice.map((c) => ensureCardsFor(b.id, c.id)));
     }
     // Now kick off meta count fetch for all cards
     final cols2 = columnsForActiveBoard();
@@ -580,8 +594,10 @@ class AppState extends ChangeNotifier {
     try {
       await refreshColumnsFor(b);
       final cols = columnsForActiveBoard();
-      for (final c in cols) {
-        await ensureCardsFor(b.id, c.id);
+      const pool = 3;
+      for (int i = 0; i < cols.length; i += pool) {
+        final slice = cols.skip(i).take(pool).toList();
+        await Future.wait(slice.map((c) => ensureCardsFor(b.id, c.id)));
       }
       final cols2 = columnsForActiveBoard();
       final jobs = <Future<void>>[];
