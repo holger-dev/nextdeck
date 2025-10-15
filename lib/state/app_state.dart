@@ -817,10 +817,10 @@ class AppState extends ChangeNotifier {
     if (activeId is int) {
       _activeBoard = _boards.firstWhere((b) => b.id == activeId, orElse: () => _boards.isEmpty ? Board.empty() : _boards.first);
     }
-    if (_activeBoard != null) {
-      final cols = cache.get('columns_${_activeBoard!.id}');
+    for (final b in _boards) {
+      final cols = cache.get('columns_${b.id}');
       if (cols is List) {
-        _columnsByBoard[_activeBoard!.id] = _parseCachedColumns(cols);
+        _columnsByBoard[b.id] = _parseCachedColumns(cols);
       }
     }
     // Members cache (best-effort)
