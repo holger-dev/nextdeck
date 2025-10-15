@@ -41,6 +41,11 @@ class AppState extends ChangeNotifier {
   // Meta Counters per card
   final Map<int, int> _cardCommentsCount = {};
   final Map<int, int> _cardAttachmentsCount = {};
+  // Upcoming background scan progress
+  bool _upScanActive = false;
+  int _upScanTotal = 0;
+  int _upScanDone = 0;
+  String? _upScanBoardTitle;
 
   bool get isDarkMode => _isDarkMode;
   int get themeIndex => _themeIndex;
@@ -64,6 +69,10 @@ class AppState extends ChangeNotifier {
   int? boardMemberCount(int boardId) => _boardMemberCount[boardId];
   int? commentsCountFor(int cardId) => _cardCommentsCount[cardId];
   int? attachmentsCountFor(int cardId) => _cardAttachmentsCount[cardId];
+  bool get upcomingScanActive => _upScanActive;
+  int get upcomingScanTotal => _upScanTotal;
+  int get upcomingScanDone => _upScanDone;
+  String? get upcomingScanBoardTitle => _upScanBoardTitle;
   void setCardCommentsCount(int cardId, int count) {
     _cardCommentsCount[cardId] = count < 0 ? 0 : count;
     notifyListeners();
@@ -241,6 +250,42 @@ class AppState extends ChangeNotifier {
         'later': l,
       });
     } catch (_) {}
+  }
+
+  /// Background scan to build a complete Upcoming view across all (non-archived, non-hidden) boards.
+  /// Loads cards in small batches per board. Safe to call multiple times; ignores if already running unless forced.
+  Future<void> scanUpcoming({bool force = false, int listConcurrency = 3}) async {
+    if (_localMode) return;
+    if (_baseUrl == null || _username == null || _password == null) return;
+    if (_upScanActive && !force) return;
+    _upScanActive = true;
+    _upScanDone = 0;
+    final boards = _boards.where((b) => !b.archived && !_hiddenBoards.contains(b.id)).toList();
+    _upScanTotal = boards.length;
+    _upScanBoardTitle = null;
+    notifyListeners();
+    try {
+      for (final b in boards) {
+        _upScanBoardTitle = b.title;
+        notifyListeners();
+        if ((_columnsByBoard[b.id] ?? const <deck.Column>[]).isEmpty) {
+          try { await refreshColumnsFor(b); } catch (_) {}
+        }
+        final cols = _columnsByBoard[b.id] ?? const <deck.Column>[];
+        for (int i = 0; i < cols.length; i += listConcurrency) {
+          final slice = cols.skip(i).take(listConcurrency).toList();
+          await Future.wait(slice.map((c) => ensureCardsFor(b.id, c.id)));
+        }
+        _upScanDone += 1;
+        // Refresh upcoming cache incrementally
+        _rebuildUpcomingCacheFromMemory();
+        notifyListeners();
+      }
+    } finally {
+      _upScanActive = false;
+      _upScanBoardTitle = null;
+      notifyListeners();
+    }
   }
 
   Map<String, List<Map<String, int>>>? upcomingCacheRefs() {

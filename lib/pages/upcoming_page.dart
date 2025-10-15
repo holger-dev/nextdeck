@@ -188,7 +188,10 @@ class _UpcomingPageState extends State<UpcomingPage> {
       // Trigger auto-load when this tab becomes active
       if (currentTab == 0) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _rebuildFromCacheAndTrackLoading();
+          if (mounted) {
+            _rebuildFromCacheAndTrackLoading();
+            app.scanUpcoming();
+          }
         });
       }
       _lastSeenTabIndex = currentTab;
@@ -240,6 +243,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
             CupertinoButton(
               padding: EdgeInsets.zero,
               onPressed: _loading ? null : () => _rebuildFromCacheAndTrackLoading(),
+              onLongPress: () { context.read<AppState>().scanUpcoming(force: true); },
               child: _loading ? const CupertinoActivityIndicator() : const Icon(CupertinoIcons.refresh),
             ),
           ],
@@ -248,16 +252,28 @@ class _UpcomingPageState extends State<UpcomingPage> {
       child: SafeArea(
         child: Stack(
           children: [
-            if (_loading)
+            if (_loading || app.upcomingScanActive)
               Positioned(
                 left: 12, right: 12, top: 8,
                 child: Row(children: [
                   const CupertinoActivityIndicator(),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(
-                    _currentBoardTitle == null ? l10n.searchingInProgress : l10n.searchingBoard(_currentBoardTitle!),
-                    style: const TextStyle(color: CupertinoColors.systemGrey),
-                  )),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          app.upcomingScanBoardTitle ?? (_currentBoardTitle == null ? l10n.searchingInProgress : l10n.searchingBoard(_currentBoardTitle!)),
+                          style: const TextStyle(color: CupertinoColors.systemGrey),
+                        ),
+                        if (app.upcomingScanTotal > 0)
+                          Text(
+                            l10n.boardsProgress(app.upcomingScanDone, app.upcomingScanTotal),
+                            style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12),
+                          ),
+                      ],
+                    ),
+                  ),
                 ]),
               ),
             Padding(
