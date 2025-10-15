@@ -351,7 +351,14 @@ class AppState extends ChangeNotifier {
     tabController.index = index;
     // On Board tab (index 1 in current layout), refresh meta counters in background
     if (index == 1) {
-      unawaited(refreshActiveBoardMeta());
+      final b = _activeBoard;
+      if (b != null && _baseUrl != null && _username != null && _password != null) {
+        // Lightweight: refresh stacks first (priority), then meta in background
+        unawaited(() async {
+          try { await refreshColumnsFor(b); } catch (_) {}
+          await refreshActiveBoardMeta();
+        }());
+      }
     }
   }
 

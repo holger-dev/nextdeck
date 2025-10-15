@@ -222,9 +222,32 @@ class NextcloudDeckApi {
   }
 
   Future<List<deck.Column>> fetchColumns(String baseUrl, String username, String password, int boardId, {bool lazyCards = true, bool priority = false}) async {
-    final res = await _get(baseUrl, username, password, '/apps/deck/api/v1.0/boards/$boardId/stacks', priority: priority);
-    final okRes = _ensureOk(res, 'Spalten laden fehlgeschlagen');
-    final data = _parseBodyOk(okRes);
+    http.Response? res;
+    dynamic data;
+    // Try REST stacks first (with/without index, priority), then OCS v2 and v1
+    for (final withIndex in [false, true]) {
+      try {
+        final uri = _buildUri(baseUrl, '/apps/deck/api/v1.0/boards/$boardId/stacks', withIndex);
+        final r = await _send('GET', uri, {..._restHeader, 'authorization': _basicAuth(username, password)}, priority: priority);
+        if (_isOk(r)) { res = r; data = _parseBodyOk(r); break; }
+      } catch (_) {}
+    }
+    if (res == null || !_isOk(res)) {
+      for (final ocs in ['/ocs/v2.php', '/ocs/v1.php']) {
+        for (final withIndex in [false, true]) {
+          try {
+            final uri = _buildUri(baseUrl, '$ocs/apps/deck/api/v1.0/boards/$boardId/stacks', withIndex);
+            final r = await _send('GET', uri, {..._ocsHeader, 'authorization': _basicAuth(username, password)}, priority: priority);
+            if (_isOk(r)) { res = r; data = _parseBodyOk(r); break; }
+          } catch (_) {}
+        }
+        if (res != null && _isOk(res)) break;
+      }
+    }
+    if (res == null || !_isOk(res)) {
+      _ensureOk(res, 'Spalten laden fehlgeschlagen');
+      return const [];
+    }
     final List<deck.Column> columns = [];
     final List<Map<String, dynamic>> stacks;
     if (data is List) {
