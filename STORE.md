@@ -198,6 +198,39 @@ Nextcloud, Deck, Kanban, Tareas, Proyectos, Gestión de Proyectos, Tableros, Tar
 - Sprachen: Texte überarbeitet und vereinheitlicht.
 - Start: Ohne Zugangsdaten öffnet die App direkt die Einstellungsseite.
 - Dark Mode: bessere Lesbarkeit bei Personenauswahl und Listennamen.
+
+# DE – Version 1.5
+
+- Deutlich schnellere Ladezeiten: Netzwerklast massiv reduziert (Stacks‑only‑Preload optional, globaler Request‑Limiter, Timeouts, weniger parallele Requests).
+- Aktives Board priorisiert: Ladevorgänge des geöffneten Boards laufen bevorzugt und störungsfrei, auch bei Hintergrund‑Scans.
+- Anstehend überarbeitet: Hintergrund‑Scan startet beim App‑Start, Fortschritt „X / Y“ im Titel, Liste aktualisiert sich live; Langdruck auf Aktualisieren startet Vollscan; aktives Board wird dabei nicht erneut geladen.
+- Übersicht smarter: Kleiner „Cache“-Hinweis pro Board (Spalten/Karten), Refresh lädt nur das aktive Board.
+- Einstellungen: Startseite wählbar (Anstehend/Board/Übersicht); Schalter für „Spalten im Hintergrund vorladen“; Erklärung zum Anstehend‑Fortschritt.
+- Robuster gegen 403/405: OCS‑Fallbacks für Stacks/Karten, automatischer OCS‑Header‑Retry, bessere `index.php`‑Varianten, erzwungenes HTTPS.
+- „Als erledigt/unerledigt“ stabil: Fallbacks ohne Fehlhinweis (Done → letzte Spalte; Undone → erste Spalte); Dialoge sicher über Root‑Navigator (kein „deactivated context“).
+- Kleines UI‑Feintuning: Sehr lange Boardtitel werden ab 20 Zeichen auf 18+„…“ gekürzt.
+
+# EN – Version 1.5
+
+- Much faster loading: massively reduced network load (optional stacks‑only preload, global request limiter, timeouts, fewer parallel calls).
+- Active board prioritized: loads of the currently opened board run first and unhindered, even during background scans.
+- Upcoming revamped: background scan starts on app launch, progress “X / Y” in the title, lists update live; long‑press refresh to force a full scan; active board is not reloaded during scanning.
+- Smarter overview: tiny “Cache” hint per board (Columns/Cards), refresh only updates the active board.
+- Settings: selectable startup tab (Upcoming/Board/Overview); toggle for background stacks preload; explanation of the Upcoming progress.
+- More robust to 403/405: OCS fallbacks for stacks/cards, automatic OCS‑header retry, better `index.php` variants, enforced HTTPS.
+- “Mark as done/undone” solid: graceful fallbacks (Done → last column; Undone → first column); dialogs use the root navigator (no “deactivated context”).
+- UI polish: very long board titles are truncated (over 20 chars → 18 + “…”).
+
+# ES – Versión 1.5
+
+- Cargas mucho más rápidas: carga de red muy reducida (precarga solo de columnas opcional, limitador global de peticiones, timeouts, menos llamadas en paralelo).
+- Tablero activo priorizado: las cargas del tablero abierto tienen prioridad y no se ven afectadas, incluso con escaneos en segundo plano.
+- Próximas mejorado: el escaneo en segundo plano comienza al iniciar la app, progreso “X / Y” en el título, listas se actualizan en vivo; pulsación larga en actualizar inicia escaneo completo; el tablero activo no se recarga durante el escaneo.
+- Vista general más inteligente: pequeño indicador “Cache” por tablero (Columnas/Tarjetas), actualizar solo recarga el tablero activo.
+- Ajustes: pestaña de inicio seleccionable (Próximas/Tablero/Vista general); interruptor para precargar columnas en segundo plano; explicación del progreso en Próximas.
+- Más robusto ante 403/405: fallbacks OCS para columnas/tarjetas, reintento automático con cabecera OCS, mejores variantes con `index.php`, HTTPS forzado.
+- “Marcar como hecho/no hecho” fiable: retrocesos elegantes (Hecho → última columna; No hecho → primera columna); diálogos usando el navegador raíz (sin “deactivated context”).
+- Detalles de UI: títulos de tableros muy largos se truncan (más de 20 caracteres → 18 + “…”).
 - Zugewiesene: Suche findet jetzt Anzeigenamen und Kontonamen; Anzeige „Name (Konto)“.
 - Performance: spürbar schneller durch Caching und weniger Netzwerkaufrufe.
 
