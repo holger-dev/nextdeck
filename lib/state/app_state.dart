@@ -123,6 +123,8 @@ class AppState extends ChangeNotifier {
       if (_backgroundPreload) {
         unawaited(warmAllBoards());
       }
+      // Upcoming-Hintergrundscan direkt beim Start anstoßen (schont UI, limitiert parallele Last)
+      unawaited(scanUpcoming());
       if (activeBoardIdStr != null) {
         final id = int.tryParse(activeBoardIdStr);
         _activeBoard = _boards.firstWhere(
@@ -258,8 +260,6 @@ class AppState extends ChangeNotifier {
     if (_localMode) return;
     if (_baseUrl == null || _username == null || _password == null) return;
     if (_upScanActive && !force) return;
-    // Do not start if active sync is running; user has priority
-    if (_isSyncing && !force) return;
     _upScanActive = true;
     _upScanDone = 0;
     final boards = _boards.where((b) => !b.archived && !_hiddenBoards.contains(b.id)).toList();
@@ -268,8 +268,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       for (final b in boards) {
-        // Abort if user leaves the Upcoming tab or starts a sync
-        if (tabController.index != 0 || _isSyncing) break;
         _upScanBoardTitle = b.title;
         notifyListeners();
         if ((_columnsByBoard[b.id] ?? const <deck.Column>[]).isEmpty) {
