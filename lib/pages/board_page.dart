@@ -36,6 +36,8 @@ int? _findDoneColumnId(List<deck.Column> cols) {
   for (final c in cols) {
     if (_isDoneTitle(c.title)) return c.id;
   }
+  // Fallback: letzte Spalte als "Done" interpretieren
+  if (cols.isNotEmpty) return cols.last.id;
   return null;
 }
 
@@ -54,6 +56,8 @@ int? _findUndoneColumnId(List<deck.Column> cols) {
   for (final c in cols) {
     if (!_isDoneTitle(c.title)) return c.id;
   }
+  // Absolute Fallback: erste Spalte
+  if (cols.isNotEmpty) return cols.first.id;
   return null;
 }
 
