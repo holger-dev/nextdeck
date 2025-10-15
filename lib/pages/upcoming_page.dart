@@ -270,7 +270,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
       child: SafeArea(
         child: Stack(
           children: [
-            if (_loading || app.upcomingScanActive)
+            if (_loading || app.upcomingScanActive || app.isSyncing)
               Positioned(
                 left: 12, right: 12, top: 8,
                 child: Row(children: [
