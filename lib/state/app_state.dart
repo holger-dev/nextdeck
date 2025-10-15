@@ -497,7 +497,8 @@ class AppState extends ChangeNotifier {
     try {
       _stackLoaded.clear();
       _stackLoading.clear();
-      final cols = await api.fetchColumns(_baseUrl!, _username!, _password!, board.id, lazyCards: true);
+      final isActive = (_activeBoard?.id == board.id);
+      final cols = await api.fetchColumns(_baseUrl!, _username!, _password!, board.id, lazyCards: true, priority: isActive);
       _columnsByBoard[board.id] = cols;
       // Cache Columns + Cards pro Board
       cache.put('columns_${board.id}', cols.map((c) => {
@@ -610,7 +611,8 @@ class AppState extends ChangeNotifier {
     if (cols[idx].cards.isNotEmpty) { _stackLoaded.add(stackId); return; }
     _stackLoading.add(stackId);
     try {
-      final cards = await api.fetchCards(_baseUrl!, _username!, _password!, boardId, stackId);
+      final isActive = (_activeBoard?.id == boardId);
+      final cards = await api.fetchCards(_baseUrl!, _username!, _password!, boardId, stackId, priority: isActive);
       final updated = [
         for (final c in cols)
           if (c.id == stackId) deck.Column(id: c.id, title: c.title, cards: cards) else c

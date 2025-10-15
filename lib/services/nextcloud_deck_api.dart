@@ -16,21 +16,29 @@ class NextcloudDeckApi {
   // Concurrency limiter and request timeout to reduce server load
   static int _maxConcurrent = 6;
   static int _inFlight = 0;
+  static final List<Completer<void>> _prioWaiters = [];
   static final List<Completer<void>> _waiters = [];
   static const Duration _defaultTimeout = Duration(seconds: 30);
 
-  Future<void> _acquireSlot() async {
+  Future<void> _acquireSlot({bool priority = false}) async {
     if (_inFlight < _maxConcurrent) {
       _inFlight++;
       return;
     }
     final c = Completer<void>();
-    _waiters.add(c);
+    if (priority) {
+      _prioWaiters.add(c);
+    } else {
+      _waiters.add(c);
+    }
     await c.future;
   }
 
   void _releaseSlot() {
-    if (_waiters.isNotEmpty) {
+    if (_prioWaiters.isNotEmpty) {
+      final c = _prioWaiters.removeAt(0);
+      c.complete();
+    } else if (_waiters.isNotEmpty) {
       final c = _waiters.removeAt(0);
       c.complete();
     } else {
@@ -213,8 +221,8 @@ class NextcloudDeckApi {
     return out;
   }
 
-  Future<List<deck.Column>> fetchColumns(String baseUrl, String username, String password, int boardId, {bool lazyCards = true}) async {
-    final res = await _get(baseUrl, username, password, '/apps/deck/api/v1.0/boards/$boardId/stacks');
+  Future<List<deck.Column>> fetchColumns(String baseUrl, String username, String password, int boardId, {bool lazyCards = true, bool priority = false}) async {
+    final res = await _get(baseUrl, username, password, '/apps/deck/api/v1.0/boards/$boardId/stacks', priority: priority);
     final okRes = _ensureOk(res, 'Spalten laden fehlgeschlagen');
     final data = _parseBodyOk(okRes);
     final List<deck.Column> columns = [];
@@ -329,14 +337,14 @@ class NextcloudDeckApi {
     return null;
   }
 
-  Future<List<CardItem>> fetchCards(String baseUrl, String username, String password, int boardId, int stackId) async {
+  Future<List<CardItem>> fetchCards(String baseUrl, String username, String password, int boardId, int stackId, {bool priority = false}) async {
     // Try REST first; fallback to OCS variants. Return empty only if all fail.
     final headers = {..._restHeader, 'authorization': _basicAuth(username, password)};
     http.Response? last;
     for (final withIndex in [false, true]) {
       try {
         final uri = _buildUri(baseUrl, '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards', withIndex);
-        final res = await _send('GET', uri, headers);
+        final res = await _send('GET', uri, headers, priority: priority);
         last = res;
         if (_isOk(res)) {
           return _parseCardsList(res.body);
@@ -347,7 +355,7 @@ class NextcloudDeckApi {
       for (final withIndex in [false, true]) {
         try {
           final uri = _buildUri(baseUrl, '$ocsPrefix/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards', withIndex);
-          final res = await _send('GET', uri, {..._ocsHeader, 'authorization': _basicAuth(username, password)});
+          final res = await _send('GET', uri, {..._ocsHeader, 'authorization': _basicAuth(username, password)}, priority: priority);
           last = res;
           if (_isOk(res)) {
             return _parseCardsList(res.body);
@@ -1506,12 +1514,12 @@ class NextcloudDeckApi {
     return res;
   }
 
-  Future<http.Response?> _get(String baseUrl, String user, String pass, String path) async {
-    return _requestVariants(baseUrl, user, pass, path, 'GET');
+  Future<http.Response?> _get(String baseUrl, String user, String pass, String path, {bool priority = false}) async {
+    return _requestVariants(baseUrl, user, pass, path, 'GET', priority: priority);
   }
 
-  Future<http.Response?> _post(String baseUrl, String user, String pass, String path, String body) async {
-    return _requestVariants(baseUrl, user, pass, path, 'POST', body: body, contentTypeJson: true);
+  Future<http.Response?> _post(String baseUrl, String user, String pass, String path, String body, {bool priority = false}) async {
+    return _requestVariants(baseUrl, user, pass, path, 'POST', body: body, contentTypeJson: true, priority: priority);
   }
 
   Future<http.Response?> _requestVariants(
@@ -1520,7 +1528,7 @@ class NextcloudDeckApi {
     String pass,
     String path,
     String method,
-    {String? body, bool contentTypeJson = false}
+    {String? body, bool contentTypeJson = false, bool priority = false}
   ) async {
     final isOcs = path.contains('/ocs/');
     final baseHeaders = isOcs ? _ocsHeader : _restHeader;
@@ -1546,7 +1554,7 @@ class NextcloudDeckApi {
     http.Response? last;
     for (final uri in variants) {
       try {
-        final res = await _send(method, uri, headers, body: body);
+        final res = await _send(method, uri, headers, body: body, priority: priority);
         last = res;
         if (_isOk(res)) return res;
       } catch (_) {
@@ -1579,12 +1587,12 @@ class NextcloudDeckApi {
     return 'Basic $cred';
   }
 
-  Future<http.Response> _send(String method, Uri uri, Map<String, String> headers, {String? body}) async {
+  Future<http.Response> _send(String method, Uri uri, Map<String, String> headers, {String? body, bool priority = false}) async {
     final logger = LogService();
     final t0 = DateTime.now();
     http.Response res;
     try {
-      await _acquireSlot();
+      await _acquireSlot(priority: priority);
       switch (method) {
         case 'GET':
           res = await http.get(uri, headers: headers).timeout(_defaultTimeout);
