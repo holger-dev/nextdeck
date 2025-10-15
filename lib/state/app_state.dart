@@ -669,6 +669,18 @@ class AppState extends ChangeNotifier {
           if (c.id == stackId) deck.Column(id: c.id, title: c.title, cards: cards) else c
       ];
       _columnsByBoard[boardId] = updated;
+      // Persist updated columns to local cache so partial progress survives app restarts
+      cache.put('columns_$boardId', updated.map((c) => {
+        'id': c.id,
+        'title': c.title,
+        'cards': c.cards.map((k) => {
+          'id': k.id,
+          'title': k.title,
+          'description': k.description,
+          'duedate': k.due?.toUtc().millisecondsSinceEpoch,
+          'labels': k.labels.map((l) => {'id': l.id, 'title': l.title, 'color': l.color}).toList(),
+        }).toList(),
+      }).toList());
       _stackLoaded.add(stackId);
       notifyListeners();
     } catch (_) {

@@ -364,6 +364,14 @@ class _BoardSummary extends StatelessWidget {
         );
         try {
           await app.setActiveBoard(board);
+          if (app.columnsForBoard(board.id).isEmpty) {
+            await app.refreshColumnsFor(board);
+          }
+          final cols = app.columnsForBoard(board.id);
+          const pool = 3;
+          for (int i = 0; i < cols.length && i < pool; i++) {
+            await app.ensureCardsFor(board.id, cols[i].id);
+          }
           app.selectTab(1);
         } finally {
           // Close using the captured navigator to avoid deactivated context issues
