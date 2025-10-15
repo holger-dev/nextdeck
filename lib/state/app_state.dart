@@ -254,10 +254,12 @@ class AppState extends ChangeNotifier {
 
   /// Background scan to build a complete Upcoming view across all (non-archived, non-hidden) boards.
   /// Loads cards in small batches per board. Safe to call multiple times; ignores if already running unless forced.
-  Future<void> scanUpcoming({bool force = false, int listConcurrency = 3}) async {
+  Future<void> scanUpcoming({bool force = false, int listConcurrency = 2}) async {
     if (_localMode) return;
     if (_baseUrl == null || _username == null || _password == null) return;
     if (_upScanActive && !force) return;
+    // Do not start if active sync is running; user has priority
+    if (_isSyncing && !force) return;
     _upScanActive = true;
     _upScanDone = 0;
     final boards = _boards.where((b) => !b.archived && !_hiddenBoards.contains(b.id)).toList();
@@ -266,6 +268,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       for (final b in boards) {
+        // Abort if user leaves the Upcoming tab or starts a sync
+        if (tabController.index != 0 || _isSyncing) break;
         _upScanBoardTitle = b.title;
         notifyListeners();
         if ((_columnsByBoard[b.id] ?? const <deck.Column>[]).isEmpty) {
@@ -280,6 +284,8 @@ class AppState extends ChangeNotifier {
         // Refresh upcoming cache incrementally
         _rebuildUpcomingCacheFromMemory();
         notifyListeners();
+        // brief pause to yield network/CPU to interactive actions
+        await Future.delayed(const Duration(milliseconds: 250));
       }
     } finally {
       _upScanActive = false;

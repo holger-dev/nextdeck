@@ -190,7 +190,6 @@ class _UpcomingPageState extends State<UpcomingPage> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             _rebuildFromCacheAndTrackLoading();
-            app.scanUpcoming();
           }
         });
       }
@@ -256,8 +255,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
               Positioned(
                 left: 12, right: 12, top: 8,
                 child: Row(children: [
-                  const CupertinoActivityIndicator(),
-                  const SizedBox(width: 8),
+                  if (_loading) ...[const CupertinoActivityIndicator(), const SizedBox(width: 8)],
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
