@@ -198,7 +198,23 @@ class _UpcomingPageState extends State<UpcomingPage> {
     return CupertinoPageScaffold(
       backgroundColor: AppTheme.appBackground(app),
       navigationBar: CupertinoNavigationBar(
-        middle: Text(l10n.upcomingTitle),
+        middle: Builder(builder: (context) {
+          final total = app.upcomingScanTotal;
+          final done = app.upcomingScanDone;
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(l10n.upcomingTitle),
+              if (total > 0) ...[
+                const SizedBox(width: 8),
+                Text(
+                  '$done / $total',
+                  style: const TextStyle(fontSize: 12, color: CupertinoColors.systemGrey),
+                ),
+              ],
+            ],
+          );
+        }),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

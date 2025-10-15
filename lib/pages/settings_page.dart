@@ -229,6 +229,8 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 6),
             const Text('Lädt im Hintergrund nur die Spalten (Stacks) aller Boards in den Cache. Karten werden weiterhin nur bei Bedarf geladen.', style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            const SizedBox(height: 8),
+            const Text('Hinweis zu "Anstehende Karten": Die Anzeige neben dem Titel (z. B. 4 / 12) zeigt den Fortschritt eines Hintergrund-Scans über alle Boards. Mit langem Druck auf den Aktualisieren-Button wird ein vollständiger Scan gestartet.', style: TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),
