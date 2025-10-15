@@ -639,8 +639,9 @@ class _ColumnViewState extends State<_ColumnView> {
                                     child: GestureDetector(
                                       onLongPress: () async {
                                         final l10n = L10n.of(context);
+                                        final rootNav = Navigator.of(context, rootNavigator: true);
                                         await showCupertinoModalPopup(
-                                          context: context,
+                                          context: rootNav.context,
                                           builder: (ctx) => CupertinoActionSheet(
                                             actions: [
                                               ...() {
@@ -657,9 +658,9 @@ class _ColumnViewState extends State<_ColumnView> {
                                                       final targetId = _findDoneColumnId(cols);
                                                       if (targetId == null) {
                                                         await showCupertinoDialog(
-                                                          context: context,
+                                                          context: rootNav.context,
                                                           builder: (_) => CupertinoAlertDialog(title: Text(l10n.hint), content: Text(l10n.noDoneListFound), actions: [
-                                                            CupertinoDialogAction(onPressed: () => Navigator.of(context).pop(), child: Text(l10n.ok)),
+                                                            CupertinoDialogAction(onPressed: () => rootNav.pop(), child: Text(l10n.ok)),
                                                           ]),
                                                         );
                                                         return;
@@ -699,7 +700,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                                   final bId = app.activeBoard?.id;
                                                   if (bId == null) return;
                                                   final confirmed = await showCupertinoDialog<bool>(
-                                                    context: context,
+                                                    context: rootNav.context,
                                                     builder: (dCtx) => CupertinoAlertDialog(
                                                       title: Text(l10n.deleteCard),
                                                       content: Text(l10n.confirmDeleteCard),
@@ -885,8 +886,9 @@ class _ColumnViewState extends State<_ColumnView> {
                                       footer: _CardMetaRow(boardId: app.activeBoard?.id, stackId: widget.column.id, cardId: card.id, textColor: AppTheme.textOn(bg), hasDescription: (card.description?.isNotEmpty ?? false)),
                                       onMore: () async {
                                         final l10n = L10n.of(context);
+                                        final rootNav = Navigator.of(context, rootNavigator: true);
                                         await showCupertinoModalPopup(
-                                          context: context,
+                                          context: rootNav.context,
                                           builder: (ctx) => CupertinoActionSheet(
                                             actions: [
                                               ...() {
@@ -902,11 +904,11 @@ class _ColumnViewState extends State<_ColumnView> {
                                                         if (boardId == null) return;
                                                         int? targetId = _findDoneColumnId(cols);
                                                         targetId ??= cols.isNotEmpty ? cols.last.id : null;
-                                                        if (targetId == null) {
+                                                      if (targetId == null) {
                                                           await showCupertinoDialog(
-                                                            context: context,
+                                                            context: rootNav.context,
                                                             builder: (_) => CupertinoAlertDialog(title: Text(l10n.hint), content: Text(l10n.noDoneListFound), actions: [
-                                                              CupertinoDialogAction(onPressed: () => Navigator.of(context).pop(), child: Text(l10n.ok)),
+                                                              CupertinoDialogAction(onPressed: () => rootNav.pop(), child: Text(l10n.ok)),
                                                             ]),
                                                           );
                                                           return;
@@ -949,7 +951,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                                   final bId = app.activeBoard?.id;
                                                   if (bId == null) return;
                                                   final confirmed = await showCupertinoDialog<bool>(
-                                                    context: context,
+                                                    context: rootNav.context,
                                                     builder: (dCtx) => CupertinoAlertDialog(
                                                       title: Text(l10n.deleteCard),
                                                       content: Text(l10n.confirmDeleteCard),
@@ -1494,8 +1496,9 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                           child: GestureDetector(
                                             onLongPress: () async {
                                               final l10n = L10n.of(context);
+                                              final rootNav = Navigator.of(context, rootNavigator: true);
                                               await showCupertinoModalPopup(
-                                                context: context,
+                                                context: rootNav.context,
                                                 builder: (ctx) => CupertinoActionSheet(
                                                   actions: [
                                                     ...() {
@@ -1511,9 +1514,9 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                               targetId ??= cols.isNotEmpty ? cols.last.id : null;
                                                               if (targetId == null) {
                                                                 await showCupertinoDialog(
-                                                                  context: context,
+                                                                  context: rootNav.context,
                                                                   builder: (_) => CupertinoAlertDialog(title: Text(l10n.hint), content: Text(l10n.noDoneListFound), actions: [
-                                                                    CupertinoDialogAction(onPressed: () => Navigator.of(context).pop(), child: Text(l10n.ok)),
+                                                                    CupertinoDialogAction(onPressed: () => rootNav.pop(), child: Text(l10n.ok)),
                                                                   ]),
                                                                 );
                                                                 return;
@@ -1553,7 +1556,7 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                       onPressed: () async {
                                                         Navigator.of(ctx).pop();
                                                           final confirmed = await showCupertinoDialog<bool>(
-                                                            context: context,
+                                                            context: rootNav.context,
                                                             builder: (dCtx) => CupertinoAlertDialog(
                                                               title: Text(l10n.deleteCard),
                                                               content: Text(l10n.confirmDeleteCard),
@@ -1586,8 +1589,9 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                               footer: _CardMetaRow(boardId: widget.boardId, stackId: c.id, cardId: card.id, textColor: textOn, hasDescription: (card.description?.isNotEmpty ?? false)),
                                               onMore: () async {
                                                 final l10n = L10n.of(context);
+                                                final rootNav = Navigator.of(context, rootNavigator: true);
                                                 await showCupertinoModalPopup(
-                                                  context: context,
+                                                  context: rootNav.context,
                                                   builder: (ctx) => CupertinoActionSheet(
                                                     actions: [
                                                       CupertinoActionSheetAction(
@@ -1600,9 +1604,9 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                       targetId ??= cols.isNotEmpty ? cols.last.id : null;
                                                       if (targetId == null) {
                                                         await showCupertinoDialog(
-                                                          context: context,
+                                                          context: rootNav.context,
                                                           builder: (_) => CupertinoAlertDialog(title: Text(l10n.hint), content: Text(l10n.noDoneListFound), actions: [
-                                                            CupertinoDialogAction(onPressed: () => Navigator.of(context).pop(), child: Text(l10n.ok)),
+                                                            CupertinoDialogAction(onPressed: () => rootNav.pop(), child: Text(l10n.ok)),
                                                           ]),
                                                         );
                                                         return;
