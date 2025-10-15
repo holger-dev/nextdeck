@@ -112,7 +112,8 @@ class _UpcomingPageState extends State<UpcomingPage> {
     final boards = app.boards.where((x) => !x.archived).toList();
     _totalBoards = boards.length;
     _doneBoards = 0; // Not tracked strictly in cache mode
-    _loading = app.isWarming;
+    // Kein Spinner für Cache-Rebuild; Hintergrund-Scan zeigt separaten Fortschritt
+    _loading = false;
     _currentBoardTitle = null;
     if (mounted) setState(() {});
   }
@@ -190,6 +191,8 @@ class _UpcomingPageState extends State<UpcomingPage> {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) {
             _rebuildFromCacheAndTrackLoading();
+            // Starte dezenten Hintergrund-Scan automatisch beim Betreten
+            context.read<AppState>().scanUpcoming();
           }
         });
       }
