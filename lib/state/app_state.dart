@@ -30,6 +30,7 @@ class AppState extends ChangeNotifier {
   static const int localBoardId = -1;
   bool _isWarming = false;
   bool _backgroundPreload = false; // user setting: warm stacks in background
+  int _startupTabIndex = 1; // 0=Upcoming,1=Board,2=Overview
 
   List<Board> _boards = const [];
   Board? _activeBoard;
@@ -49,6 +50,7 @@ class AppState extends ChangeNotifier {
   bool get isSyncing => _isSyncing;
   bool get isWarming => _isWarming;
   bool get backgroundPreload => _backgroundPreload;
+  int get startupTabIndex => _startupTabIndex;
   String? get baseUrl => _baseUrl;
   String? get username => _username;
   bool get localMode => _localMode;
@@ -94,6 +96,7 @@ class AppState extends ChangeNotifier {
     }
     _username = await storage.read(key: 'username');
     _password = await storage.read(key: 'password');
+    _startupTabIndex = int.tryParse(await storage.read(key: 'startup_tab') ?? '')?.clamp(0, 2) ?? 1;
     final activeBoardIdStr = await storage.read(key: 'activeBoardId');
     if (_localMode) {
       _setupLocalBoard();
@@ -136,6 +139,10 @@ class AppState extends ChangeNotifier {
     // Wenn keine Zugangsdaten gesetzt sind (und nicht im lokalen Modus), zur Einstellungs-Registerkarte springen
     if (!_localMode && (_baseUrl == null || _username == null || _password == null)) {
       tabController.index = 3; // Settings tab
+    }
+    // Apply preferred startup tab if credentials vorhanden oder im lokalen Modus
+    if (_localMode || (_baseUrl != null && _username != null && _password != null)) {
+      tabController.index = _startupTabIndex;
     }
     notifyListeners();
     _startAutoSync();
@@ -530,6 +537,13 @@ class AppState extends ChangeNotifier {
     _backgroundPreload = enabled;
     storage.write(key: 'bg_preload', value: enabled ? '1' : '0');
     // Do not immediately kick off heavy work here; user can use refresh
+    notifyListeners();
+  }
+
+  void setStartupTabIndex(int index) {
+    final clamped = index.clamp(0, 2);
+    _startupTabIndex = clamped;
+    storage.write(key: 'startup_tab', value: clamped.toString());
     notifyListeners();
   }
 

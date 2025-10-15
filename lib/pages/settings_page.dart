@@ -194,6 +194,26 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),
+            // Startup tab selection
+            Text('Startseite', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Builder(builder: (ctx) {
+              final options = <int, Widget>{
+                0: Text(L10n.of(ctx).navUpcoming),
+                1: Text(L10n.of(ctx).navBoard),
+                2: Text(L10n.of(ctx).overview),
+              };
+              return CupertinoSlidingSegmentedControl<int>(
+                groupValue: app.startupTabIndex,
+                children: options,
+                onValueChanged: (v) {
+                  if (v != null) context.read<AppState>().setStartupTabIndex(v);
+                },
+              );
+            }),
+            const SizedBox(height: 12),
+            const _Divider(),
+            const SizedBox(height: 20),
             // Performance
             Text('Performance', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
