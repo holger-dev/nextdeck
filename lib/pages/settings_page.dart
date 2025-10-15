@@ -143,60 +143,62 @@ class _SettingsPageState extends State<SettingsPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Konto
-            const _Divider(),
-            const SizedBox(height: 20),
-            // Lokaler Modus Hinweis
-            if (app.localMode) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: CupertinoColors.systemYellow.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: CupertinoColors.systemYellow),
-                ),
-                child: Text(l10n.localModeBanner, style: const TextStyle(fontSize: 13)),
-              ),
-              const SizedBox(height: 16),
-            ],
-            Text(l10n.localBoardSection, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: Text(l10n.localModeToggleLabel)),
-                CupertinoSwitch(
-                  value: app.localMode,
-                  onChanged: (v) async {
-                    if (v) {
-                      await showCupertinoDialog(
-                        context: context,
-                        builder: (ctx) => CupertinoAlertDialog(
-                          title: Text(l10n.localModeEnableTitle),
-                          content: Text(l10n.localModeEnableContent),
-                          actions: [
-                            CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: Text(l10n.cancel)),
-                            CupertinoDialogAction(
-                              isDefaultAction: true,
-                              onPressed: () async {
-                                Navigator.of(ctx).pop();
-                                await context.read<AppState>().setLocalMode(true);
-                              },
-                              child: Text(l10n.enable),
-                            ),
-                          ],
-                        ),
-                      );
-                    } else {
-                      await context.read<AppState>().setLocalMode(false);
-                    }
-                  },
-                ),
-              ],
+            CupertinoTextField(
+              controller: _url,
+              placeholder: l10n.urlPlaceholder,
+              keyboardType: TextInputType.url,
+              autocorrect: false,
+              enableSuggestions: false,
+              prefix: Padding(
+                padding: const EdgeInsets.only(left: 6, right: 4),
+                child: Text('https://', style: TextStyle(color: CupertinoColors.secondaryLabel.resolveFrom(context))),
+              ),
+              suffix: _hostValid ? null : const Padding(
+                padding: EdgeInsets.only(right: 6),
+                child: Icon(CupertinoIcons.exclamationmark_circle, color: CupertinoColors.systemRed, size: 18),
+              ),
+              decoration: BoxDecoration(
+                color: CupertinoColors.tertiarySystemFill.resolveFrom(context),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _hostValid ? CupertinoColors.separator.resolveFrom(context) : CupertinoColors.systemRed, width: _hostValid ? 0.5 : 1.0),
+              ),
             ),
+            const SizedBox(height: 6),
+            Text(
+              l10n.httpsEnforcedInfo,
+              style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            CupertinoTextField(
+              controller: _user,
+              placeholder: l10n.username,
+              autocorrect: false,
+              enableSuggestions: false,
+            ),
+            const SizedBox(height: 8),
+            CupertinoTextField(
+              controller: _pass,
+              placeholder: l10n.password,
+              obscureText: true,
+            ),
+            const SizedBox(height: 12),
+            CupertinoButton.filled(
+              onPressed: _testing ? null : _saveAndTest,
+              child: _testing ? const CupertinoActivityIndicator() : Text(l10n.loginAndLoadBoards),
+            ),
+            if (_testMsg != null) ...[
+              const SizedBox(height: 8),
+              Text(_testMsg!, style: TextStyle(color: _testOk ? CupertinoColors.activeGreen : CupertinoColors.destructiveRed)),
+            ],
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),
+            // Konto
+            const _Divider(),
+            const SizedBox(height: 20),
+            
             // Startup tab selection
             Text(L10n.of(context).startupPage, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
@@ -268,58 +270,7 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),
-            Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            CupertinoTextField(
-              controller: _url,
-              placeholder: l10n.urlPlaceholder,
-              keyboardType: TextInputType.url,
-              autocorrect: false,
-              enableSuggestions: false,
-              prefix: Padding(
-                padding: const EdgeInsets.only(left: 6, right: 4),
-                child: Text('https://', style: TextStyle(color: CupertinoColors.secondaryLabel.resolveFrom(context))),
-              ),
-              suffix: _hostValid ? null : const Padding(
-                padding: EdgeInsets.only(right: 6),
-                child: Icon(CupertinoIcons.exclamationmark_circle, color: CupertinoColors.systemRed, size: 18),
-              ),
-              decoration: BoxDecoration(
-                color: CupertinoColors.tertiarySystemFill.resolveFrom(context),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _hostValid ? CupertinoColors.separator.resolveFrom(context) : CupertinoColors.systemRed, width: _hostValid ? 0.5 : 1.0),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              l10n.httpsEnforcedInfo,
-              style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12),
-            ),
-            const SizedBox(height: 8),
-            CupertinoTextField(
-              controller: _user,
-              placeholder: l10n.username,
-              autocorrect: false,
-              enableSuggestions: false,
-            ),
-            const SizedBox(height: 8),
-            CupertinoTextField(
-              controller: _pass,
-              placeholder: l10n.password,
-              obscureText: true,
-            ),
-            const SizedBox(height: 12),
-            CupertinoButton.filled(
-              onPressed: _testing ? null : _saveAndTest,
-              child: _testing ? const CupertinoActivityIndicator() : Text(l10n.loginAndLoadBoards),
-            ),
-            if (_testMsg != null) ...[
-              const SizedBox(height: 8),
-              Text(_testMsg!, style: TextStyle(color: _testOk ? CupertinoColors.activeGreen : CupertinoColors.destructiveRed)),
-            ],
-            const SizedBox(height: 12),
-            const _Divider(),
-            const SizedBox(height: 20),
+            
             Text(l10n.activeBoardSection, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             if (app.boards.isEmpty)
@@ -365,7 +316,58 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),
-            Text(l10n.developer, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            // Lokaler Modus Hinweis
+            if (app.localMode) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: CupertinoColors.systemYellow.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: CupertinoColors.systemYellow),
+                ),
+                child: Text(l10n.localModeBanner, style: const TextStyle(fontSize: 13)),
+              ),
+              const SizedBox(height: 16),
+            ],
+            Text(l10n.localBoardSection, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: Text(l10n.localModeToggleLabel)),
+                CupertinoSwitch(
+                  value: app.localMode,
+                  onChanged: (v) async {
+                    if (v) {
+                      await showCupertinoDialog(
+                        context: context,
+                        builder: (ctx) => CupertinoAlertDialog(
+                          title: Text(l10n.localModeEnableTitle),
+                          content: Text(l10n.localModeEnableContent),
+                          actions: [
+                            CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: Text(l10n.cancel)),
+                            CupertinoDialogAction(
+                              isDefaultAction: true,
+                              onPressed: () async {
+                                Navigator.of(ctx).pop();
+                                await context.read<AppState>().setLocalMode(true);
+                              },
+                              child: Text(l10n.enable),
+                            ),
+                          ],
+                        ),
+                      );
+                    } else {
+                      await context.read<AppState>().setLocalMode(false);
+                    }
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const _Divider(),
+            const SizedBox(height: 20),
+Text(l10n.developer, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Row(
               children: [
