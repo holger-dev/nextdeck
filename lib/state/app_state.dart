@@ -256,7 +256,7 @@ class AppState extends ChangeNotifier {
 
   /// Background scan to build a complete Upcoming view across all (non-archived, non-hidden) boards.
   /// Loads cards in small batches per board. Safe to call multiple times; ignores if already running unless forced.
-  Future<void> scanUpcoming({bool force = false, int listConcurrency = 2}) async {
+  Future<void> scanUpcoming({bool force = false, int listConcurrency = 1}) async {
     if (_localMode) return;
     if (_baseUrl == null || _username == null || _password == null) return;
     if (_upScanActive && !force) return;

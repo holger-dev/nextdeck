@@ -1561,6 +1561,21 @@ class NextcloudDeckApi {
         // try next variant
       }
     }
+    // If we were calling /apps/... and got a 403, retry once with OCS header for robustness.
+    if (!isOcs && (last?.statusCode == 403)) {
+      final headersOcs = {
+        ..._ocsHeader,
+        'authorization': _basicAuth(user, pass),
+        if (contentTypeJson) 'Content-Type': 'application/json',
+      };
+      for (final uri in variants) {
+        try {
+          final res = await _send(method, uri, headersOcs, body: body, priority: priority);
+          last = res;
+          if (_isOk(res)) return res;
+        } catch (_) {}
+      }
+    }
     return last;
   }
 

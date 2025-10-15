@@ -155,6 +155,14 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                     : AppTheme.blend(base, const Color(0xFF000000), 0.15);
                 // In Light Mode we want black text regardless of computed contrast
                 final txtColor = app.isDarkMode ? AppTheme.textOn(topColor) : CupertinoColors.black;
+                // Truncate very long titles: if > 20 chars, cut at 18 and append '...'
+                final String displayTitle = () {
+                  final t = board.title;
+                  if (t.length > 20) {
+                    return t.substring(0, 18) + '...';
+                  }
+                  return t;
+                }();
                 return Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -168,7 +176,7 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      board.title,
+                      displayTitle,
                       style: TextStyle(fontWeight: FontWeight.w700, color: txtColor),
                     ),
                   ],
@@ -892,14 +900,9 @@ class _ColumnViewState extends State<_ColumnView> {
                                                         Navigator.of(ctx).pop();
                                                         final boardId = app.activeBoard?.id;
                                                         if (boardId == null) return;
-                                                        final target = cols.firstWhere(
-                                                          (c) {
-                                                            final t = c.title.toLowerCase();
-                                                            return t.contains('done') || t.contains('erledigt');
-                                                          },
-                                                          orElse: () => deck.Column(id: -1, title: '', cards: const []),
-                                                        );
-                                                        if (target.id == -1) {
+                                                        int? targetId = _findDoneColumnId(cols);
+                                                        targetId ??= cols.isNotEmpty ? cols.last.id : null;
+                                                        if (targetId == null) {
                                                           await showCupertinoDialog(
                                                             context: context,
                                                             builder: (_) => CupertinoAlertDialog(title: Text(l10n.hint), content: Text(l10n.noDoneListFound), actions: [
@@ -908,10 +911,10 @@ class _ColumnViewState extends State<_ColumnView> {
                                                           );
                                                           return;
                                                         }
-                                                        app.updateLocalCard(boardId: boardId, stackId: widget.column.id, cardId: card.id, moveToStackId: target.id);
+                                                        app.updateLocalCard(boardId: boardId, stackId: widget.column.id, cardId: card.id, moveToStackId: targetId);
                                                         final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
                                                         if (base != null && user != null && pass != null) {
-                                                          try { await app.api.updateCard(base, user, pass, boardId, widget.column.id, card.id, {'stackId': target.id, 'title': card.title}); } catch (_) {}
+                                                          try { await app.api.updateCard(base, user, pass, boardId, widget.column.id, card.id, {'stackId': targetId, 'title': card.title}); } catch (_) {}
                                                         }
                                                       },
                                                       child: Text(l10n.markDone),
@@ -924,18 +927,13 @@ class _ColumnViewState extends State<_ColumnView> {
                                                         Navigator.of(ctx).pop();
                                                         final boardId = app.activeBoard?.id;
                                                         if (boardId == null) return;
-                                                        final target = cols.firstWhere(
-                                                          (c) {
-                                                            final t = c.title.toLowerCase();
-                                                            return !(t.contains('done') || t.contains('erledigt'));
-                                                          },
-                                                          orElse: () => deck.Column(id: -1, title: '', cards: const []),
-                                                        );
-                                                        if (target.id == -1) return;
-                                                        app.updateLocalCard(boardId: boardId, stackId: widget.column.id, cardId: card.id, moveToStackId: target.id);
+                                                        int? targetId = _findUndoneColumnId(cols);
+                                                        targetId ??= cols.isNotEmpty ? cols.first.id : null;
+                                                        if (targetId == null) return;
+                                                        app.updateLocalCard(boardId: boardId, stackId: widget.column.id, cardId: card.id, moveToStackId: targetId);
                                                         final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
                                                         if (base != null && user != null && pass != null) {
-                                                          try { await app.api.updateCard(base, user, pass, boardId, widget.column.id, card.id, {'stackId': target.id, 'title': card.title}); } catch (_) {}
+                                                          try { await app.api.updateCard(base, user, pass, boardId, widget.column.id, card.id, {'stackId': targetId, 'title': card.title}); } catch (_) {}
                                                         }
                                                       },
                                                       child: Text(l10n.markUndone),
@@ -1509,14 +1507,9 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                           CupertinoActionSheetAction(
                                                             onPressed: () async {
                                                               Navigator.of(ctx).pop();
-                                                              final target = cols.firstWhere(
-                                                                (cc) {
-                                                                  final t = cc.title.toLowerCase();
-                                                                  return t.contains('done') || t.contains('erledigt');
-                                                                },
-                                                                orElse: () => deck.Column(id: -1, title: '', cards: const []),
-                                                              );
-                                                              if (target.id == -1) {
+                                                              int? targetId = _findDoneColumnId(cols);
+                                                              targetId ??= cols.isNotEmpty ? cols.last.id : null;
+                                                              if (targetId == null) {
                                                                 await showCupertinoDialog(
                                                                   context: context,
                                                                   builder: (_) => CupertinoAlertDialog(title: Text(l10n.hint), content: Text(l10n.noDoneListFound), actions: [
@@ -1526,10 +1519,10 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                 return;
                                                               }
                                                               final boardId = widget.boardId;
-                                                              app.updateLocalCard(boardId: boardId, stackId: c.id, cardId: card.id, moveToStackId: target.id);
+                                                              app.updateLocalCard(boardId: boardId, stackId: c.id, cardId: card.id, moveToStackId: targetId);
                                                               final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
                                                               if (base != null && user != null && pass != null) {
-                                                                try { await app.api.updateCard(base, user, pass, boardId, c.id, card.id, {'stackId': target.id, 'title': card.title}); } catch (_) {}
+                                                                try { await app.api.updateCard(base, user, pass, boardId, c.id, card.id, {'stackId': targetId, 'title': card.title}); } catch (_) {}
                                                               }
                                                             },
                                                             child: Text(l10n.markDone),
@@ -1540,19 +1533,14 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                           CupertinoActionSheetAction(
                                                             onPressed: () async {
                                                               Navigator.of(ctx).pop();
-                                                              final target = cols.firstWhere(
-                                                                (cc) {
-                                                                  final t = cc.title.toLowerCase();
-                                                                  return !(t.contains('done') || t.contains('erledigt'));
-                                                                },
-                                                                orElse: () => deck.Column(id: -1, title: '', cards: const []),
-                                                              );
-                                                              if (target.id == -1) return;
+                                                              int? targetId = _findUndoneColumnId(cols);
+                                                              targetId ??= cols.isNotEmpty ? cols.first.id : null;
+                                                              if (targetId == null) return;
                                                               final boardId = widget.boardId;
-                                                              app.updateLocalCard(boardId: boardId, stackId: c.id, cardId: card.id, moveToStackId: target.id);
+                                                              app.updateLocalCard(boardId: boardId, stackId: c.id, cardId: card.id, moveToStackId: targetId);
                                                               final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
                                                               if (base != null && user != null && pass != null) {
-                                                                try { await app.api.updateCard(base, user, pass, boardId, c.id, card.id, {'stackId': target.id, 'title': card.title}); } catch (_) {}
+                                                                try { await app.api.updateCard(base, user, pass, boardId, c.id, card.id, {'stackId': targetId, 'title': card.title}); } catch (_) {}
                                                               }
                                                             },
                                                             child: Text(l10n.markUndone),
@@ -1607,29 +1595,24 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                           Navigator.of(ctx).pop();
                                                           // Move to Done/Erledigt within this board view
                                                           final app = context.read<AppState>();
-                                                          final cols = app.columnsForBoard(widget.boardId);
-                                                          final target = cols.firstWhere(
-                                                            (c2) {
-                                                              final t = c2.title.toLowerCase();
-                                                              return t.contains('done') || t.contains('erledigt');
-                                                            },
-                                                            orElse: () => deck.Column(id: -1, title: '', cards: const []),
-                                                          );
-                                                          if (target.id == -1) {
-                                                            await showCupertinoDialog(
-                                                              context: context,
-                                                              builder: (_) => CupertinoAlertDialog(title: Text(l10n.hint), content: Text(l10n.noDoneListFound), actions: [
-                                                                CupertinoDialogAction(onPressed: () => Navigator.of(context).pop(), child: Text(l10n.ok)),
-                                                              ]),
-                                                            );
-                                                            return;
-                                                          }
-                                                          app.updateLocalCard(boardId: widget.boardId, stackId: c.id, cardId: card.id, moveToStackId: target.id);
-                                                          final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
-                                                          if (base != null && user != null && pass != null) {
-                                                            try { await app.api.updateCard(base, user, pass, widget.boardId, c.id, card.id, {'stackId': target.id, 'title': card.title}); } catch (_) {}
-                                                          }
-                                                        },
+                                                      final cols = app.columnsForBoard(widget.boardId);
+                                                      int? targetId = _findDoneColumnId(cols);
+                                                      targetId ??= cols.isNotEmpty ? cols.last.id : null;
+                                                      if (targetId == null) {
+                                                        await showCupertinoDialog(
+                                                          context: context,
+                                                          builder: (_) => CupertinoAlertDialog(title: Text(l10n.hint), content: Text(l10n.noDoneListFound), actions: [
+                                                            CupertinoDialogAction(onPressed: () => Navigator.of(context).pop(), child: Text(l10n.ok)),
+                                                          ]),
+                                                        );
+                                                        return;
+                                                      }
+                                                      app.updateLocalCard(boardId: widget.boardId, stackId: c.id, cardId: card.id, moveToStackId: targetId);
+                                                      final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
+                                                      if (base != null && user != null && pass != null) {
+                                                        try { await app.api.updateCard(base, user, pass, widget.boardId, c.id, card.id, {'stackId': targetId, 'title': card.title}); } catch (_) {}
+                                                      }
+                                                    },
                                                         child: Text(l10n.markDone),
                                                       ),
                                                       CupertinoActionSheetAction(
