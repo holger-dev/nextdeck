@@ -267,16 +267,19 @@ class AppState extends ChangeNotifier {
     _upScanBoardTitle = null;
     notifyListeners();
     try {
+      final activeId = _activeBoard?.id;
       for (final b in boards) {
         _upScanBoardTitle = b.title;
         notifyListeners();
-        if ((_columnsByBoard[b.id] ?? const <deck.Column>[]).isEmpty) {
-          try { await refreshColumnsFor(b); } catch (_) {}
-        }
-        final cols = _columnsByBoard[b.id] ?? const <deck.Column>[];
-        for (int i = 0; i < cols.length; i += listConcurrency) {
-          final slice = cols.skip(i).take(listConcurrency).toList();
-          await Future.wait(slice.map((c) => ensureCardsFor(b.id, c.id)));
+        if (b.id != activeId) {
+          if ((_columnsByBoard[b.id] ?? const <deck.Column>[]).isEmpty) {
+            try { await refreshColumnsFor(b); } catch (_) {}
+          }
+          final cols = _columnsByBoard[b.id] ?? const <deck.Column>[];
+          for (int i = 0; i < cols.length; i += listConcurrency) {
+            final slice = cols.skip(i).take(listConcurrency).toList();
+            await Future.wait(slice.map((c) => ensureCardsFor(b.id, c.id)));
+          }
         }
         _upScanDone += 1;
         // Refresh upcoming cache incrementally
@@ -573,7 +576,9 @@ class AppState extends ChangeNotifier {
     if (_localMode || _baseUrl == null || _username == null || _password == null) return;
     _syncTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
       try {
-        await syncActiveBoard(forceMeta: true);
+        if (tabController.index != 1) {
+          await syncActiveBoard(forceMeta: true);
+        }
       } catch (_) {}
     });
   }
