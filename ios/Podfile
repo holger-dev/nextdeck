@@ -42,6 +42,8 @@ post_install do |installer|
     # Force all pods to the minimum supported simulator target to avoid 9.0 warnings
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '12.0'
+      # Silence deprecation warnings from some community pods on iOS 13+ scene APIs
+      config.build_settings['SWIFT_SUPPRESS_WARNINGS'] = 'YES'
     end
   end
 end
