@@ -203,25 +203,27 @@ Nextcloud, Deck, Kanban, Tareas, Proyectos, Gestión de Proyectos, Tableros, Tar
 
 - Deutlich schnellere Ladezeiten: Netzwerklast massiv reduziert (Stacks‑only‑Preload optional, globaler Request‑Limiter, Timeouts, weniger parallele Requests).
 - Aktives Board priorisiert: Ladevorgänge des geöffneten Boards laufen bevorzugt und störungsfrei, auch bei Hintergrund‑Scans.
-- Anstehend überarbeitet: Hintergrund‑Scan startet beim App‑Start, Fortschritt „X / Y“ im Titel, Liste aktualisiert sich live; Langdruck auf Aktualisieren startet Vollscan; aktives Board wird dabei nicht erneut geladen.
-- Übersicht smarter: Kleiner „Cache“-Hinweis pro Board (Spalten/Karten), Refresh lädt nur das aktive Board.
-- Einstellungen: Startseite wählbar (Anstehend/Board/Übersicht); Schalter für „Spalten im Hintergrund vorladen“; Erklärung zum Anstehend‑Fortschritt.
-- Lokale Speicherung: Option „Boards lokal speichern“ (Standard AN) – speichert Boards/Spalten lokal und nutzt ETags, um beim Start nur geänderte Boards erneut zu laden (deutlich weniger Requests).
+- Anstehend überarbeitet: Hintergrund‑Scan startet beim App‑Start; Fortschritt „X / Y“ springt sofort auf „fertig/gesamt“ und lädt nur Boards mit geändertem lastModified. Langdruck auf Aktualisieren startet Vollscan; aktives Board wird dabei nicht erneut geladen.
+- Übersicht smarter: Optionaler Info‑Block (Spalten/Karten/Mitglieder) pro Board; per Einstellung abschaltbar (Standard AUS) für maximale Geschwindigkeit.
+- Einstellungen: Startseite wählbar (Anstehend/Board/Übersicht). „Beim Start laden“: Standard‑Board oder zuletzt aktives Board. Schalter „Spalten im Hintergrund vorladen“ (Standard AUS). Erklärung zum Anstehend‑Fortschritt.
+- Lokale Speicherung: Option „Boards lokal speichern“ (Standard AN) – speichert Boards/Spalten lokal und nutzt ETags, um beim Start nur geänderte Boards zu laden.
 - Einstellungen überarbeitet: Konto ganz oben; Bereiche thematisch sortiert (Start & Board, Performance, Darstellung, Sprache, Entwickler); kürzere, übersetzte Labels/Hilfen.
 - Persistenz verbessert: Spalten/Karten werden nach jedem Stack‑Ladevorgang direkt lokal gespeichert; nach App‑Neustart wird der Cache aller Boards geladen (Anstehend sofort gefüllt).
 - Schnellere Navigation: Beim Wechsel in ein Board sofortiger Tab‑Wechsel nach Spalten‑Load; Karten laden priorisiert im Hintergrund (ohne Vorwärm‑Wartezeit).
 - Robuster gegen 403/405: OCS‑Fallbacks für Stacks/Karten, automatischer OCS‑Header‑Retry, bessere `index.php`‑Varianten, erzwungenes HTTPS.
 - „Als erledigt/unerledigt“ stabil: Fallbacks ohne Fehlhinweis (Done → letzte Spalte; Undone → erste Spalte); Dialoge sicher über Root‑Navigator (kein „deactivated context“).
 - Kleines UI‑Feintuning: Sehr lange Boardtitel werden ab 20 Zeichen auf 18+„…“ gekürzt.
+- MFA‑Hinweis: Bei aktivierter Zwei‑Faktor‑Authentifizierung bitte ein App‑Passwort in Nextcloud erzeugen und hier verwenden.
 
 # EN – Version 1.5
 
 - Much faster loading: massively reduced network load (optional stacks‑only preload, global request limiter, timeouts, fewer parallel calls).
 - Active board prioritized: loads of the currently opened board run first and unhindered, even during background scans.
-- Upcoming revamped: background scan starts on app launch, progress “X / Y” in the title, lists update live; long‑press refresh to force a full scan; active board is not reloaded during scanning.
-- Smarter overview: tiny “Cache” hint per board (Columns/Cards), refresh only updates the active board.
-- Settings: selectable startup tab (Upcoming/Board/Overview); toggle for background stacks preload; explanation of the Upcoming progress.
-- Local storage: option “Store boards locally” (default ON) — caches boards/columns and uses ETags to only reload changed boards on launch (far fewer requests).
+- Upcoming revamped: background scan starts on app launch; progress “X / Y” jumps to “done/total” immediately and only processes boards changed by lastModified. Long‑press refresh to force a full scan; active board is never reloaded during scanning.
+- Overview smarter: optional info block (Columns/Cards/Members) per board; can be turned off (default OFF) for maximum speed.
+- Settings: selectable startup tab (Upcoming/Board/Overview). “On launch load”: Default board or last active board. Background stacks preload toggle (default OFF). Explanation of the Upcoming progress.
+- Local storage: option “Store boards locally” (default ON) — caches boards/columns and uses ETags to reload only changed boards on launch.
+- MFA note: If two‑factor authentication is enabled on your Nextcloud, create an app password and use it here.
 - Settings revamped: account section moved to the top; sections grouped (Startup & Board, Performance, Appearance, Language, Developer); shorter, localized labels/help.
 - Better persistence: columns/cards are written to local storage after each stack load; on app start all board caches are hydrated (Upcoming immediately populated).
 - Faster navigation: switching to a board happens right after columns load; cards load with priority in the background (no pre‑warm delay).
@@ -233,10 +235,11 @@ Nextcloud, Deck, Kanban, Tareas, Proyectos, Gestión de Proyectos, Tableros, Tar
 
 - Cargas mucho más rápidas: carga de red muy reducida (precarga solo de columnas opcional, limitador global de peticiones, timeouts, menos llamadas en paralelo).
 - Tablero activo priorizado: las cargas del tablero abierto tienen prioridad y no se ven afectadas, incluso con escaneos en segundo plano.
-- Próximas mejorado: el escaneo en segundo plano comienza al iniciar la app, progreso “X / Y” en el título, listas se actualizan en vivo; pulsación larga en actualizar inicia escaneo completo; el tablero activo no se recarga durante el escaneo.
-- Vista general más inteligente: pequeño indicador “Cache” por tablero (Columnas/Tarjetas), actualizar solo recarga el tablero activo.
-- Ajustes: pestaña de inicio seleccionable (Próximas/Tablero/Vista general); interruptor para precargar columnas en segundo plano; explicación del progreso en Próximas.
-- Almacenamiento local: opción “Guardar tableros localmente” (activada por defecto) — guarda tableros/columnas y usa ETags para recargar solo los tableros cambiados al iniciar (muchas menos peticiones).
+- Próximas mejorado: el escaneo en segundo plano comienza al iniciar; el progreso “X / Y” salta a “hecho/total” y solo procesa tableros cambiados según lastModified. Pulsación larga fuerza escaneo completo; el tablero activo no se recarga durante el escaneo.
+- Vista general más inteligente: bloque de información opcional (Columnas/Tarjetas/Miembros) por tablero; puede desactivarse (por defecto DESACTIVADO) para máxima velocidad.
+- Ajustes: pestaña de inicio seleccionable (Próximas/Tablero/Resumen). “Al iniciar cargar”: Tablero predeterminado o último activo. Interruptor de precarga de columnas en segundo plano (por defecto DESACTIVADO). Explicación del progreso en Próximas.
+- Almacenamiento local: opción “Guardar tableros localmente” (por defecto ACTIVADO) — guarda tableros/columnas y usa ETags para recargar solo los tableros cambiados al inicio.
+- Nota MFA: si tu Nextcloud tiene 2FA, crea una contraseña de aplicación y úsala aquí.
 - Ajustes reorganizados: cuenta arriba; secciones agrupadas (Inicio y Tablero, Rendimiento, Apariencia, Idioma, Desarrollador); etiquetas/ayudas cortas y traducidas.
 - Mejor persistencia: columnas/tarjetas se guardan tras cada carga de lista; al iniciar la app se hidratan los cachés de todos los tableros (Próximas aparece al instante).
 - Navegación más rápida: cambio al tablero justo tras cargar columnas; tarjetas se cargan con prioridad en segundo plano (sin espera de “precalentamiento”).

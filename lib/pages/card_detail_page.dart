@@ -101,9 +101,10 @@ class _CardDetailPageState extends State<CardDetailPage> {
     try {
       final raw = await app.api.fetchCommentsRaw(base, user, pass, widget.cardId, limit: 100, offset: 0);
       final list = raw.map((e) => CommentItem.fromJson(e)).toList();
-      if (mounted) setState(() { _comments = list; });
-      // Update meta counter for board list
-      context.read<AppState>().setCardCommentsCount(widget.cardId, list.length);
+      if (!mounted) return;
+      setState(() { _comments = list; });
+      // Update meta counter for board list (only if still mounted)
+      if (mounted) context.read<AppState>().setCardCommentsCount(widget.cardId, list.length);
     } finally {
       if (mounted) setState(() { _commentsLoading = false; });
     }
@@ -120,8 +121,9 @@ class _CardDetailPageState extends State<CardDetailPage> {
       final created = await app.api.createComment(base, user, pass, widget.cardId, message: text, parentId: _replyTo);
       if (created != null) {
         final c = CommentItem.fromJson(created);
+        if (!mounted) return;
         setState(() { _comments = [..._comments, c]; _commentCtrl.clear(); _replyTo = null; });
-        context.read<AppState>().setCardCommentsCount(widget.cardId, _comments.length);
+        if (mounted) context.read<AppState>().setCardCommentsCount(widget.cardId, _comments.length);
       } else {
         await _loadComments();
         _commentCtrl.clear(); _replyTo = null;
@@ -141,8 +143,9 @@ class _CardDetailPageState extends State<CardDetailPage> {
     setState(() { _attachmentsLoading = true; });
     try {
       final list = await app.api.fetchCardAttachments(base, user, pass, boardId: boardId, stackId: stackId, cardId: widget.cardId);
-      if (mounted) setState(() { _attachments = list; });
-      context.read<AppState>().setCardAttachmentsCount(widget.cardId, list.length);
+      if (!mounted) return;
+      setState(() { _attachments = list; });
+      if (mounted) context.read<AppState>().setCardAttachmentsCount(widget.cardId, list.length);
     } finally {
       if (mounted) setState(() { _attachmentsLoading = false; });
     }
@@ -304,7 +307,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
     return CupertinoPageScaffold(
       backgroundColor: widget.bgColor,
       navigationBar: CupertinoNavigationBar(
-        middle: Text(_titleCtrl.text.isEmpty ? 'Karte' : _titleCtrl.text, maxLines: 1, overflow: TextOverflow.ellipsis),
+        middle: Text(_titleCtrl.text.isEmpty ? L10n.of(context).card : _titleCtrl.text, maxLines: 1, overflow: TextOverflow.ellipsis),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -331,7 +334,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                       children: [
                         CupertinoTextField(
                           controller: _titleCtrl,
-                          placeholder: 'Titel',
+                          placeholder: L10n.of(context).title,
                           onSubmitted: (v) => _savePatch({'title': v}, optimistic: true),
                         ),
                         const SizedBox(height: 12),
@@ -339,7 +342,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                           controller: _descCtrl,
                           focusNode: _descFocus,
                           initialPreview: true,
-                          placeholder: 'Beschreibung (Markdown, wie in Nextcloud Deck)',
+                          placeholder: L10n.of(context).descriptionPlaceholder,
                           onSubmitted: (v) => _savePatch({'description': v}, optimistic: true),
                         ),
                         const SizedBox(height: 12),
@@ -489,7 +492,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                         final filenameOnly = (info?['filename'])?.toString();
                         final extensionOnly = (info?['extension'])?.toString();
                         final basename = (info?['basename'])?.toString();
-                        String name = (a['title'] ?? a['fileName'] ?? a['data'] ?? 'Anhang').toString();
+                        String name = (a['title'] ?? a['fileName'] ?? a['data'] ?? L10n.of(context).attachmentFallback).toString();
                         if (basename != null && basename.isNotEmpty) {
                           name = basename;
                         } else if (filenameOnly != null && filenameOnly.isNotEmpty) {
@@ -701,7 +704,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                             children: [
                               CupertinoTextField(
                                 controller: _titleCtrl,
-                                placeholder: 'Titel',
+                              placeholder: L10n.of(context).title,
                                 onSubmitted: (v) => _savePatch({'title': v}, optimistic: true),
                               ),
                               const SizedBox(height: 12),
@@ -713,7 +716,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                       controller: _descCtrl,
                                       focusNode: _descFocus,
                                       initialPreview: true,
-                                      placeholder: 'Beschreibung (Markdown, wie in Nextcloud Deck)',
+                                      placeholder: L10n.of(context).descriptionPlaceholder,
                                       onSubmitted: (v) => _savePatch({'description': v}, optimistic: true),
                                     ),
                                   ),
@@ -868,7 +871,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                       final filenameOnly = (info?['filename'])?.toString();
                                       final extensionOnly = (info?['extension'])?.toString();
                                       final basename = (info?['basename'])?.toString();
-                                      String name = (a['title'] ?? a['fileName'] ?? a['data'] ?? 'Anhang').toString();
+                                      String name = (a['title'] ?? a['fileName'] ?? a['data'] ?? L10n.of(context).attachmentFallback).toString();
                                       if (basename != null && basename.isNotEmpty) {
                                         name = basename;
                                       } else if (filenameOnly != null && filenameOnly.isNotEmpty) {
@@ -987,8 +990,8 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                   await showCupertinoDialog(
                                                     context: context,
                                                     builder: (ctx) => CupertinoAlertDialog(
-                                                      title: const Text('Löschen fehlgeschlagen'),
-                                                      content: const Text('Der Server hat das Löschen des Anhangs abgelehnt. Prüfe Berechtigungen oder versuche es in der Web‑Oberfläche.'),
+                                                      title: Text(L10n.of(context).deleteFailed),
+                                                      content: Text(L10n.of(context).serverDeniedDeleteAttachment),
                                                       actions: [
                                                         CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK')),
                                                       ],
@@ -1006,17 +1009,17 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                 Container(height: 1, color: CupertinoColors.separator),
                                 const SizedBox(height: 16),
                                 // Comments (wide layout)
-                                const Align(
+                                Align(
                                   alignment: Alignment.centerLeft,
-                                  child: Text('Kommentare', style: TextStyle(fontWeight: FontWeight.w600)),
+                                  child: Text(L10n.of(context).comments, style: const TextStyle(fontWeight: FontWeight.w600)),
                                 ),
                                 const SizedBox(height: 8),
                                 if (_commentsLoading)
                                   const Center(child: CupertinoActivityIndicator())
                                 else if (_comments.isEmpty)
-                                  const Align(
+                                  Align(
                                     alignment: Alignment.centerLeft,
-                                    child: Text('Keine Kommentare', style: TextStyle(color: CupertinoColors.systemGrey)),
+                                    child: Text(L10n.of(context).noComments, style: const TextStyle(color: CupertinoColors.systemGrey)),
                                   )
                                 else
                                   Column(
@@ -1050,7 +1053,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                     Expanded(
                                       child: CupertinoTextField(
                                         controller: _commentCtrl,
-                                        placeholder: 'Kommentar schreiben…',
+                                        placeholder: L10n.of(context).writeComment,
                                         maxLines: 3,
                                         minLines: 1,
                                         onSubmitted: (_) => _sendComment(),
@@ -1084,7 +1087,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
     final boardId = widget.boardId ?? app.activeBoard?.id;
     final stackId = _currentStackId ?? widget.stackId;
     final baseUrl = app.baseUrl;
-    final title = _titleCtrl.text.isEmpty ? (_card?.title ?? 'Karte') : _titleCtrl.text;
+    final title = _titleCtrl.text.isEmpty ? (_card?.title ?? L10n.of(context).card) : _titleCtrl.text;
     final desc = _descCtrl.text.trim();
     String? webUrl;
     if (baseUrl != null && boardId != null && stackId != null) {
@@ -1134,13 +1137,13 @@ class _CardDetailPageState extends State<CardDetailPage> {
       initialDate: initial,
       firstDate: DateTime(now.year - 5),
       lastDate: DateTime(now.year + 5),
-      helpText: 'Fälligkeitsdatum',
+      helpText: L10n.of(context).dueDate,
     );
     if (date == null) return;
     final timeOfDay = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(initial),
-      helpText: 'Uhrzeit',
+      helpText: L10n.of(context).timeLabel,
     );
     final selected = DateTime(
       date.year,

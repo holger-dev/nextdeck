@@ -180,8 +180,13 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
             const SizedBox(height: 8),
             CupertinoTextField(
               controller: _pass,
-              placeholder: l10n.password,
+              placeholder: l10n.appPassword,
               obscureText: true,
+            ),
+            const SizedBox(height: 6),
+            Text(
+              l10n.appPasswordHint,
+              style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12),
             ),
             const SizedBox(height: 12),
             CupertinoButton.filled(
@@ -225,6 +230,12 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
             Row(children: [ Expanded(child: Text(L10n.of(context).bgPreloadShort)), CupertinoSwitch(value: app.backgroundPreload, onChanged: (v) => app.setBackgroundPreload(v)) ]),
             const SizedBox(height: 6),
             Text(L10n.of(context).bgPreloadHelpShort, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            const SizedBox(height: 6),
+            Text(L10n.of(context).fullSyncManualHint, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            const SizedBox(height: 8),
+            Row(children: [ Expanded(child: Text(L10n.of(context).upcomingSingleColumnLabel)), CupertinoSwitch(value: app.upcomingSingleColumn, onChanged: (v) => app.setUpcomingSingleColumn(v)) ]),
+            const SizedBox(height: 6),
+            Text(L10n.of(context).upcomingSingleColumnHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 8),
             Text(L10n.of(context).upcomingProgressHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),
@@ -273,13 +284,45 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
             
             Text(l10n.activeBoardSection, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
+            // Startup board behavior
+            Row(
+              children: [
+                Expanded(child: Text(l10n.startupBoardChoice)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Builder(builder: (ctx) {
+              final options = <String, Widget>{
+                'default': Text(L10n.of(ctx).startupBoardDefault),
+                'last': Text(L10n.of(ctx).startupBoardLast),
+              };
+              return CupertinoSlidingSegmentedControl<String>(
+                groupValue: app.startupBoardMode,
+                children: options,
+                onValueChanged: (v) {
+                  if (v != null) context.read<AppState>().setStartupBoardMode(v);
+                },
+              );
+            }),
+            const SizedBox(height: 6),
+            Text(l10n.startupBoardHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            const SizedBox(height: 12),
             if (app.boards.isEmpty)
               Text(l10n.noBoardsPleaseTest)
             else
               _BoardPicker(
                 boards: app.boards.where((b) => !b.archived).toList(),
-                selected: app.activeBoard,
-                onChanged: (b) => app.setActiveBoard(b),
+                selected: () {
+                  final d = app.defaultBoardId;
+                  if (d != null) {
+                    return app.boards.firstWhere(
+                      (b) => b.id == d,
+                      orElse: () => app.activeBoard ?? (app.boards.isNotEmpty ? app.boards.first : Board.empty()),
+                    );
+                  }
+                  return app.activeBoard;
+                }(),
+                onChanged: (b) => app.setDefaultBoard(b),
               ),
             // Board teilen Link entfernt
             const SizedBox(height: 12),
@@ -313,6 +356,16 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
             ),
             const SizedBox(height: 6),
             Text(l10n.showDescriptionHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: Text(l10n.overviewShowBoardInfo)),
+                CupertinoSwitch(value: app.overviewShowBoardInfo, onChanged: (v) => app.setOverviewShowBoardInfo(v)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(l10n.overviewShowBoardInfoHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),

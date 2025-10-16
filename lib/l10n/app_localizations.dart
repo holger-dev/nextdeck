@@ -52,10 +52,13 @@ class L10n {
           : 'Title or description…';
   // Card detail
   String get cardLoadFailed => _isDe ? 'Karte konnte nicht geladen werden' : _isEs ? 'No se pudo cargar la tarjeta' : 'Card could not be loaded';
+  String get card => _isDe ? 'Karte' : _isEs ? 'Tarjeta' : 'Card';
   String get dueDate => _isDe ? 'Fälligkeit' : _isEs ? 'Vencimiento' : 'Due date';
+  String get timeLabel => _isDe ? 'Uhrzeit' : _isEs ? 'Hora' : 'Time';
   String get column => _isDe ? 'Liste' : _isEs ? 'Columna' : 'Column';
   String get assigned => _isDe ? 'Zugewiesen' : _isEs ? 'Asignados' : 'Assigned';
   String get attachments => _isDe ? 'Anhänge' : _isEs ? 'Adjuntos' : 'Attachments';
+  String get attachmentFallback => _isDe ? 'Anhang' : _isEs ? 'Adjunto' : 'Attachment';
   String get uploadFailed => _isDe ? 'Upload fehlgeschlagen' : _isEs ? 'Error de carga' : 'Upload failed';
   String get fileReadFailed => _isDe ? 'Datei konnte nicht gelesen werden.' : _isEs ? 'No se pudo leer el archivo.' : 'File could not be read.';
   String get uploadNotPossible => _isDe ? 'Upload nicht möglich' : _isEs ? 'Carga no posible' : 'Upload not possible';
@@ -151,6 +154,12 @@ class L10n {
   String get urlPlaceholder => 'cloud.example.com';
   String get username => _isDe ? 'Benutzername' : _isEs ? 'Usuario' : 'Username';
   String get password => _isDe ? 'Passwort' : _isEs ? 'Contraseña' : 'Password';
+  String get appPassword => _isDe ? 'App‑Passwort' : _isEs ? 'Contraseña de aplicación' : 'App password';
+  String get appPasswordHint => _isDe
+      ? 'Bei aktivierter Zwei‑Faktor‑Authentifizierung bitte in Nextcloud unter Einstellungen → Sicherheit ein App‑Passwort erzeugen und hier eintragen.'
+      : _isEs
+          ? 'Si tienes activada la verificación en dos pasos, crea una contraseña de aplicación en Nextcloud (Ajustes → Seguridad) y escríbela aquí.'
+          : 'If two‑factor authentication is enabled, create an app password in Nextcloud (Settings → Security) and enter it here.';
   String get loginAndLoadBoards => _isDe ? 'Anmeldung testen & Boards laden' : _isEs ? 'Probar inicio y cargar tableros' : 'Test login & load boards';
   String get invalidServerAddress => _isDe
       ? 'Bitte eine gültige Server‑Adresse eingeben (z. B. cloud.example.com oder localhost).'
@@ -191,6 +200,14 @@ class L10n {
   String get loginOkNoBoards => _isDe ? 'Login ok – keine Boards gefunden' : _isEs ? 'Inicio ok – no se encontraron tableros' : 'Login ok – no boards found';
   String errorMsg(String msg) => _isDe ? 'Fehler: $msg' : _isEs ? 'Error: $msg' : 'Error: $msg';
   String get activeBoardSection => _isDe ? 'Standard Board' : _isEs ? 'Tablero predeterminado' : 'Default Board';
+  String get startupBoardChoice => _isDe ? 'Beim Start laden' : _isEs ? 'Al iniciar cargar' : 'On launch load';
+  String get startupBoardDefault => _isDe ? 'Standard‑Board' : _isEs ? 'Tablero predeterminado' : 'Default board';
+  String get startupBoardLast => _isDe ? 'Zuletzt aktives Board' : _isEs ? 'Último tablero activo' : 'Last active board';
+  String get startupBoardHelp => _isDe
+      ? 'Wähle, welches Board beim App‑Start geöffnet wird.'
+      : _isEs
+          ? 'Elige qué tablero se abre al iniciar la app.'
+          : 'Choose which board opens when the app starts.';
   String get noBoardsPleaseTest => _isDe ? 'Keine Boards geladen. Bitte Login testen.' : _isEs ? 'No hay tableros cargados. Por favor, prueba el inicio de sesión.' : 'No boards loaded. Please test login.';
   String get appearance => _isDe ? 'Darstellung' : _isEs ? 'Apariencia' : 'Appearance';
   String get darkMode => _isDe ? 'Dark Mode' : _isEs ? 'Modo oscuro' : 'Dark mode';
@@ -201,11 +218,26 @@ class L10n {
           ? 'Si está activado, los fondos de las columnas se ajustan automáticamente al nombre de la columna (p. ej., "Done" → verde). Si está desactivado, los fondos son neutros. Los colores de las tarjetas se mantienen.'
           : 'If enabled, column backgrounds adapt to status keywords (e.g., "Done" → green). If disabled, backgrounds are neutral. Card colors remain.';
   String get showDescriptionAlways => _isDe ? 'Beschreibungstext immer anzeigen' : _isEs ? 'Mostrar siempre la descripción' : 'Always show description';
+  String get descriptionPlaceholder => _isDe
+      ? 'Beschreibung (Markdown, wie in Nextcloud Deck)'
+      : _isEs
+          ? 'Descripción (Markdown, como en Nextcloud Deck)'
+          : 'Description (Markdown, like in Nextcloud Deck)';
   String get showDescriptionHelp => _isDe
       ? 'Wenn eingeschaltet, wird der Beschreibungstext auf Karten angezeigt (max. 200 Zeichen). Wenn ausgeschaltet, erscheint stattdessen ein kleines Text-Icon, sofern eine Beschreibung vorhanden ist.'
       : _isEs
           ? 'Si está activado, el texto de descripción se muestra en las tarjetas (máx. 200 caracteres). Si está desactivado, aparece un pequeño icono de texto si hay descripción.'
           : 'If enabled, the description text is shown on cards (max 200 chars). If disabled, a small text icon appears when a description exists.';
+  String get overviewShowBoardInfo => _isDe
+      ? 'Informationen der Boards in Übersicht anzeigen'
+      : _isEs
+          ? 'Mostrar información de los tableros en el resumen'
+          : 'Show board information in overview';
+  String get overviewShowBoardInfoHelp => _isDe
+      ? 'Bei vielen Boards abschalten, um die Ladegeschwindigkeit der Übersicht zu verbessern.'
+      : _isEs
+          ? 'Desactívalo con muchos tableros para mejorar la velocidad de carga del resumen.'
+          : 'Disable with many boards to improve overview loading speed.';
   String get developer => _isDe ? 'Entwicklung' : _isEs ? 'Desarrollo' : 'Developer';
   String get enableNetworkLogs => _isDe ? 'Netzwerk-Logs aktivieren' : _isEs ? 'Activar registros de red' : 'Enable network logs';
   String get viewLogs => _isDe ? 'Logs ansehen' : _isEs ? 'Ver registros' : 'View logs';
@@ -225,11 +257,26 @@ class L10n {
           ? 'Carga en segundo plano solo las columnas (stacks) de todos los tableros en caché. Las tarjetas se cargan bajo demanda.'
           : 'Preloads only columns (stacks) of all boards into cache. Cards still load on demand.';
   String get bgPreloadHelpShort => _isDe ? 'Hintergrund: nur Spalten laden.' : _isEs ? 'Segundo plano: solo columnas.' : 'Background: columns only.';
+  String get fullSyncManualHint => _isDe
+      ? 'Hinweis: Die vollständige Synchronisation aller Boards läuft nur manuell über „Anstehend“ → Aktualisieren. Für normales Arbeiten wird nichts automatisch gestartet.'
+      : _isEs
+          ? 'Aviso: La sincronización completa de todos los tableros solo se ejecuta manualmente desde “Próximas” → Actualizar. No se inicia automáticamente durante el trabajo normal.'
+          : 'Note: Full sync across all boards runs only when manually triggered from “Upcoming” → Refresh. Nothing runs automatically during normal work.';
   String get upcomingProgressHelp => _isDe
       ? 'Hinweis zu „Anstehende Karten“: Die Anzeige neben dem Titel (z. B. 4 / 12) zeigt den Fortschritt eines Hintergrund-Scans über alle Boards. Mit langem Druck auf den Aktualisieren-Button wird ein vollständiger Scan gestartet.'
       : _isEs
           ? 'Nota sobre “Próximas”: La indicación junto al título (p. ej. 4 / 12) muestra el progreso de un escaneo en segundo plano por todos los tableros. Una pulsación larga en actualizar inicia un escaneo completo.'
           : 'Note on “Upcoming”: The indicator next to the title (e.g., 4 / 12) shows background scan progress across all boards. Long-press refresh to run a full scan.';
+  String get upcomingSingleColumnLabel => _isDe
+      ? 'Anstehend einspaltig anzeigen'
+      : _isEs
+          ? 'Mostrar Próximas en una sola columna'
+          : 'Show Upcoming as single column';
+  String get upcomingSingleColumnHelp => _isDe
+      ? 'Zeigt alle Karten untereinander, getrennt nach Abschnitten (Überfällig, Heute, Morgen, Nächste 7 Tage, Später).'
+      : _isEs
+          ? 'Muestra todas las tarjetas de arriba a abajo por secciones (Vencidas, Hoy, Mañana, Próximos 7 días, Más tarde).'
+          : 'Shows all cards top-to-bottom by sections (Overdue, Today, Tomorrow, Next 7 days, Later).';
   String get cacheBoardsLocalLabel => _isDe
       ? 'Boards lokal speichern (schnelles Wiederöffnen, nur geänderte Boards prüfen)'
       : _isEs

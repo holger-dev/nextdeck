@@ -551,7 +551,7 @@ class _ColumnViewState extends State<_ColumnView> {
             children: [
               header,
               Expanded(
-                child: isLoading
+                child: (isLoading && col.cards.isNotEmpty)
                     ? const Center(child: CupertinoActivityIndicator())
                     : CupertinoScrollbar(
                         controller: _listCtrl,
@@ -757,7 +757,7 @@ class _ColumnViewState extends State<_ColumnView> {
           children: [
             header,
             Expanded(
-              child: isLoading
+              child: (isLoading && col.cards.isNotEmpty)
                   ? const Center(child: CupertinoActivityIndicator())
                   : CupertinoScrollbar(
                       controller: _listCtrl,
@@ -1853,13 +1853,26 @@ class _Arrow extends StatelessWidget {
 }
 
 void _preloadNeighbors(BuildContext context, int boardId, List<deck.Column> columns, int currentIndex) {
+  // Throttle preloads per stack to avoid redundant calls during build/scroll
+  // Keep lightweight in UI: only trigger if not recently attempted
+  // A small static map is sufficient; per-process lifetime is fine.
+  // Cooldown 5s per stack.
+  // ignore: prefer_const_declarations
+  final Map<int, DateTime> _lastPreload = _preloadMemo;
   final app = context.read<AppState>();
+  final now = DateTime.now();
   for (final idx in {currentIndex - 1, currentIndex, currentIndex + 1}) {
     if (idx >= 0 && idx < columns.length) {
       final stackId = columns[idx].id;
+      final last = _lastPreload[stackId];
+      if (last != null && now.difference(last).inMilliseconds < 5000) continue;
+      _lastPreload[stackId] = now;
       app.ensureCardsFor(boardId, stackId);
     }
   }
 }
+
+// Preload memo shared across calls
+final Map<int, DateTime> _preloadMemo = {};
 
 // no-op

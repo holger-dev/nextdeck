@@ -229,48 +229,55 @@ class _UpcomingPageState extends State<UpcomingPage> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              onPressed: () async {
-                final l10n = L10n.of(context);
-                final buckets = [
-                  l10n.overdueLabel,
-                  l10n.today,
-                  l10n.tomorrow,
-                  l10n.next7Days,
-                  l10n.later,
-                ];
-                await showCupertinoModalPopup(
-                  context: context,
-                  builder: (ctx) => CupertinoActionSheet(
-                    title: Text(l10n.selectColumn),
-                    actions: buckets
-                        .asMap()
-                        .entries
-                        .map((e) => CupertinoActionSheetAction(
-                              onPressed: () {
-                                Navigator.of(ctx).pop();
-                                final target = e.key;
-                                _pageController.animateToPage(target, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
-                              },
-                              child: Text(e.value),
-                            ))
-                        .toList(),
-                    cancelButton: CupertinoActionSheetAction(
-                      onPressed: () => Navigator.of(ctx).pop(),
-                      isDefaultAction: true,
-                      child: Text(l10n.cancel),
+            if (!app.upcomingSingleColumn)
+              CupertinoButton(
+                padding: EdgeInsets.zero,
+                onPressed: () async {
+                  final l10n = L10n.of(context);
+                  final buckets = [
+                    l10n.overdueLabel,
+                    l10n.today,
+                    l10n.tomorrow,
+                    l10n.next7Days,
+                    l10n.later,
+                  ];
+                  await showCupertinoModalPopup(
+                    context: context,
+                    builder: (ctx) => CupertinoActionSheet(
+                      title: Text(l10n.selectColumn),
+                      actions: buckets
+                          .asMap()
+                          .entries
+                          .map((e) => CupertinoActionSheetAction(
+                                onPressed: () {
+                                  Navigator.of(ctx).pop();
+                                  final target = e.key;
+                                  _pageController.animateToPage(target, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+                                },
+                                child: Text(e.value),
+                              ))
+                          .toList(),
+                      cancelButton: CupertinoActionSheetAction(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        isDefaultAction: true,
+                        child: Text(l10n.cancel),
+                      ),
                     ),
-                  ),
-                );
-              },
-              child: const Icon(CupertinoIcons.list_bullet),
-            ),
+                  );
+                },
+                child: const Icon(CupertinoIcons.list_bullet),
+              ),
             CupertinoButton(
               padding: EdgeInsets.zero,
-              onPressed: _loading ? null : () => _rebuildFromCacheAndTrackLoading(),
-              onLongPress: () { context.read<AppState>().scanUpcoming(force: true); },
-              child: _loading ? const CupertinoActivityIndicator() : const Icon(CupertinoIcons.refresh),
+              onPressed: (app.upcomingScanActive || app.isSyncing)
+                  ? null
+                  : () async {
+                      // Fast, parallel full sync of all boards for smooth UX with many boards
+                      await context.read<AppState>().syncAllBoardsFast(concurrency: 6);
+                      if (mounted) _rebuildFromCacheAndTrackLoading();
+                    },
+              onLongPress: () { if (!(app.upcomingScanActive || app.isSyncing)) context.read<AppState>().scanUpcoming(force: true); },
+              child: (app.upcomingScanActive || app.isSyncing) ? const CupertinoActivityIndicator() : const Icon(CupertinoIcons.refresh),
             ),
           ],
         ),
@@ -278,46 +285,40 @@ class _UpcomingPageState extends State<UpcomingPage> {
       child: SafeArea(
         child: Stack(
           children: [
-            if (_loading || app.upcomingScanActive || app.isSyncing)
-              Positioned(
-                left: 12, right: 12, top: 8,
-                child: Row(children: [
-                  const CupertinoActivityIndicator(),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          app.upcomingScanBoardTitle ?? (_currentBoardTitle == null ? l10n.searchingInProgress : l10n.searchingBoard(_currentBoardTitle!)),
-                          style: const TextStyle(color: CupertinoColors.systemGrey),
-                        ),
-                        if (app.upcomingScanTotal > 0)
-                          Text(
-                            l10n.boardsProgress(app.upcomingScanDone, app.upcomingScanTotal),
-                            style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12),
-                          ),
-                      ],
-                    ),
+            // moved overlay below to ensure it paints on top
+            if (!app.upcomingSingleColumn)
+              Padding(
+                padding: const EdgeInsets.only(top: 0),
+                child: PageView(
+                  controller: _pageController,
+                  onPageChanged: (i) => setState(() => _page = i),
+                  children: [
+                    _bucketView(context, l10n.overdueLabel, _overdue, emphasize: true),
+                    _bucketView(context, l10n.today, _today),
+                    _bucketView(context, l10n.tomorrow, _tomorrow),
+                    _bucketView(context, l10n.next7Days, _next7),
+                    _bucketView(context, l10n.later, _later),
+                  ],
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(top: 0),
+                child: CupertinoScrollbar(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
+                    children: [
+                      ..._buildSection(context, l10n.overdueLabel, _overdue, emphasize: true, showEmptyHeaderOnly: true),
+                      ..._buildSection(context, l10n.today, _today, showEmptyHeaderOnly: true),
+                      ..._buildSection(context, l10n.tomorrow, _tomorrow, showEmptyHeaderOnly: true),
+                      ..._buildSection(context, l10n.next7Days, _next7, showEmptyHeaderOnly: true),
+                      ..._buildSection(context, l10n.later, _later, showEmptyHeaderOnly: true),
+                    ],
                   ),
-                ]),
+                ),
               ),
-            Padding(
-              padding: const EdgeInsets.only(top: 0),
-              child: PageView(
-                controller: _pageController,
-                onPageChanged: (i) => setState(() => _page = i),
-                children: [
-                  _bucketView(context, l10n.overdueLabel, _overdue, emphasize: true),
-                  _bucketView(context, l10n.today, _today),
-                  _bucketView(context, l10n.tomorrow, _tomorrow),
-                  _bucketView(context, l10n.next7Days, _next7),
-                  _bucketView(context, l10n.later, _later),
-                ],
-              ),
-            ),
             // Top arrows like board view (overlay above pages), hidden at edges
-            if (_page > 0)
+            if (!app.upcomingSingleColumn && _page > 0)
               Positioned(
                 left: 8,
                 top: 14,
@@ -332,7 +333,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
                   enabled: true,
                 ),
               ),
-            if (_page < 4)
+            if (!app.upcomingSingleColumn && _page < 4)
               Positioned(
                 right: 8,
                 top: 14,
@@ -348,6 +349,8 @@ class _UpcomingPageState extends State<UpcomingPage> {
                 ),
               ),
             // bottom arrows removed per request
+
+            // (Removed) explicit top overlay status (board/progress); navbar spinner suffices
           ],
         ),
       ),
@@ -412,13 +415,30 @@ class _UpcomingPageState extends State<UpcomingPage> {
     );
   }
 
-  List<Widget> _buildSection(BuildContext context, String title, List<_DueHit> items, {bool emphasize = false}) {
-    if (items.isEmpty) return const [];
+  List<Widget> _buildSection(BuildContext context, String title, List<_DueHit> items, {bool emphasize = false, bool showEmpty = false, bool showEmptyHeaderOnly = false}) {
+    if (items.isEmpty && !showEmpty && !showEmptyHeaderOnly) return const [];
+    final themeColor = CupertinoTheme.of(context).textTheme.textStyle.color ?? CupertinoColors.label;
+    final header = Padding(
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
+      child: Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: emphasize ? CupertinoColors.destructiveRed : themeColor)),
+    );
+    if (items.isEmpty) {
+      if (showEmptyHeaderOnly) {
+        return [header];
+      }
+      if (showEmpty) {
+        return [
+          header,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Text(L10n.of(context).noDueCards, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 13)),
+          ),
+        ];
+      }
+      return const [];
+    }
     return [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
-        child: Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: emphasize ? CupertinoColors.destructiveRed : CupertinoColors.label)),
-      ),
+      header,
       ...items.map((h) => CupertinoButton(
             padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
             onPressed: () {

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../models/board.dart';
 import '../models/card_item.dart';
+import '../models/column.dart' as deck;
 import '../theme/app_theme.dart';
 import '../l10n/app_localizations.dart';
 import 'board_search_page.dart';
@@ -303,30 +304,39 @@ class _BoardSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     if (app.boardMemberCount(boardId) == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => app.ensureBoardMemberCount(boardId));
+      if (app.overviewShowBoardInfo) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => app.ensureBoardMemberCount(boardId));
+      }
     }
-    final cols = app.activeBoard?.id == boardId && app.columnsForActiveBoard().isNotEmpty
-        ? app.columnsForActiveBoard()
-        : app.columnsForBoard(boardId);
+    final showInfo = app.overviewShowBoardInfo;
+    final List<deck.Column> cols = showInfo
+        ? (app.activeBoard?.id == boardId && app.columnsForActiveBoard().isNotEmpty
+            ? app.columnsForActiveBoard()
+            : app.columnsForBoard(boardId))
+        : const <deck.Column>[];
 
-    int stacks = cols.length;
+    int stacks = 0;
     int cards = 0;
     int dueSoon = 0;
     int overdue = 0;
-    final now = DateTime.now();
-    for (final c in cols) {
-      cards += c.cards.length;
-      for (final k in c.cards) {
-        if (k.due != null) {
-          if (k.due!.isBefore(now)) overdue++;
-          else if (k.due!.difference(now).inHours <= 24) dueSoon++;
+    bool hasStacks = false;
+    bool hasAnyCards = false;
+    if (showInfo) {
+      stacks = cols.length;
+      final now = DateTime.now();
+      for (final c in cols) {
+        cards += c.cards.length;
+        for (final k in c.cards) {
+          if (k.due != null) {
+            if (k.due!.isBefore(now)) overdue++;
+            else if (k.due!.difference(now).inHours <= 24) dueSoon++;
+          }
         }
       }
+      // Cache indicator: stacks/cards loaded
+      hasStacks = cols.isNotEmpty;
+      hasAnyCards = hasStacks && cols.any((c) => c.cards.isNotEmpty);
     }
-
-    // Cache indicator: stacks/cards loaded
-    final hasStacks = cols.isNotEmpty;
-    final hasAnyCards = hasStacks && cols.any((c) => c.cards.isNotEmpty);
 
     // Use Nextcloud board color when available; fallback to app palette
     final b = app.boards.firstWhere((x) => x.id == boardId, orElse: () => Board(id: boardId, title: title));
@@ -411,7 +421,7 @@ class _BoardSummary extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    Wrap(
+                    if (showInfo) Wrap(
                       spacing: 8,
                       runSpacing: 8,
                       children: [

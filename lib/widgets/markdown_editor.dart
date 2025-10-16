@@ -52,6 +52,9 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
             placeholder: widget.placeholder ?? L10n.of(context).descriptionMarkdown,
             maxLines: 8,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+            placeholderStyle: TextStyle(
+              color: (CupertinoTheme.of(context).textTheme.textStyle.color ?? CupertinoColors.label).withOpacity(0.6),
+            ),
             onSubmitted: widget.onSubmitted,
           )
         else

@@ -14,14 +14,24 @@ class NextcloudDeckApi {
   static const _ocsHeader = {'OCS-APIRequest': 'true', 'Accept': 'application/json'};
   static const _restHeader = {'Accept': 'application/json'};
   // Concurrency limiter and request timeout to reduce server load
-  static int _maxConcurrent = 6;
+  static int _maxConcurrent = 12;
+  static int _maxPrioOvercommit = 2; // allow a small burst for priority calls even when saturated
   static int _inFlight = 0;
+  static int _prioBurst = 0; // how many priority waiters served consecutively
   static final List<Completer<void>> _prioWaiters = [];
   static final List<Completer<void>> _waiters = [];
   static const Duration _defaultTimeout = Duration(seconds: 30);
+  // Coalesce identical stacks requests across concurrent callers (per base|user|board)
+  final Map<String, Future<List<deck.Column>>> _stacksFetchFutures = {};
+  final Map<String, Future<FetchStacksResult>> _stacksWithEtagFutures = {};
 
   Future<void> _acquireSlot({bool priority = false}) async {
     if (_inFlight < _maxConcurrent) {
+      _inFlight++;
+      return;
+    }
+    // Allow limited overcommit for priority callers to avoid being starved by background syncs
+    if (priority && _inFlight < (_maxConcurrent + _maxPrioOvercommit)) {
       _inFlight++;
       return;
     }
@@ -35,14 +45,17 @@ class NextcloudDeckApi {
   }
 
   void _releaseSlot() {
-    if (_prioWaiters.isNotEmpty) {
+    if (_prioWaiters.isNotEmpty && (_waiters.isEmpty || _prioBurst < 2)) {
       final c = _prioWaiters.removeAt(0);
+      _prioBurst += 1;
       c.complete();
     } else if (_waiters.isNotEmpty) {
       final c = _waiters.removeAt(0);
+      _prioBurst = 0; // reset burst when serving normal queue
       c.complete();
     } else {
       _inFlight = (_inFlight - 1).clamp(0, 1 << 20);
+      _prioBurst = 0;
     }
   }
 
@@ -54,6 +67,14 @@ class NextcloudDeckApi {
   static const _defaultTtlMs = 60 * 1000; // 60s for most endpoints
   static const _meTtlMs = 10 * 60 * 1000; // 10min for current user
   static const _maxCacheEntries = 120;
+  // Capability cache for cards list endpoint per base URL
+  final Map<String, String?> _cardsVariantCache = {}; // baseUrl -> working path template or null if unsupported
+  final Map<String, DateTime> _cardsVariantExpiry = {}; // expiry for negative cache
+  static const Duration _capsTtl = Duration(minutes: 20);
+  // Stacks throttling + memo per board to avoid hammering
+  final Map<String, DateTime> _stacksCooldown = {}; // key: base|user|boardId
+  final Map<String, List<deck.Column>> _stacksMemo = {}; // last columns per board
+  static const Duration _stacksMinInterval = Duration(seconds: 30);
 
   T? _getCached<T>(Map<String, _CacheEntry<T>> m, String key) {
     final e = m[key];
@@ -221,99 +242,189 @@ class NextcloudDeckApi {
     return out;
   }
 
-  Future<List<deck.Column>> fetchColumns(String baseUrl, String username, String password, int boardId, {bool lazyCards = true, bool priority = false}) async {
+  Future<List<deck.Column>> fetchColumns(
+    String baseUrl,
+    String username,
+    String password,
+    int boardId, {
+    bool lazyCards = true,
+    bool priority = false,
+    bool bypassCooldown = false,
+  }) async {
+    final cdKey = '$baseUrl|$username|$boardId';
+    if (!bypassCooldown) {
+      final last = _stacksCooldown[cdKey];
+      if (last != null && DateTime.now().difference(last) < _stacksMinInterval) {
+        final memo = _stacksMemo[cdKey];
+        if (memo != null) return memo;
+      }
+    }
+    // Coalesce in-flight identical fetches
+    final inFlight = _stacksFetchFutures[cdKey];
+    if (inFlight != null) return await inFlight;
     http.Response? res;
     dynamic data;
     // Try REST stacks first (with/without index, priority), then OCS v2 and v1
-    for (final withIndex in [false, true]) {
-      try {
-        final uri = _buildUri(baseUrl, '/apps/deck/api/v1.0/boards/$boardId/stacks', withIndex);
-        final r = await _send('GET', uri, {..._restHeader, 'authorization': _basicAuth(username, password)}, priority: priority);
-        if (_isOk(r)) { res = r; data = _parseBodyOk(r); break; }
-      } catch (_) {}
-    }
-    if (res == null || !_isOk(res)) {
-      for (final ocs in ['/ocs/v2.php', '/ocs/v1.php']) {
-        for (final withIndex in [false, true]) {
-          try {
-            final uri = _buildUri(baseUrl, '$ocs/apps/deck/api/v1.0/boards/$boardId/stacks', withIndex);
-            final r = await _send('GET', uri, {..._ocsHeader, 'authorization': _basicAuth(username, password)}, priority: priority);
-            if (_isOk(r)) { res = r; data = _parseBodyOk(r); break; }
-          } catch (_) {}
-        }
-        if (res != null && _isOk(res)) break;
+    final future = () async {
+      for (final withIndex in [false, true]) {
+        try {
+          final uri = _buildUri(baseUrl, '/apps/deck/api/v1.0/boards/$boardId/stacks', withIndex);
+          final r = await _send('GET', uri, {..._restHeader, 'authorization': _basicAuth(username, password)}, priority: priority, timeout: bypassCooldown ? const Duration(seconds: 12) : null);
+          if (_isOk(r)) { res = r; data = _parseBodyOk(r); break; }
+        } catch (_) {}
       }
-    }
-    if (res == null || !_isOk(res)) {
-      _ensureOk(res, 'Spalten laden fehlgeschlagen');
-      return const [];
-    }
-    final List<deck.Column> columns = [];
-    final List<Map<String, dynamic>> stacks;
-    if (data is List) {
-      stacks = data.map((e) => (e as Map).cast<String, dynamic>()).toList();
-    } else if (data is Map && data['stacks'] is List) {
-      stacks = (data['stacks'] as List).map((e) => (e as Map).cast<String, dynamic>()).toList();
-    } else {
-      return columns;
-    }
+      if (res == null || !_isOk(res!)) {
+        for (final ocs in ['/ocs/v2.php', '/ocs/v1.php']) {
+          for (final withIndex in [false, true]) {
+            try {
+              final uri = _buildUri(baseUrl, '$ocs/apps/deck/api/v1.0/boards/$boardId/stacks', withIndex);
+              final r = await _send('GET', uri, {..._ocsHeader, 'authorization': _basicAuth(username, password)}, priority: priority, timeout: bypassCooldown ? const Duration(seconds: 12) : null);
+              if (_isOk(r)) { res = r; data = _parseBodyOk(r); break; }
+            } catch (_) {}
+          }
+          if (res != null && _isOk(res!)) break;
+        }
+      }
+      if (res == null || !_isOk(res!)) {
+        _ensureOk(res, 'Spalten laden fehlgeschlagen');
+        return const <deck.Column>[];
+      }
+      final List<deck.Column> columns = [];
+      final List<dynamic> rawStacks = data is List
+          ? data
+          : (data is Map && data['stacks'] is List) ? (data['stacks'] as List) : const <dynamic>[];
+      if (rawStacks.isEmpty) return columns;
 
-    // Build deterministic ordering using explicit order field if present, else input order
-    final Map<int, int> orderMap = {};
-    for (int idx = 0; idx < stacks.length; idx++) {
-      final s = stacks[idx];
-      final id = (s['id'] as num).toInt();
-      final ord = (s['order'] ?? s['position'] ?? s['sort'] ?? s['ordinal']);
-      orderMap[id] = ord is num ? ord.toInt() : idx;
-    }
+      // Build deterministic ordering using explicit order field if present, else input order
+      final Map<int, int> orderMap = {};
+      for (int idx = 0; idx < rawStacks.length; idx++) {
+        final s = rawStacks[idx];
+        if (s is! Map) continue;
+        final sm = s as Map;
+        final sid = sm['id'];
+        if (sid is! num) continue;
+        final id = sid.toInt();
+        final ord = (sm['order'] ?? sm['position'] ?? sm['sort'] ?? sm['ordinal']);
+        orderMap[id] = ord is num ? ord.toInt() : idx;
+      }
 
-    // Prefer inline cards if provided by the stacks response.
-    final needFetch = <Map<String, dynamic>>[];
-    for (final stack in stacks) {
-      final stackId = stack['id'] as int;
-      final title = (stack['title'] ?? stack['name'] ?? '').toString();
-      final inline = stack['cards'];
-      if (inline is List) {
-        final cards = inline.map((e) => CardItem.fromJson((e as Map).cast<String, dynamic>())).toList();
-        columns.add(deck.Column(id: stackId, title: title, cards: cards));
-      } else {
-        // Lazy mode: leave empty and fetch on demand later
-        if (lazyCards) {
-          columns.add(deck.Column(id: stackId, title: title, cards: const []));
+      // Prefer inline cards if provided by the stacks response.
+      final needFetch = <Map<String, dynamic>>[];
+      for (final s in rawStacks) {
+        if (s is! Map) continue;
+        final stack = s.cast<String, dynamic>();
+        final stackId = (stack['id'] as num).toInt();
+        final title = (stack['title'] ?? stack['name'] ?? '').toString();
+        final inline = stack['cards'];
+        if (inline is List) {
+          final cards = inline.whereType<Map>().map((e) => CardItem.fromJson(e.cast<String, dynamic>())).toList();
+          columns.add(deck.Column(id: stackId, title: title, cards: cards));
         } else {
-          needFetch.add({'id': stackId, 'title': title});
+          // Lazy mode: leave empty and fetch on demand later
+          if (lazyCards) {
+            columns.add(deck.Column(id: stackId, title: title, cards: const []));
+          } else {
+            // Skip obvious done columns to reduce requests when only due dates are needed
+            final lt = title.toLowerCase();
+            final isDone = lt.contains('done') || lt.contains('erledigt');
+            columns.add(deck.Column(id: stackId, title: title, cards: const []));
+            if (!isDone) {
+              needFetch.add({'id': stackId, 'title': title});
+            }
+          }
         }
       }
-    }
 
-    if (needFetch.isNotEmpty) {
-      final results = await Future.wait(
-        needFetch.map((m) => fetchCards(baseUrl, username, password, boardId, m['id'] as int)),
-      );
-      for (int i = 0; i < needFetch.length; i++) {
-        columns.add(
-          deck.Column(id: needFetch[i]['id'] as int, title: needFetch[i]['title'] as String, cards: results[i]),
-        );
+      if (!lazyCards) {
+        // Try fast board-wide cards listing first to avoid N-per-stack requests
+        final boardCards = await _fetchBoardCardsRaw(baseUrl, username, password, boardId);
+        if (boardCards.isNotEmpty) {
+          final byStack = <int, List<CardItem>>{};
+          for (final e in boardCards) {
+            int? sid;
+            final vStackId = e['stackId'];
+            if (vStackId is num) sid = vStackId.toInt();
+            if (sid == null && e['stack'] is Map && (e['stack']['id'] is num)) sid = (e['stack']['id'] as num).toInt();
+            if (sid == null) continue;
+            (byStack[sid] ??= <CardItem>[]).add(CardItem.fromJson(e));
+          }
+          // Merge cards into existing columns in-place
+          for (int i = 0; i < columns.length; i++) {
+            final c = columns[i];
+            final list = byStack[c.id];
+            if (list != null) {
+              columns[i] = deck.Column(id: c.id, title: c.title, cards: list);
+            }
+          }
+        } else if (needFetch.isNotEmpty) {
+          // Fallback: fetch per stack (bounded by global concurrency limiter)
+          final results = await Future.wait(
+            needFetch.map((m) => fetchCards(baseUrl, username, password, boardId, m['id'] as int)),
+          );
+          // Merge results into existing columns (replace placeholder empties)
+          final mapById = {for (final c in columns) c.id: c};
+          for (int i = 0; i < needFetch.length; i++) {
+            final sid = needFetch[i]['id'] as int;
+            final title = needFetch[i]['title'] as String;
+            mapById[sid] = deck.Column(id: sid, title: title, cards: results[i]);
+          }
+          // Rebuild columns preserving order
+          final ordered = <deck.Column>[];
+          for (final s in rawStacks) {
+            if (s is Map && s['id'] is num) {
+              final id = (s['id'] as num).toInt();
+              final c = mapById[id];
+              if (c != null) ordered.add(c);
+            }
+          }
+          columns
+            ..clear()
+            ..addAll(ordered);
+        }
       }
+
+      // Sort by provided order/position; if equal, preserve original stacks order
+      final indexMap = <int, int>{
+        for (int i = 0; i < rawStacks.length; i++)
+          if (rawStacks[i] is Map && (rawStacks[i] as Map)['id'] is num)
+            ((rawStacks[i] as Map)['id'] as num).toInt(): i
+      };
+      columns.sort((a, b) {
+        final oa = orderMap[a.id] ?? 0;
+        final ob = orderMap[b.id] ?? 0;
+        if (oa != ob) return oa.compareTo(ob);
+        final ia = indexMap[a.id] ?? 0;
+        final ib = indexMap[b.id] ?? 0;
+        return ia.compareTo(ib);
+      });
+
+      // Memoize + cooldown
+      _stacksMemo[cdKey] = columns;
+      _stacksCooldown[cdKey] = DateTime.now();
+      return columns;
+    }();
+    _stacksFetchFutures[cdKey] = future;
+    try {
+      return await future;
+    } finally {
+      _stacksFetchFutures.remove(cdKey);
     }
-
-    // Sort by provided order/position; if equal, preserve original stacks order
-    final indexMap = <int, int>{
-      for (int i = 0; i < stacks.length; i++) (stacks[i]['id'] as num).toInt(): i
-    };
-    columns.sort((a, b) {
-      final oa = orderMap[a.id] ?? 0;
-      final ob = orderMap[b.id] ?? 0;
-      if (oa != ob) return oa.compareTo(ob);
-      final ia = indexMap[a.id] ?? 0;
-      final ib = indexMap[b.id] ?? 0;
-      return ia.compareTo(ib);
-    });
-
-    return columns;
   }
 
   Future<FetchStacksResult> fetchStacksWithEtag(String baseUrl, String username, String password, int boardId, {String? ifNoneMatch, bool priority = false}) async {
+    final cdKey = '$baseUrl|$username|$boardId';
+    final lastCd = _stacksCooldown[cdKey];
+    if (lastCd != null && DateTime.now().difference(lastCd) < _stacksMinInterval) {
+      final memo = _stacksMemo[cdKey];
+      if (memo != null) {
+        return FetchStacksResult(columns: memo, etag: ifNoneMatch, notModified: true);
+      }
+      return const FetchStacksResult(columns: [], etag: null, notModified: true);
+    }
+    // Coalesce in-flight identical fetches (ignore differing ETags for coalescing simplicity)
+    final inFlight = _stacksWithEtagFutures[cdKey];
+    if (inFlight != null) return await inFlight;
+    _stacksCooldown[cdKey] = DateTime.now();
     http.Response? res;
     dynamic data;
     Map<String, String> restHeaders = {..._restHeader, 'authorization': _basicAuth(username, password)};
@@ -322,57 +433,69 @@ class NextcloudDeckApi {
       restHeaders['If-None-Match'] = ifNoneMatch;
       ocsHeaders['If-None-Match'] = ifNoneMatch;
     }
-    for (final withIndex in [false, true]) {
-      try {
-        final uri = _buildUri(baseUrl, '/apps/deck/api/v1.0/boards/$boardId/stacks', withIndex);
-        final r = await _send('GET', uri, restHeaders, priority: priority);
-        if (r.statusCode == 304) {
-          return const FetchStacksResult(columns: [], etag: null, notModified: true);
-        }
-        if (_isOk(r)) { res = r; data = _parseBodyOk(r); break; }
-      } catch (_) {}
-    }
-    if (res == null || !_isOk(res)) {
-      for (final ocs in ['/ocs/v2.php', '/ocs/v1.php']) {
-        for (final withIndex in [false, true]) {
-          try {
-            final uri = _buildUri(baseUrl, '$ocs/apps/deck/api/v1.0/boards/$boardId/stacks', withIndex);
-            final r = await _send('GET', uri, ocsHeaders, priority: priority);
-            if (r.statusCode == 304) {
-              return const FetchStacksResult(columns: [], etag: null, notModified: true);
-            }
-            if (_isOk(r)) { res = r; data = _parseBodyOk(r); break; }
-          } catch (_) {}
-        }
-        if (res != null && _isOk(res)) break;
+    final future = () async {
+      for (final withIndex in [false, true]) {
+        try {
+          final uri = _buildUri(baseUrl, '/apps/deck/api/v1.0/boards/$boardId/stacks', withIndex);
+          final r = await _send('GET', uri, restHeaders, priority: priority, timeout: const Duration(seconds: 12));
+          if (r.statusCode == 304) {
+            return const FetchStacksResult(columns: [], etag: null, notModified: true);
+          }
+          if (_isOk(r)) { res = r; data = _parseBodyOk(r); break; }
+        } catch (_) {}
       }
-    }
-    if (res == null || !_isOk(res)) {
-      _ensureOk(res, 'Spalten laden fehlgeschlagen');
-      return const FetchStacksResult(columns: [], etag: null, notModified: false);
-    }
-    final etag = res.headers['etag'] ?? res.headers['ETag'] ?? res.headers['Etag'];
-    final List<Map<String, dynamic>> stacks;
-    if (data is List) {
-      stacks = data.map((e) => (e as Map).cast<String, dynamic>()).toList();
-    } else if (data is Map && data['stacks'] is List) {
-      stacks = (data['stacks'] as List).map((e) => (e as Map).cast<String, dynamic>()).toList();
-    } else {
-      return FetchStacksResult(columns: const [], etag: etag, notModified: false);
-    }
-    final List<deck.Column> columns = [];
-    for (final stack in stacks) {
-      final stackId = stack['id'] as int;
-      final title = (stack['title'] ?? stack['name'] ?? '').toString();
-      final inline = stack['cards'];
-      if (inline is List) {
-        final cards = inline.map((e) => CardItem.fromJson((e as Map).cast<String, dynamic>())).toList();
-        columns.add(deck.Column(id: stackId, title: title, cards: cards));
-      } else {
-        columns.add(deck.Column(id: stackId, title: title, cards: const []));
+      if (res == null || !_isOk(res!)) {
+        for (final ocs in ['/ocs/v2.php', '/ocs/v1.php']) {
+          for (final withIndex in [false, true]) {
+            try {
+              final uri = _buildUri(baseUrl, '$ocs/apps/deck/api/v1.0/boards/$boardId/stacks', withIndex);
+              final r = await _send('GET', uri, ocsHeaders, priority: priority, timeout: const Duration(seconds: 12));
+              if (r.statusCode == 304) {
+                return const FetchStacksResult(columns: [], etag: null, notModified: true);
+              }
+              if (_isOk(r)) { res = r; data = _parseBodyOk(r); break; }
+            } catch (_) {}
+          }
+          if (res != null && _isOk(res!)) break;
+        }
       }
+      if (res == null || !_isOk(res!)) {
+        _ensureOk(res, 'Spalten laden fehlgeschlagen');
+        return const FetchStacksResult(columns: [], etag: null, notModified: false);
+      }
+      final r0 = res!;
+      final etag = r0.headers['etag'] ?? r0.headers['ETag'] ?? r0.headers['Etag'];
+      final List<dynamic> rawStacks = data is List
+          ? data
+          : (data is Map && data['stacks'] is List) ? (data['stacks'] as List) : const <dynamic>[];
+      if (rawStacks.isEmpty) {
+        return FetchStacksResult(columns: const [], etag: etag, notModified: false);
+      }
+      final List<deck.Column> columns = [];
+      for (final s in rawStacks) {
+        if (s is! Map) continue;
+        final stack = s.cast<String, dynamic>();
+        final stackId = (stack['id'] as num).toInt();
+        final title = (stack['title'] ?? stack['name'] ?? '').toString();
+        final inline = stack['cards'];
+        if (inline is List) {
+          final cards = inline.whereType<Map>().map((e) => CardItem.fromJson(e.cast<String, dynamic>())).toList();
+          columns.add(deck.Column(id: stackId, title: title, cards: cards));
+        } else {
+          columns.add(deck.Column(id: stackId, title: title, cards: const []));
+        }
+      }
+      // Memoize + cooldown
+      _stacksMemo[cdKey] = columns;
+      _stacksCooldown[cdKey] = DateTime.now();
+      return FetchStacksResult(columns: columns, etag: etag, notModified: false);
+    }();
+    _stacksWithEtagFutures[cdKey] = future;
+    try {
+      return await future;
+    } finally {
+      _stacksWithEtagFutures.remove(cdKey);
     }
-    return FetchStacksResult(columns: columns, etag: etag, notModified: false);
   }
 
   Future<deck.Column?> createStack(String baseUrl, String user, String pass, int boardId, {required String title, int? order}) async {
@@ -423,33 +546,118 @@ class NextcloudDeckApi {
   }
 
   Future<List<CardItem>> fetchCards(String baseUrl, String username, String password, int boardId, int stackId, {bool priority = false}) async {
-    // Try REST first; fallback to OCS variants. Return empty only if all fail.
-    final headers = {..._restHeader, 'authorization': _basicAuth(username, password)};
-    http.Response? last;
-    for (final withIndex in [false, true]) {
-      try {
-        final uri = _buildUri(baseUrl, '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards', withIndex);
-        final res = await _send('GET', uri, headers, priority: priority);
-        last = res;
-        if (_isOk(res)) {
-          return _parseCardsList(res.body);
+    // If a working variant is known for this server, try it fast.
+    String cacheKey = baseUrl;
+    final negExp = _cardsVariantExpiry[cacheKey];
+    if (_cardsVariantCache.containsKey(cacheKey)) {
+      final templ = _cardsVariantCache[cacheKey];
+      if (templ != null) {
+        final path = templ.replaceAll('{boardId}', '$boardId').replaceAll('{stackId}', '$stackId');
+        final isOcs = path.startsWith('/ocs/');
+        final headers = {if (isOcs) ..._ocsHeader else ..._restHeader, 'authorization': _basicAuth(username, password)};
+        for (final withIndex in [false, true]) {
+          try {
+            final res = await _send('GET', _buildUri(baseUrl, path, withIndex), headers, priority: priority);
+            if (_isOk(res) && !_ocsFailure(res)) {
+              return _parseCardsList(res.body);
+            }
+          } catch (_) {}
         }
-      } catch (_) {}
+        // Cached variant failed: clear and probe again
+        _cardsVariantCache.remove(cacheKey);
+      }
+      // If we have a negative cache and it's still valid, fall back to stacks fetch to derive cards
+      if (templ == null && negExp != null && negExp.isAfter(DateTime.now())) {
+        return await _fallbackCardsViaStacks(baseUrl, username, password, boardId, stackId, priority: priority);
+      }
     }
-    for (final ocsPrefix in ['/ocs/v2.php', '/ocs/v1.php']) {
+
+    // Try robust REST variants first, then older REST path, then OCS v2/v1 variants.
+    final variants = <String>[
+      '/apps/deck/api/v1.1/boards/{boardId}/stacks/{stackId}/cards',
+      '/apps/deck/api/v1.0/boards/{boardId}/stacks/{stackId}/cards',
+      // Some servers expose cards list under stacks without board scope
+      '/apps/deck/api/v1.0/stacks/{stackId}/cards',
+      // OCS variants (some installations only expose OCS for cards list)
+      '/ocs/v2.php/apps/deck/api/v1.0/boards/{boardId}/stacks/{stackId}/cards',
+      '/ocs/v1.php/apps/deck/api/v1.0/boards/{boardId}/stacks/{stackId}/cards',
+    ];
+    http.Response? last;
+    for (final templ in variants) {
+      final path = templ.replaceAll('{boardId}', '$boardId').replaceAll('{stackId}', '$stackId');
+      final isOcs = path.startsWith('/ocs/');
+      final headers = {if (isOcs) ..._ocsHeader else ..._restHeader, 'authorization': _basicAuth(username, password)};
       for (final withIndex in [false, true]) {
         try {
-          final uri = _buildUri(baseUrl, '$ocsPrefix/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards', withIndex);
-          final res = await _send('GET', uri, {..._ocsHeader, 'authorization': _basicAuth(username, password)}, priority: priority);
+          final uri = _buildUri(baseUrl, path, withIndex);
+          final res = await _send('GET', uri, headers, priority: priority);
           last = res;
           if (_isOk(res)) {
+            _cardsVariantCache[cacheKey] = templ;
+            _cardsVariantExpiry.remove(cacheKey);
             return _parseCardsList(res.body);
           }
         } catch (_) {}
       }
     }
-    // Interpret as empty if every variant failed
+    // If all REST endpoints failed, set negative cache briefly and fallback via stacks.
+    _cardsVariantCache[cacheKey] = null;
+    _cardsVariantExpiry[cacheKey] = DateTime.now().add(_capsTtl);
+    return await _fallbackCardsViaStacks(baseUrl, username, password, boardId, stackId, priority: priority);
+  }
+
+  // Try board-wide cards listing for Deck; returns raw card maps to allow grouping by stackId
+  Future<List<Map<String, dynamic>>> _fetchBoardCardsRaw(String baseUrl, String user, String pass, int boardId) async {
+    final paths = <String>[
+      '/apps/deck/api/v1.1/boards/$boardId/cards',
+      '/apps/deck/api/v1.0/boards/$boardId/cards',
+      '/ocs/v2.php/apps/deck/api/v1.0/boards/$boardId/cards',
+      '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId/cards',
+    ];
+    for (final p in paths) {
+      final isOcs = p.startsWith('/ocs/');
+      final headers = {if (isOcs) ..._ocsHeader else ..._restHeader, 'authorization': _basicAuth(user, pass)};
+      for (final withIndex in [false, true]) {
+        try {
+          final res = await _send('GET', _buildUri(baseUrl, p, withIndex), headers, priority: false);
+          if (_isOk(res)) {
+            final data = _parseBodyOk(res);
+            if (data is List) {
+              return data.whereType<Map>().map((e) => (e as Map).cast<String, dynamic>()).toList();
+            }
+            if (data is Map && data['cards'] is List) {
+              return (data['cards'] as List).whereType<Map>().map((e) => (e as Map).cast<String, dynamic>()).toList();
+            }
+          }
+        } catch (_) {}
+      }
+    }
+    return const <Map<String, dynamic>>[];
+  }
+
+  Future<List<CardItem>> _fallbackCardsViaStacks(String baseUrl, String username, String password, int boardId, int stackId, {bool priority = false}) async {
+    try {
+      final cols = await fetchColumns(baseUrl, username, password, boardId, lazyCards: false, priority: priority, bypassCooldown: true);
+      final idx = cols.indexWhere((c) => c.id == stackId);
+      if (idx >= 0) return cols[idx].cards;
+    } catch (_) {}
     return const <CardItem>[];
+  }
+
+  bool _ocsFailure(http.Response res) {
+    try {
+      final obj = jsonDecode(res.body);
+      if (obj is Map && obj['ocs'] is Map) {
+        final meta = (obj['ocs']['meta'] as Map?)?.cast<String, dynamic>();
+        if (meta != null) {
+          final status = meta['status']?.toString().toLowerCase();
+          final code = (meta['statuscode'] as num?)?.toInt();
+          if (status != null && status != 'ok') return true;
+          if (code != null && code != 200) return true;
+        }
+      }
+    } catch (_) {}
+    return false;
   }
 
   List<CardItem> _parseCardsList(String body) {
@@ -815,7 +1023,7 @@ class NextcloudDeckApi {
     return false;
   }
 
-  Future<void> createCard(String baseUrl, String username, String password, int boardId, int columnId, String title, {String? description}) async {
+  Future<Map<String, dynamic>?> createCard(String baseUrl, String username, String password, int boardId, int columnId, String title, {String? description}) async {
     final body = jsonEncode({
       'title': title,
       if (description != null) 'description': description,
@@ -826,8 +1034,15 @@ class NextcloudDeckApi {
       password,
       '/apps/deck/api/v1.0/boards/$boardId/stacks/$columnId/cards',
       body,
+      priority: true,
     );
-    _ensureOk(res, 'Karte erstellen fehlgeschlagen');
+    final ok = _ensureOk(res, 'Karte erstellen fehlgeschlagen');
+    final data = _parseBodyOk(ok);
+    if (data is Map) return data.cast<String, dynamic>();
+    if (data is List && data.isNotEmpty && data.first is Map) {
+      return (data.first as Map).cast<String, dynamic>();
+    }
+    return null;
   }
 
   Future<bool> deleteCard(String baseUrl, String user, String pass, {required int boardId, required int stackId, required int cardId}) async {
@@ -1687,32 +1902,35 @@ class NextcloudDeckApi {
     return 'Basic $cred';
   }
 
-  Future<http.Response> _send(String method, Uri uri, Map<String, String> headers, {String? body, bool priority = false}) async {
+  Future<http.Response> _send(String method, Uri uri, Map<String, String> headers, {String? body, bool priority = false, Duration? timeout}) async {
     final logger = LogService();
-    final t0 = DateTime.now();
+    final tQueueStart = DateTime.now();
     http.Response res;
     try {
       await _acquireSlot(priority: priority);
+      final t0 = DateTime.now();
+      final to = timeout ?? _defaultTimeout;
       switch (method) {
         case 'GET':
-          res = await http.get(uri, headers: headers).timeout(_defaultTimeout);
+          res = await http.get(uri, headers: headers).timeout(to);
           break;
         case 'POST':
-          res = await http.post(uri, headers: headers, body: body).timeout(_defaultTimeout);
+          res = await http.post(uri, headers: headers, body: body).timeout(to);
           break;
         case 'PUT':
-          res = await http.put(uri, headers: headers, body: body).timeout(_defaultTimeout);
+          res = await http.put(uri, headers: headers, body: body).timeout(to);
           break;
         case 'PATCH':
-          res = await http.patch(uri, headers: headers, body: body).timeout(_defaultTimeout);
+          res = await http.patch(uri, headers: headers, body: body).timeout(to);
           break;
         case 'DELETE':
-          res = await http.delete(uri, headers: headers).timeout(_defaultTimeout);
+          res = await http.delete(uri, headers: headers).timeout(to);
           break;
         default:
-          res = await http.get(uri, headers: headers).timeout(_defaultTimeout);
+          res = await http.get(uri, headers: headers).timeout(to);
       }
       final dur = DateTime.now().difference(t0).inMilliseconds;
+      final queued = t0.difference(tQueueStart).inMilliseconds;
       final snippet = (res.body.length > 400) ? res.body.substring(0, 400) + '…' : res.body;
       logger.add(LogEntry(
         at: t0,
@@ -1720,18 +1938,22 @@ class NextcloudDeckApi {
         url: uri.toString(),
         status: res.statusCode,
         durationMs: dur,
+        queuedMs: queued > 0 ? queued : null,
         requestBody: body,
         responseSnippet: snippet,
       ));
       return res;
     } catch (e) {
-      final dur = DateTime.now().difference(t0).inMilliseconds;
+      final tNow = DateTime.now();
+      final dur = 0; // network duration unknown in error pre-send; keep 0
+      final queued = tNow.difference(tQueueStart).inMilliseconds;
       logger.add(LogEntry(
-        at: t0,
+        at: tQueueStart,
         method: method,
         url: uri.toString(),
         status: null,
         durationMs: dur,
+        queuedMs: queued > 0 ? queued : null,
         requestBody: body,
         error: e.toString(),
       ));

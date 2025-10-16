@@ -1,5 +1,5 @@
 # Änderungsübersicht aktuelle Version
-Nächste version: 1.4
+Nächste version: 1.5
 
 - A-Z-Sortierung aller Boards
 - Filterfunktion bei der Übersichtsseite der Boards

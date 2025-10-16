@@ -6,6 +6,7 @@ class LogEntry {
   final String url;
   final int? status;
   final int durationMs;
+  final int? queuedMs;
   final String? requestBody;
   final String? responseSnippet;
   final String? error;
@@ -15,6 +16,7 @@ class LogEntry {
     required this.method,
     required this.url,
     required this.durationMs,
+    this.queuedMs,
     this.status,
     this.requestBody,
     this.responseSnippet,
@@ -38,7 +40,8 @@ class LogService extends ChangeNotifier {
 
   void add(LogEntry e) {
     // Always print to console for dev visibility
-    debugPrint('[NET] ${e.method} ${e.url} -> ${e.status ?? '-'} in ${e.durationMs}ms');
+    final q = (e.queuedMs != null && e.queuedMs! > 0) ? ' (queued ${e.queuedMs}ms)' : '';
+    debugPrint('[NET] ${e.method} ${e.url} -> ${e.status ?? '-'} in ${e.durationMs}ms$q');
     if (e.error != null) {
       debugPrint('[NET][ERR] ${e.error}');
     } else if (e.responseSnippet != null && e.responseSnippet!.isNotEmpty) {
