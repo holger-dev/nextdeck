@@ -1,35 +1,35 @@
 # Next Deck
 
-Ein schlanker, schneller und datenschutzfreundlicher Nextcloud‑Deck‑Client mit nativer Cupertino‑UI. Gebaut mit Flutter, optimiert für iPhone und iPad – läuft auch auf macOS, Android, Windows, Linux und im Web.
+A lean, fast and privacy-friendly Nextcloud Deck client with native Cupertino UI. Built with Flutter, optimized for iPhone and iPad - also runs on macOS, Android, Windows, Linux and on the web.
 
-> Voraussetzung: Eine laufende Nextcloud‑Instanz mit aktivierter „Deck“‑App.
+> Prerequisite: A running Nextcloud instance with activated "Deck" app.
 
 
 ## Highlights
 
-- Drag & Drop: Karten innerhalb einer Liste und in andere Listen verschieben
-- Reorder & Position: Karten gezielt vor/ hinter andere Karten setzen, nach oben/unten bewegen
-- Labels & Farben: Sofortige Orientierung durch Farbcodes (inkl. Board‑Farbe aus Nextcloud)
-- Fälligkeiten: Überfällige rot, ≤24h orange – direkt auf der Karte sichtbar
-- Zuständigkeiten: Teammitglieder zuweisen und Verantwortung sichtbar machen
-- Markdown‑Beschreibung: Editor mit Live‑Anzeige im Kartendetail
-- Kommentare: Anzeigen, Antworten, Löschen; Zähler auf den Karten
-- Anhänge: Anzeigen, Öffnen/Teilen, Hochladen, Löschen (inkl. WebDAV‑Fallback)
-- Suche: Im aktiven Board oder global über alle Boards
-- Anstehend: Fällige Karten gruppiert (Überfällig, Heute, Morgen, Nächste 7 Tage, Später)
-- Übersicht: Aktives Board, weitere Boards, versteckte und archivierte Boards
-- Lokaler Modus: Komplett offline nutzbares, lokales Board (To Do / In Arbeit / Erledigt)
-- Dark Mode & smarte Farben: Angenehme Kontraste, gute Lesbarkeit
-- Mehrsprachig: Deutsch, Englisch, Spanisch (manuell wählbar oder Systemsprache)
+- Drag & Drop: Move cards within a list and to other lists
+- Reorder & Position: Place cards in front of/behind other cards, move up/down
+- Labels & colors: Immediate orientation through color codes (incl. board color from Nextcloud)
+- Due dates: Overdue red, ≤24h orange - directly visible on the card
+- Responsibilities: Assign team members and make responsibilities visible
+- Markdown description: Editor with live display in the card detail
+- Comments: Display, reply, delete; counter on the cards
+- Attachments: Display, open/share, upload, delete (incl. WebDAV fallback)
+- Search: In the active board or globally across all boards
+- Pending: Due cards grouped (Overdue, Today, Tomorrow, Next 7 days, Later)
+- Overview: Active board, other boards, hidden and archived boards
+- Local mode: Local board that can be used completely offline (To Do / In progress / Done)
+- Dark mode & smart colors: Pleasant contrasts, good readability
+- Multilingual: German, English, Spanish (manually selectable or system language)
 
-## Installation (lokal)
+## Installation (local)
 
-- Erforderlich: Flutter SDK (Dart ≥ 3.3), Xcode/Android Studio je nach Zielplattform
-- Projekt klonen und Abhängigkeiten laden:
+- Required: Flutter SDK (Dart ≥ 3.3), Xcode/Android Studio depending on target platform
+- Clone project and load dependencies:
   ```bash
   flutter pub get
   ```
-- Starten (Beispiele):
+- Start (example):
   ```bash
   # iOS Simulator / macOS
   flutter run -d ios
@@ -45,77 +45,76 @@ Ein schlanker, schneller und datenschutzfreundlicher Nextcloud‑Deck‑Client m
   flutter run -d windows
   flutter run -d linux
   ```
-- Erste Schritte in der App:
-  - In den Einstellungen unter „Konto“ die Server‑Adresse (ohne Schema; die App erzwingt HTTPS), Benutzername und Passwort (empfohlen: App‑Passwort) eintragen
-  - „Anmeldung testen“ ausführen; die App prüft Login, Deck‑Verfügbarkeit und lädt anschliessend Boards
+- First steps in the app:
+  - Enter the server address (without scheme; the app enforces HTTPS), user name and password (recommended: app password) in the settings under "Account"
+  - Execute "Test login"; the app checks login, deck availability and then loads boards
 
 
-## Sicherheit & Datenschutz
+## Security & data protection
 
-- HTTPS erzwungen: Eingaben werden automatisch auf `https://` normalisiert
-- Lokale Speicherung: Zugangsdaten werden per `flutter_secure_storage` sicher auf dem Gerät abgelegt
-- Lokaler Cache: Boards/Listen/Karten werden komprimiert in `Hive` gecacht (schnellere Ansichten, „Anstehend“)
-- Kein Tracking, keine Fremdserver: Deine Daten bleiben bei dir auf deinem Nextcloud‑Server
-
-
-## Funktionsüberblick
-
-- Boards laden, aktives Board auswählen und merken
-- Listen (Stacks) und Karten anzeigen, sortieren, verschieben, löschen
-- Karte als „erledigt“ markieren (automatisch in Done/Erledigt verschieben) und wieder „unerledigt“ setzen
-- Titel, Beschreibung (Markdown) und Fälligkeit bearbeiten
-- Labels, Assignees, Kommentar‑Zähler und Anhang‑Zähler
-- Kommentare abrufen, erstellen (inkl. Antworten), löschen
-- Dateianhänge hochladen (Multipart), herunterladen/öffnen/teilen; robust gegen Server‑Abweichungen
-- Globale Suche mit Bereich (aktuelles Board/alle Boards) und Fortschrittsanzeige
-- „Anstehend“ über alle Boards mit Due‑Buckets
-- Board‑Übersicht mit Verstecken/Einblenden und Archiv‑Sektion
-- Sprachen (de/en/es) manuell umschaltbar; System‑Fallback
+- HTTPS enforced: Entries are automatically normalized to `https://`
+- Local storage: Access data is stored securely on the device using `flutter_secure_storage`.
+- Local cache: boards/lists/maps are cached in compressed form in `Hive` (faster views, "pending")
+- No tracking, no external servers: Your data stays with you on your Nextcloud server
 
 
-## Lokaler Modus (Offline)
+## Overview of functions
 
-- In den Einstellungen aktivierbar („Lokales Board“)
-- Keine Netzverbindung, keine Zugangsdaten – ideal für schnelle lokale Listen
-- Vordefinierte Listen: To Do, In Arbeit, Erledigt
-- Wechsel zurück in den Online‑Modus jederzeit möglich (Zugangsdaten erneut setzen)
+- Load boards, select and memorize active board
+- Display, sort, move and delete lists (stacks) and cards
+- Mark card as "done" (automatically move to Done) and set to "undone" again
+- Edit title, description (Markdown) and due date
+- Labels, assignees, comment counter and attachment counter
+- Retrieve, create (incl. replies), delete comments
+- Upload file attachments (multipart), download/open/share; robust against server deviations
+- Global search with area (current board/all boards) and progress indicator
+- "Pending" across all boards with due buckets
+- Board overview with hide/show and archive section
+- Languages (de/en/es) can be switched manually; system fallback
 
 
-## Entwicklung
+## Local mode (offline)
 
-- Tech‑Stack: Flutter (Cupertino), Provider (State), Hive (Cache), flutter_secure_storage, http, flutter_markdown, file_picker, share_plus, url_launcher
-- Ordnerstruktur:
-  - `lib/pages`: Screens (Board, Übersicht, Anstehend, Einstellungen, Details, Suche)
-  - `lib/state`: `AppState` inkl. Caching, Warmup, Sync‑Logik
-  - `lib/services`: Nextcloud‑Deck‑API‑Client und Logging
-  - `lib/models`: Board/Stack/Karte/Label/User/Kommentar
-  - `lib/theme`: Theme & Farblogik
-  - `lib/l10n`: Lokalisierungen
+- Can be activated in the settings ("Local board")
+- No network connection, no access data - ideal for quick local lists
+- Predefined lists: To Do, In progress, Done
+- Switch back to online mode at any time (reset access data)
+
+
+## Development
+
+- Tech stack: Flutter (Cupertino), Provider (State), Hive (Cache), flutter_secure_storage, http, flutter_markdown, file_picker, share_plus, url_launcher
+- Folder structure:
+  - `lib/pages`: Screens (board, overview, pending, settings, details, search)
+  - `lib/state`: `AppState` incl. caching, warmup, sync logic
+  - `lib/services`: Nextcloud Deck API client and logging
+  - `lib/models`: board/stack/card/label/user/comment
+  - `lib/theme`: Theme & color logic
+  - `lib/l10n`: Localizations
 - Linting: `analysis_options.yaml` (flutter_lints)
-- Tests ausführen:
-  ```bash
-  flutter test
-  ```
+- Execute tests:
+ ```bash
+ flutter test
+ ```
 
 
-## Roadmap / Offene Punkte
+## Roadmap / Open points
 
-- Archivierte Karten einblendbar machen (Filter)
-- Weitere Übersetzungen
-- Push‑Benachrichtigungen für überfällige Karten
-- Listen und Boards neu anlegen (für v2.0 geplant)
+- Make archived maps visible (filter)
+- Further translations
+- Push notifications for overdue cards
+- Create new lists and boards (planned for v2.0)
 
-Details und Historie siehe `TODO.md` und `STORE.md`.
-
-
-## Häufige Fragen (FAQ)
-
-- „Die Anmeldung schlägt fehl“: Nutze am besten ein App‑Passwort. Stelle sicher, dass die Deck‑App in deiner Nextcloud aktiv ist.
-- „Warum nur HTTPS?“: Aus Sicherheitsgründen werden alle Verbindungen auf HTTPS erzwungen.
-- „Wo liegen meine Daten?“: Alle Inhalte verbleiben auf deinem Nextcloud‑Server; lokal liegen nur verschlüsselte Zugangsdaten und ein schlanker Cache.
+For details about store content see `STORE.md`.
 
 
-## Hinweis
+## Frequently asked questions (FAQ)
 
-Dieses Projekt steht in keiner Verbindung zur Nextcloud GmbH. „Nextcloud“ und „Deck“ sind Marken ihrer jeweiligen Inhaber.
+- "The login fails": It is best to use an app password. Make sure that the Deck app is active in your Nextcloud.
+- "Why only HTTPS?": For security reasons, all connections are forced to HTTPS.
+- "Where is my data stored?": All content remains on your Nextcloud server; only encrypted access data and a slim cache are stored locally.
 
+
+## Note
+
+This project is not affiliated with Nextcloud GmbH. "Nextcloud" and "Deck" are trademarks of their respective owners.
