@@ -30,17 +30,15 @@ class _SettingsPageState extends State<SettingsPage> {
   String _stripScheme(String v) {
     var x = v.trim();
     if (x.isEmpty) return x;
-    // Preserve server-relative input, normalize leading/trailing slashes
+    // Preserve server-relative input exactly as typed
     if (x.startsWith('/')) {
-      x = '/' + x.replaceFirst(RegExp(r'^/+'), '');
-      if (x.length > 1 && x.endsWith('/')) x = x.substring(0, x.length - 1);
       return x;
     }
     // Remove explicit scheme or protocol-relative
     x = x.replaceFirst(RegExp(r'^\s*(https?:\/\/|\/\/)'), '');
-    // Remove accidental leading slashes
+    // Remove accidental leading slashes (host should be domain[:port][path])
     x = x.replaceFirst(RegExp(r'^\/+'), '');
-    if (x.endsWith('/')) x = x.substring(0, x.length - 1);
+    // Do not strip trailing slash here; keep user input visible
     return x;
   }
 
@@ -172,18 +170,19 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
               controller: _url,
               placeholder: l10n.urlPlaceholder,
               keyboardType: TextInputType.url,
+              textCapitalization: TextCapitalization.none,
               autocorrect: false,
               enableSuggestions: false,
-              prefix: _slashMode
-                  ? null
-                  : Padding(
-                      padding: const EdgeInsets.only(left: 6, right: 4),
-                      child: Text('https://', style: TextStyle(color: CupertinoColors.secondaryLabel.resolveFrom(context))),
-                    ),
-              suffix: _hostValid ? null : const Padding(
-                padding: EdgeInsets.only(right: 6),
-                child: Icon(CupertinoIcons.exclamationmark_circle, color: CupertinoColors.systemRed, size: 18),
+              prefix: Padding(
+                padding: const EdgeInsets.only(left: 6, right: 4),
+                child: Text('https://', style: TextStyle(color: CupertinoColors.secondaryLabel.resolveFrom(context))),
               ),
+              suffix: _hostValid
+                  ? null
+                  : const Padding(
+                      padding: EdgeInsets.only(right: 6),
+                      child: Icon(CupertinoIcons.exclamationmark_circle, color: CupertinoColors.systemRed, size: 18),
+                    ),
               decoration: BoxDecoration(
                 color: CupertinoColors.tertiarySystemFill.resolveFrom(context),
                 borderRadius: BorderRadius.circular(8),

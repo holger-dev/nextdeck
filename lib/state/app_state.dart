@@ -1236,7 +1236,7 @@ class AppState extends ChangeNotifier {
           if (c.id == stackId) deck.Column(id: c.id, title: c.title, cards: cards) else c
       ];
       _columnsByBoard[boardId] = updated;
-      _clearStackProtection(boardId, stackId);
+      // Do not clear protection here; it prevents flicker right after local create/update
       // Persist updated columns to local cache so partial progress survives app restarts
       cache.put('columns_$boardId', updated.map((c) => {
         'id': c.id,
@@ -1508,7 +1508,7 @@ class AppState extends ChangeNotifier {
       return;
     }
     if (_baseUrl == null || _username == null || _password == null) return;
-    // Server-first: create on server, then insert returned card immediately, then kick a prioritized refresh
+    // Server-first: create on server, then insert returned card immediately, then perform a focused board sync
     _protectStack(boardId, columnId);
     final created = await api.createCard(_baseUrl!, _username!, _password!, boardId, columnId, title, description: description);
     if (created != null) {
@@ -1534,29 +1534,46 @@ class AppState extends ChangeNotifier {
         }).toList());
         notifyListeners();
       }
-    }
-    // Kick a prioritized refresh of the whole board to converge fully (do not block UI)
-    unawaited(() async {
+      // Immediately attempt to refresh the whole board to converge, ensuring the newly created card is present
       try {
-        final fetched = await api.fetchColumns(_baseUrl!, _username!, _password!, boardId, lazyCards: false, priority: true, bypassCooldown: true);
-        final prev = _columnsByBoard[boardId] ?? const <deck.Column>[];
-        final merged = _mergeColumnsReplaceChangedForBoard(boardId, prev, fetched);
-        _columnsByBoard[boardId] = merged;
-        cache.put('columns_$boardId', merged.map((c) => {
-          'id': c.id,
-          'title': c.title,
-          'cards': c.cards.map((k) => {
-            'id': k.id,
-            'title': k.title,
-            'description': k.description,
-            'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-            'labels': k.labels.map((l) => {'id': l.id, 'title': l.title, 'color': l.color}).toList(),
-          }).toList(),
-        }).toList());
-        notifyListeners();
-      } catch (_) {}
-      _clearStackProtection(boardId, columnId);
-    }());
+        final int newId = newCard.id;
+        bool updatedWithServer = false;
+        for (int attempt = 0; attempt < 3; attempt++) {
+          final fetched = await api.fetchColumns(_baseUrl!, _username!, _password!, boardId, lazyCards: false, priority: true, bypassCooldown: true);
+          // Check if the target column contains the newly created card
+          final target = fetched.firstWhere(
+            (c) => c.id == columnId,
+            orElse: () => deck.Column(id: columnId, title: '', cards: const []),
+          );
+          if (target.cards.any((k) => k.id == newId)) {
+            final prev = _columnsByBoard[boardId] ?? const <deck.Column>[];
+            final merged = _mergeColumnsReplaceChangedForBoard(boardId, prev, fetched);
+            _columnsByBoard[boardId] = merged;
+            cache.put('columns_$boardId', merged.map((c) => {
+              'id': c.id,
+              'title': c.title,
+              'cards': c.cards.map((k) => {
+                'id': k.id,
+                'title': k.title,
+                'description': k.description,
+                'duedate': k.due?.toUtc().millisecondsSinceEpoch,
+                'labels': k.labels.map((l) => {'id': l.id, 'title': l.title, 'color': l.color}).toList(),
+              }).toList(),
+            }).toList());
+            notifyListeners();
+            updatedWithServer = true;
+            break;
+          }
+          // small backoff before retry to allow server to index the new card
+          await Future.delayed(const Duration(milliseconds: 350));
+        }
+        // Clear protection after we made a best-effort sync
+        _clearStackProtection(boardId, columnId);
+      } catch (_) {
+        // Keep local optimistic card if sync fails; protection will timeout
+      }
+    }
+    // Done
   }
 
   // Delete a card (optimistic local update, best-effort server call)
