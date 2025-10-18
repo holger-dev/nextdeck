@@ -26,10 +26,19 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _testOk = false;
   bool _updatingUrl = false;
   bool _hostValid = true;
+  bool _slashMode = false;
   String _stripScheme(String v) {
     var x = v.trim();
     if (x.isEmpty) return x;
+    // Preserve server-relative input, normalize leading/trailing slashes
+    if (x.startsWith('/')) {
+      x = '/' + x.replaceFirst(RegExp(r'^/+'), '');
+      if (x.length > 1 && x.endsWith('/')) x = x.substring(0, x.length - 1);
+      return x;
+    }
+    // Remove explicit scheme or protocol-relative
     x = x.replaceFirst(RegExp(r'^\s*(https?:\/\/|\/\/)'), '');
+    // Remove accidental leading slashes
     x = x.replaceFirst(RegExp(r'^\/+'), '');
     if (x.endsWith('/')) x = x.substring(0, x.length - 1);
     return x;
@@ -38,13 +47,18 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _isValidHost(String input) {
     final s = input.trim();
     if (s.isEmpty) return false;
+    if (s == '/') return true; // allow server-relative root
     if (s.contains(' ')) return false;
+    // Split optional path after host[:port]
+    final firstSlash = s.indexOf('/');
+    final hostPortPart = firstSlash >= 0 ? s.substring(0, firstSlash) : s;
+    final pathPart = firstSlash >= 0 ? s.substring(firstSlash) : '';
     // Allow localhost
-    if (s.toLowerCase() == 'localhost') return true;
+    if (hostPortPart.toLowerCase() == 'localhost') return true;
     // Allow host:port
     final hostPort = RegExp(r'^(\[?[A-Za-z0-9\-.:]+\]?):?(\d{1,5})?$');
-    if (!hostPort.hasMatch(s)) return false;
-    final parts = s.split(':');
+    if (!hostPort.hasMatch(hostPortPart)) return false;
+    final parts = hostPortPart.split(':');
     final host = parts.first;
     // IPv4
     final ipv4 = RegExp(r'^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$');
@@ -54,15 +68,22 @@ class _SettingsPageState extends State<SettingsPage> {
         final v = int.tryParse(m.group(i)!);
         if (v == null || v < 0 || v > 255) return false;
       }
+      // For an IPv4 host, accept optional path
+      if (pathPart.isEmpty) return true;
+      if (!pathPart.startsWith('/')) return false;
+      if (pathPart.contains(' ')) return false;
       return true;
     }
-    // Hostname labels
+    // Hostname labels (non-IP)
     if (host.length > 253) return false;
     final labels = host.split('.');
     if (labels.any((l) => l.isEmpty || l.length > 63)) return false;
     final labelRx = RegExp(r'^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$');
     if (!labels.every((l) => labelRx.hasMatch(l))) return false;
-    // Accept single-label (intranets), but prefer at least one dot; not enforced
+    // Optional base path allowed; must start with '/' and contain no spaces
+    if (pathPart.isEmpty) return true;
+    if (!pathPart.startsWith('/')) return false;
+    if (pathPart.contains(' ')) return false;
     return true;
   }
 
@@ -73,6 +94,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final initialUrl = app.baseUrl == null ? '' : _stripScheme(app.baseUrl!);
     _url = TextEditingController(text: initialUrl);
     _hostValid = initialUrl.isEmpty ? true : _isValidHost(initialUrl);
+    _slashMode = initialUrl.trim().startsWith('/');
     _user = TextEditingController(text: app.username ?? '');
     _pass = TextEditingController(text: '');
     // live cleanup: strip any entered scheme so the field stays domain-only
@@ -86,8 +108,9 @@ class _SettingsPageState extends State<SettingsPage> {
         _updatingUrl = false;
       }
       final valid = n.isEmpty ? true : _isValidHost(n);
-      if (valid != _hostValid) {
-        setState(() => _hostValid = valid);
+      final slash = n.trim().startsWith('/');
+      if (valid != _hostValid || slash != _slashMode) {
+        setState(() { _hostValid = valid; _slashMode = slash; });
       }
     });
   }
@@ -108,7 +131,7 @@ class _SettingsPageState extends State<SettingsPage> {
       setState(() { _testMsg = l10n.invalidServerAddress; });
       return;
     }
-    final fullUrl = 'https://$hostOnly';
+    final fullUrl = hostOnly.startsWith('/') ? hostOnly : 'https://$hostOnly';
     app.setCredentials(baseUrl: fullUrl, username: _user.text, password: _pass.text);
     setState(() { _testing = true; _testMsg = null; _testOk = false; });
     try {
@@ -151,10 +174,12 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
               keyboardType: TextInputType.url,
               autocorrect: false,
               enableSuggestions: false,
-              prefix: Padding(
-                padding: const EdgeInsets.only(left: 6, right: 4),
-                child: Text('https://', style: TextStyle(color: CupertinoColors.secondaryLabel.resolveFrom(context))),
-              ),
+              prefix: _slashMode
+                  ? null
+                  : Padding(
+                      padding: const EdgeInsets.only(left: 6, right: 4),
+                      child: Text('https://', style: TextStyle(color: CupertinoColors.secondaryLabel.resolveFrom(context))),
+                    ),
               suffix: _hostValid ? null : const Padding(
                 padding: EdgeInsets.only(right: 6),
                 child: Icon(CupertinoIcons.exclamationmark_circle, color: CupertinoColors.systemRed, size: 18),

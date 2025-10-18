@@ -478,7 +478,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.1.1;
+                MARKETING_VERSION = 1.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.nextdeck.RunnerTests;
         PRODUCT_NAME = "Next Deck";
 				SWIFT_VERSION = 5.0;
@@ -493,7 +493,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.1.1;
+                MARKETING_VERSION = 1.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.nextdeck.RunnerTests;
         PRODUCT_NAME = "Next Deck";
 				SWIFT_VERSION = 5.0;
@@ -508,7 +508,7 @@
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 0.1.1;
+                MARKETING_VERSION = 1.5.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.nextdeck.RunnerTests;
         PRODUCT_NAME = "Next Deck";
 				SWIFT_VERSION = 5.0;

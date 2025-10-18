@@ -823,10 +823,16 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // Ensure we always talk HTTPS regardless of user input
+  // Ensure we always talk HTTPS regardless of user input, except when using server-relative base ('/' or '/path')
   String _normalizeHttps(String input) {
     var v = input.trim();
     if (v.isEmpty) return v;
+    if (v.startsWith('/')) {
+      // Normalize multiple leading slashes and trailing slash (except root)
+      v = '/' + v.replaceFirst(RegExp(r'^/+'), '');
+      if (v.length > 1 && v.endsWith('/')) v = v.substring(0, v.length - 1);
+      return v; // keep server-relative base for Web deployments
+    }
     if (v.startsWith('http://')) v = 'https://' + v.substring(7);
     if (!v.startsWith('https://')) v = 'https://' + v.replaceFirst(RegExp(r'^/+'), '');
     // Remove trailing slash to avoid double slashes when building paths

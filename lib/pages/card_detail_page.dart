@@ -519,10 +519,16 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                   final stackId = _currentStackId ?? widget.stackId;
                                   if (base == null || user == null || pass == null) return;
 
-                                  // Try to open web links directly
+                                  // Try to open web links directly (absolute or server-relative)
                                   final dataStr = (a['data'] ?? '').toString();
-                                  if (dataStr.startsWith('http://') || dataStr.startsWith('https://')) {
-                                    try { await launchUrl(Uri.parse(dataStr), mode: LaunchMode.externalApplication); } catch (_) {}
+                                  if (dataStr.startsWith('http://') || dataStr.startsWith('https://') || dataStr.startsWith('/')) {
+                                    try {
+                                      final String b = (base ?? '').trim();
+                                      final Uri uri = dataStr.startsWith('/')
+                                          ? ((b.isEmpty || b == '/') ? Uri.parse(dataStr) : Uri.parse(b + dataStr))
+                                          : Uri.parse(dataStr);
+                                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                    } catch (_) {}
                                     return;
                                   }
 
@@ -594,7 +600,8 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                   if (boardId2 == null || stackId2 == null) return;
                                   // Best-effort type detection for API (helps some servers): default file, link if URL
                                   final dataStr = (a['data'] ?? '').toString();
-                                  final isUrl = dataStr.startsWith('http://') || dataStr.startsWith('https://');
+                                  // Treat absolute and server-relative links as URL-type attachments
+                                  final isUrl = dataStr.startsWith('http://') || dataStr.startsWith('https://') || dataStr.startsWith('/');
                                   final delType = isUrl ? 'link' : 'file';
                                   final ok = await app.api.deleteCardAttachmentEnsureStack(base, user, pass, boardId: boardId2, stackId: stackId2, cardId: widget.cardId, attachmentId: id!, type: delType);
                                   if (ok) {
@@ -899,8 +906,14 @@ class _CardDetailPageState extends State<CardDetailPage> {
 
                                                 // Open web links directly
                                                 final dataStr = (a['data'] ?? '').toString();
-                                                if (dataStr.startsWith('http://') || dataStr.startsWith('https://')) {
-                                                  try { await launchUrl(Uri.parse(dataStr), mode: LaunchMode.externalApplication); } catch (_) {}
+                                                if (dataStr.startsWith('http://') || dataStr.startsWith('https://') || dataStr.startsWith('/')) {
+                                                  try {
+                                                    final String b = (base ?? '').trim();
+                                                    final Uri uri = dataStr.startsWith('/')
+                                                        ? ((b.isEmpty || b == '/') ? Uri.parse(dataStr) : Uri.parse(b + dataStr))
+                                                        : Uri.parse(dataStr);
+                                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                                  } catch (_) {}
                                                   return;
                                                 }
 
@@ -973,7 +986,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                   final stackId2 = _currentStackId ?? widget.stackId;
                                                   if (boardId2 == null || stackId2 == null) return;
                                                 final dataStr = (a['data'] ?? '').toString();
-                                                final isUrl = dataStr.startsWith('http://') || dataStr.startsWith('https://');
+                                                final isUrl = dataStr.startsWith('http://') || dataStr.startsWith('https://') || dataStr.startsWith('/');
                                                 final delType = isUrl ? 'link' : 'file';
                                                 final ok = await app.api.deleteCardAttachmentEnsureStack(base, user, pass, boardId: boardId2, stackId: stackId2, cardId: widget.cardId, attachmentId: id!, type: delType);
                                                 if (ok) setState(() {

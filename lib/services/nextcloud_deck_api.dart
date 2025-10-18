@@ -1882,13 +1882,30 @@ class NextcloudDeckApi {
   bool _isOk(http.Response res) => res.statusCode >= 200 && res.statusCode < 300;
 
   Uri _buildUri(String baseUrl, String path, bool withIndexPhp) {
-    // Enforce HTTPS regardless of provided scheme
+    // Support server-relative baseUrl ('/' or '/path') to use current origin (especially on Web)
     String b = baseUrl.trim();
+    final p = path.startsWith('/') ? path : '/$path';
+    if (b.isEmpty || b.startsWith('/')) {
+      // Normalize base prefix
+      final basePrefix = b.isEmpty
+          ? ''
+          : (() {
+              var s = '/' + b.replaceFirst(RegExp(r'^/+'), '');
+              if (s.length > 1 && s.endsWith('/')) s = s.substring(0, s.length - 1);
+              return s;
+            })();
+      final prefix = withIndexPhp ? '/index.php' : '';
+      final uri = Uri.parse('$basePrefix$prefix$p');
+      if (p.startsWith('/ocs/') && !uri.queryParameters.containsKey('format')) {
+        return uri.replace(queryParameters: {...uri.queryParameters, 'format': 'json'});
+      }
+      return uri;
+    }
+    // Enforce HTTPS regardless of provided scheme
     if (b.startsWith('http://')) b = 'https://' + b.substring(7);
     if (!b.startsWith('https://')) b = 'https://' + b.replaceFirst(RegExp(r'^/+'), '');
     final normalized = b.endsWith('/') ? b.substring(0, b.length - 1) : b;
     final prefix = withIndexPhp ? '/index.php' : '';
-    final p = path.startsWith('/') ? path : '/$path';
     final uri = Uri.parse('$normalized$prefix$p');
     // Add `format=json` for OCS if not present
     if (p.startsWith('/ocs/') && !uri.queryParameters.containsKey('format')) {
