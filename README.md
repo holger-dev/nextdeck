@@ -1,6 +1,6 @@
 # Next Deck
 
-A lean, fast and privacy-friendly Nextcloud Deck client with native Cupertino UI. Built with Flutter, optimized for iPhone and iPad - also runs on macOS, Android, Windows, Linux and on the web.
+A clean, fast and privacy-friendly Nextcloud Deck client with native Cupertino UI. Built with Flutter, optimized for iPhone and iPad - also runs on macOS, Android, Windows, Linux and on the web.
 
 > Prerequisite: A running Nextcloud instance with activated "Deck" app.
 
