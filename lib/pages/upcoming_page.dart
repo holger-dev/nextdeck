@@ -60,7 +60,8 @@ class _UpcomingPageState extends State<UpcomingPage> {
       final cols = app.columnsForBoard(b.id);
       for (final c in cols) {
         final ct = c.title.toLowerCase();
-        if (ct.contains('done') || ct.contains('erledigt')) continue; // skip done columns
+        if (ct.contains('done') || ct.contains('erledigt'))
+          continue; // skip done columns
         for (final k in c.cards) {
           if (k.due == null) continue;
           _addHit(b.id, b.title, c.id, c.title, k);
@@ -70,22 +71,34 @@ class _UpcomingPageState extends State<UpcomingPage> {
     if (mounted) setState(() {});
   }
 
-  void _addHit(int boardId, String boardTitle, int stackId, String stackTitle, CardItem card) {
+  void _addHit(int boardId, String boardTitle, int stackId, String stackTitle,
+      CardItem card) {
     if (card.due == null) return;
     final st = stackTitle.toLowerCase();
     if (st.contains('done') || st.contains('erledigt')) return; // skip done
     final now = DateTime.now();
     final due = card.due!;
-    final hit = _DueHit(boardId: boardId, boardTitle: boardTitle, stackId: stackId, stackTitle: stackTitle, card: card);
+    final hit = _DueHit(
+        boardId: boardId,
+        boardTitle: boardTitle,
+        stackId: stackId,
+        stackTitle: stackTitle,
+        card: card);
     if (due.isBefore(now)) {
       _overdue.add(hit);
       return;
     }
     final startToday = DateTime(now.year, now.month, now.day);
-    final endToday = startToday.add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1));
+    final endToday = startToday
+        .add(const Duration(days: 1))
+        .subtract(const Duration(milliseconds: 1));
     final startTomorrow = startToday.add(const Duration(days: 1));
-    final endTomorrow = startToday.add(const Duration(days: 2)).subtract(const Duration(milliseconds: 1));
-    final end7 = startToday.add(const Duration(days: 8)).subtract(const Duration(milliseconds: 1));
+    final endTomorrow = startToday
+        .add(const Duration(days: 2))
+        .subtract(const Duration(milliseconds: 1));
+    final end7 = startToday
+        .add(const Duration(days: 8))
+        .subtract(const Duration(milliseconds: 1));
     if (!due.isBefore(startToday) && !due.isAfter(endToday)) {
       _today.add(hit);
     } else if (!due.isBefore(startTomorrow) && !due.isAfter(endTomorrow)) {
@@ -101,7 +114,11 @@ class _UpcomingPageState extends State<UpcomingPage> {
     final app = context.read<AppState>();
     final refs = app.upcomingCacheRefs();
     if (refs != null) {
-      _overdue.clear(); _today.clear(); _tomorrow.clear(); _next7.clear(); _later.clear();
+      _overdue.clear();
+      _today.clear();
+      _tomorrow.clear();
+      _next7.clear();
+      _later.clear();
       _resolve(refs['overdue']!, _overdue);
       _resolve(refs['today']!, _today);
       _resolve(refs['tomorrow']!, _tomorrow);
@@ -122,10 +139,13 @@ class _UpcomingPageState extends State<UpcomingPage> {
   void _resolve(List<Map<String, int>> refs, List<_DueHit> into) {
     final app = context.read<AppState>();
     for (final e in refs) {
-      final bId = e['b']!; final sId = e['s']!; final cId = e['c']!;
+      final bId = e['b']!;
+      final sId = e['s']!;
+      final cId = e['c']!;
       final cols = app.columnsForBoard(bId);
       if (cols.isEmpty) continue;
-      final stack = cols.firstWhere((x) => x.id == sId, orElse: () => cols.first);
+      final stack =
+          cols.firstWhere((x) => x.id == sId, orElse: () => cols.first);
       final ct = stack.title.toLowerCase();
       if (ct.contains('done') || ct.contains('erledigt')) continue;
       CardItem? card;
@@ -136,15 +156,26 @@ class _UpcomingPageState extends State<UpcomingPage> {
         card = stack.cards.first;
       }
       if (card == null) continue;
-      final board = app.boards.firstWhere((b) => b.id == bId, orElse: () => Board(id: bId, title: 'Board'));
-      into.add(_DueHit(boardId: bId, boardTitle: board.title, stackId: sId, stackTitle: stack.title, card: card));
+      final board = app.boards.firstWhere((b) => b.id == bId,
+          orElse: () => Board(id: bId, title: 'Board'));
+      into.add(_DueHit(
+          boardId: bId,
+          boardTitle: board.title,
+          stackId: sId,
+          stackTitle: stack.title,
+          card: card));
     }
   }
 
   Future<void> _ensureAllAndRebuild() async {
     final app = context.read<AppState>();
     final mySeq = ++_seq;
-    setState(() { _loading = true; _currentBoardTitle = null; _totalBoards = 0; _doneBoards = 0; });
+    setState(() {
+      _loading = true;
+      _currentBoardTitle = null;
+      _totalBoards = 0;
+      _doneBoards = 0;
+    });
     var boards = app.boards.where((x) => !x.archived).toList();
     if (boards.isEmpty && !app.localMode) {
       try {
@@ -172,13 +203,18 @@ class _UpcomingPageState extends State<UpcomingPage> {
       _doneBoards++;
       if (mounted) setState(() {});
     }
-    int cmp(CardItem a, CardItem b) => (a.due ?? DateTime.now()).compareTo(b.due ?? DateTime.now());
+    int cmp(CardItem a, CardItem b) =>
+        (a.due ?? DateTime.now()).compareTo(b.due ?? DateTime.now());
     _overdue.sort((a, b) => cmp(a.card, b.card));
     _today.sort((a, b) => cmp(a.card, b.card));
     _tomorrow.sort((a, b) => cmp(a.card, b.card));
     _next7.sort((a, b) => cmp(a.card, b.card));
     _later.sort((a, b) => cmp(a.card, b.card));
-    if (mounted) setState(() { _loading = false; _currentBoardTitle = null; });
+    if (mounted)
+      setState(() {
+        _loading = false;
+        _currentBoardTitle = null;
+      });
   }
 
   @override
@@ -194,14 +230,10 @@ class _UpcomingPageState extends State<UpcomingPage> {
     }
     final currentTab = app.tabController.index;
     if (_lastSeenTabIndex != currentTab) {
-      // Trigger auto-load when this tab becomes active
+      // Beim Betreten nur lokal neu aufbauen, keine automatischen Netz-Requests
       if (currentTab == 0) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) {
-            _rebuildFromCacheAndTrackLoading();
-            // Starte dezenten Hintergrund-Scan automatisch beim Betreten
-            context.read<AppState>().scanUpcoming();
-          }
+          if (mounted) _rebuildFromCacheAndTrackLoading();
         });
       }
       _lastSeenTabIndex = currentTab;
@@ -209,23 +241,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
     return CupertinoPageScaffold(
       backgroundColor: AppTheme.appBackground(app),
       navigationBar: CupertinoNavigationBar(
-        middle: Builder(builder: (context) {
-          final total = app.upcomingScanTotal;
-          final done = app.upcomingScanDone;
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(l10n.upcomingTitle),
-              if (total > 0) ...[
-                const SizedBox(width: 8),
-                Text(
-                  '$done / $total',
-                  style: const TextStyle(fontSize: 12, color: CupertinoColors.systemGrey),
-                ),
-              ],
-            ],
-          );
-        }),
+        middle: Text(l10n.upcomingTitle),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -252,7 +268,10 @@ class _UpcomingPageState extends State<UpcomingPage> {
                                 onPressed: () {
                                   Navigator.of(ctx).pop();
                                   final target = e.key;
-                                  _pageController.animateToPage(target, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+                                  _pageController.animateToPage(target,
+                                      duration:
+                                          const Duration(milliseconds: 220),
+                                      curve: Curves.easeOut);
                                 },
                                 child: Text(e.value),
                               ))
@@ -272,12 +291,15 @@ class _UpcomingPageState extends State<UpcomingPage> {
               onPressed: (app.upcomingScanActive || app.isSyncing)
                   ? null
                   : () async {
-                      // Fast, parallel full sync of all boards for smooth UX with many boards
-                      await context.read<AppState>().syncAllBoardsFast(concurrency: 6);
+                      final state = context.read<AppState>();
+                      await state.runWithSyncing(() async {
+                        await state.refreshUpcomingDelta(forceFull: true);
+                      });
                       if (mounted) _rebuildFromCacheAndTrackLoading();
                     },
-              onLongPress: () { if (!(app.upcomingScanActive || app.isSyncing)) context.read<AppState>().scanUpcoming(force: true); },
-              child: (app.upcomingScanActive || app.isSyncing) ? const CupertinoActivityIndicator() : const Icon(CupertinoIcons.refresh),
+              child: (app.upcomingScanActive || app.isSyncing)
+                  ? const CupertinoActivityIndicator()
+                  : const Icon(CupertinoIcons.refresh),
             ),
           ],
         ),
@@ -285,6 +307,13 @@ class _UpcomingPageState extends State<UpcomingPage> {
       child: SafeArea(
         child: Stack(
           children: [
+            if (app.bootSyncing &&
+                _overdue.isEmpty &&
+                _today.isEmpty &&
+                _tomorrow.isEmpty &&
+                _next7.isEmpty &&
+                _later.isEmpty)
+              const Center(child: CupertinoActivityIndicator()),
             // moved overlay below to ensure it paints on top
             if (!app.upcomingSingleColumn)
               Padding(
@@ -293,7 +322,8 @@ class _UpcomingPageState extends State<UpcomingPage> {
                   controller: _pageController,
                   onPageChanged: (i) => setState(() => _page = i),
                   children: [
-                    _bucketView(context, l10n.overdueLabel, _overdue, emphasize: true),
+                    _bucketView(context, l10n.overdueLabel, _overdue,
+                        emphasize: true),
                     _bucketView(context, l10n.today, _today),
                     _bucketView(context, l10n.tomorrow, _tomorrow),
                     _bucketView(context, l10n.next7Days, _next7),
@@ -308,11 +338,16 @@ class _UpcomingPageState extends State<UpcomingPage> {
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
                     children: [
-                      ..._buildSection(context, l10n.overdueLabel, _overdue, emphasize: true, showEmptyHeaderOnly: true),
-                      ..._buildSection(context, l10n.today, _today, showEmptyHeaderOnly: true),
-                      ..._buildSection(context, l10n.tomorrow, _tomorrow, showEmptyHeaderOnly: true),
-                      ..._buildSection(context, l10n.next7Days, _next7, showEmptyHeaderOnly: true),
-                      ..._buildSection(context, l10n.later, _later, showEmptyHeaderOnly: true),
+                      ..._buildSection(context, l10n.overdueLabel, _overdue,
+                          emphasize: true, showEmptyHeaderOnly: true),
+                      ..._buildSection(context, l10n.today, _today,
+                          showEmptyHeaderOnly: true),
+                      ..._buildSection(context, l10n.tomorrow, _tomorrow,
+                          showEmptyHeaderOnly: true),
+                      ..._buildSection(context, l10n.next7Days, _next7,
+                          showEmptyHeaderOnly: true),
+                      ..._buildSection(context, l10n.later, _later,
+                          showEmptyHeaderOnly: true),
                     ],
                   ),
                 ),
@@ -326,7 +361,9 @@ class _UpcomingPageState extends State<UpcomingPage> {
                   onTap: () {
                     final target = (_pageController.page ?? 0).floor() - 1;
                     if (target >= 0) {
-                      _pageController.animateToPage(target, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+                      _pageController.animateToPage(target,
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOut);
                     }
                   },
                   icon: CupertinoIcons.chevron_back,
@@ -341,7 +378,9 @@ class _UpcomingPageState extends State<UpcomingPage> {
                   onTap: () {
                     final target = (_pageController.page ?? 0).ceil() + 1;
                     if (target <= 4) {
-                      _pageController.animateToPage(target, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+                      _pageController.animateToPage(target,
+                          duration: const Duration(milliseconds: 220),
+                          curve: Curves.easeOut);
                     }
                   },
                   icon: CupertinoIcons.chevron_forward,
@@ -357,19 +396,26 @@ class _UpcomingPageState extends State<UpcomingPage> {
     );
   }
 
-  Widget _bucketView(BuildContext context, String title, List<_DueHit> items, {bool emphasize = false}) {
+  Widget _bucketView(BuildContext context, String title, List<_DueHit> items,
+      {bool emphasize = false}) {
     final app = context.watch<AppState>();
     final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
     final Color containerBg = () {
       if (!app.smartColors) {
-        return CupertinoTheme.of(context).brightness == Brightness.dark ? CupertinoColors.black : CupertinoColors.systemGrey6;
+        return CupertinoTheme.of(context).brightness == Brightness.dark
+            ? CupertinoColors.black
+            : CupertinoColors.systemGrey6;
       }
       final baseCol = AppTheme.preferredColumnColor(app, title, 0);
-      return app.isDarkMode ? AppTheme.blend(baseCol, const Color(0xFF000000), 0.75) : AppTheme.blend(baseCol, const Color(0xFFFFFFFF), 0.55);
+      return app.isDarkMode
+          ? AppTheme.blend(baseCol, const Color(0xFF000000), 0.75)
+          : AppTheme.blend(baseCol, const Color(0xFFFFFFFF), 0.55);
     }();
     final baseForCards = app.smartColors
         ? AppTheme.preferredColumnColor(app, title, 0)
-        : (CupertinoTheme.of(context).brightness == Brightness.dark ? CupertinoColors.systemGrey5 : CupertinoColors.systemGrey6);
+        : (CupertinoTheme.of(context).brightness == Brightness.dark
+            ? CupertinoColors.systemGrey5
+            : CupertinoColors.systemGrey6);
     return Container(
       decoration: BoxDecoration(color: containerBg),
       child: Column(
@@ -377,50 +423,77 @@ class _UpcomingPageState extends State<UpcomingPage> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Center(child: Text(title, textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: emphasize ? CupertinoColors.destructiveRed : null))),
+            child: Center(
+                child: Text(title,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
+                        color: emphasize
+                            ? CupertinoColors.destructiveRed
+                            : null))),
           ),
           if (items.isEmpty)
-            Expanded(child: Center(child: Text(L10n.of(context).noDueCards, style: const TextStyle(color: CupertinoColors.systemGrey))))
+            Expanded(
+                child: Center(
+                    child: Text(L10n.of(context).noDueCards,
+                        style: const TextStyle(
+                            color: CupertinoColors.systemGrey))))
           else
             Expanded(
-            child: CupertinoScrollbar(
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-                itemCount: items.length,
-                itemBuilder: (context, i) {
-                  final h = items[i];
-                  final bg = AppTheme.cardBgFromBase(app, h.card.labels, baseForCards, i);
-                  final textOn = AppTheme.textOn(bg);
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 6),
-                    child: _UpcomingTile(
-                      title: h.card.title,
-                      description: h.card.description,
-                      labels: h.card.labels,
-                      due: h.card.due,
-                      background: bg,
-                      contextColor: AppTheme.textOn(bg),
-                      meta: '${h.boardTitle} · ${h.stackTitle}',
-                      onTap: () {
-                        Navigator.of(context).push(CupertinoPageRoute(builder: (_) => CardDetailPage(cardId: h.card.id, boardId: h.boardId, stackId: h.stackId, bgColor: bg)));
-                      },
-                    ),
-                  );
-                },
+              child: CupertinoScrollbar(
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                  itemCount: items.length,
+                  itemBuilder: (context, i) {
+                    final h = items[i];
+                    final bg = AppTheme.cardBgFromBase(
+                        app, h.card.labels, baseForCards, i);
+                    final textOn = AppTheme.textOn(bg);
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: _UpcomingTile(
+                        title: h.card.title,
+                        description: h.card.description,
+                        labels: h.card.labels,
+                        due: h.card.due,
+                        background: bg,
+                        contextColor: AppTheme.textOn(bg),
+                        meta: '${h.boardTitle} · ${h.stackTitle}',
+                        onTap: () {
+                          Navigator.of(context).push(CupertinoPageRoute(
+                              builder: (_) => CardDetailPage(
+                                  cardId: h.card.id,
+                                  boardId: h.boardId,
+                                  stackId: h.stackId,
+                                  bgColor: bg)));
+                        },
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  List<Widget> _buildSection(BuildContext context, String title, List<_DueHit> items, {bool emphasize = false, bool showEmpty = false, bool showEmptyHeaderOnly = false}) {
+  List<Widget> _buildSection(
+      BuildContext context, String title, List<_DueHit> items,
+      {bool emphasize = false,
+      bool showEmpty = false,
+      bool showEmptyHeaderOnly = false}) {
     if (items.isEmpty && !showEmpty && !showEmptyHeaderOnly) return const [];
-    final themeColor = CupertinoTheme.of(context).textTheme.textStyle.color ?? CupertinoColors.label;
+    final themeColor = CupertinoTheme.of(context).textTheme.textStyle.color ??
+        CupertinoColors.label;
     final header = Padding(
       padding: const EdgeInsets.fromLTRB(4, 12, 4, 6),
-      child: Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: emphasize ? CupertinoColors.destructiveRed : themeColor)),
+      child: Text(title,
+          style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: emphasize ? CupertinoColors.destructiveRed : themeColor)),
     );
     if (items.isEmpty) {
       if (showEmptyHeaderOnly) {
@@ -431,7 +504,9 @@ class _UpcomingPageState extends State<UpcomingPage> {
           header,
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: Text(L10n.of(context).noDueCards, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 13)),
+            child: Text(L10n.of(context).noDueCards,
+                style: const TextStyle(
+                    color: CupertinoColors.systemGrey, fontSize: 13)),
           ),
         ];
       }
@@ -446,8 +521,13 @@ class _UpcomingPageState extends State<UpcomingPage> {
                 final app = context.read<AppState>();
                 final cols = app.columnsForBoard(h.boardId);
                 final colIdx = cols.indexWhere((c) => c.id == h.stackId);
-                final bg = AppTheme.cardBg(app, h.card.labels, colIdx < 0 ? 0 : colIdx, 0);
-                return CardDetailPage(cardId: h.card.id, boardId: h.boardId, stackId: h.stackId, bgColor: bg);
+                final bg = AppTheme.cardBg(
+                    app, h.card.labels, colIdx < 0 ? 0 : colIdx, 0);
+                return CardDetailPage(
+                    cardId: h.card.id,
+                    boardId: h.boardId,
+                    stackId: h.stackId,
+                    bgColor: bg);
               }));
             },
             child: Align(
@@ -455,9 +535,12 @@ class _UpcomingPageState extends State<UpcomingPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(h.card.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Text(h.card.title,
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
-                  Text('${h.boardTitle} · ${h.stackTitle}', style: const TextStyle(fontSize: 12, color: CupertinoColors.systemGrey)),
+                  Text('${h.boardTitle} · ${h.stackTitle}',
+                      style: const TextStyle(
+                          fontSize: 12, color: CupertinoColors.systemGrey)),
                 ],
               ),
             ),
@@ -498,7 +581,10 @@ class _UpcomingTile extends StatelessWidget {
           color: background,
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
-            BoxShadow(color: CupertinoColors.black.withOpacity(0.08), blurRadius: 12, offset: const Offset(0, 4)),
+            BoxShadow(
+                color: CupertinoColors.black.withOpacity(0.08),
+                blurRadius: 12,
+                offset: const Offset(0, 4)),
           ],
           border: Border.all(color: CupertinoColors.separator.withOpacity(0.6)),
         ),
@@ -506,7 +592,11 @@ class _UpcomingTile extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: textColor)),
+            Text(title,
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: textColor)),
             if (labels.isNotEmpty) ...[
               const SizedBox(height: 6),
               Wrap(
@@ -521,10 +611,13 @@ class _UpcomingTile extends StatelessWidget {
                 final app = context.watch<AppState>();
                 if (app.showDescriptionText) {
                   final s = description!;
-                  final trimmed = s.length > 200 ? (s.substring(0, 200) + '…') : s;
+                  final trimmed =
+                      s.length > 200 ? (s.substring(0, 200) + '…') : s;
                   return Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Text(trimmed, style: TextStyle(color: textColor.withOpacity(0.85), fontSize: 14)),
+                    child: Text(trimmed,
+                        style: TextStyle(
+                            color: textColor.withOpacity(0.85), fontSize: 14)),
                   );
                 }
                 return const SizedBox.shrink();
@@ -534,14 +627,23 @@ class _UpcomingTile extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 8),
                 child: Row(
                   children: [
-                    Icon(CupertinoIcons.time, size: 14, color: _dueColor(due!, textColor)),
+                    Icon(CupertinoIcons.time,
+                        size: 14, color: _dueColor(due!, textColor)),
                     const SizedBox(width: 4),
                     Text(
                       _formatDue(due!),
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _dueColor(due!, textColor)),
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: _dueColor(due!, textColor)),
                     ),
                     const SizedBox(width: 8),
-                    Expanded(child: Text(meta, style: TextStyle(fontSize: 12, color: textColor.withOpacity(0.75)), overflow: TextOverflow.ellipsis)),
+                    Expanded(
+                        child: Text(meta,
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: textColor.withOpacity(0.75)),
+                            overflow: TextOverflow.ellipsis)),
                   ],
                 ),
               ),
@@ -561,8 +663,11 @@ class _LabelChipMini extends StatelessWidget {
     final tc = _bestTextColor(bg);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
-      child: Text(label.title.isEmpty ? 'Label' : label.title, style: TextStyle(color: tc, fontSize: 12, fontWeight: FontWeight.w600)),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
+      child: Text(label.title.isEmpty ? 'Label' : label.title,
+          style:
+              TextStyle(color: tc, fontSize: 12, fontWeight: FontWeight.w600)),
     );
   }
 }
@@ -583,8 +688,12 @@ Color? _parseDeckColor(String raw) {
   if (raw.isEmpty) return null;
   var s = raw.trim();
   if (s.startsWith('#')) s = s.substring(1);
-  if (s.length == 3) { s = s.split('').map((c) => '$c$c').join(); }
-  if (s.length == 6) { s = 'FF$s'; }
+  if (s.length == 3) {
+    s = s.split('').map((c) => '$c$c').join();
+  }
+  if (s.length == 6) {
+    s = 'FF$s';
+  }
   if (s.length != 8) return null;
   final val = int.tryParse(s, radix: 16);
   if (val == null) return null;
@@ -592,8 +701,11 @@ Color? _parseDeckColor(String raw) {
 }
 
 Color _bestTextColor(Color bg) {
-  final r = bg.red / 255.0; final g = bg.green / 255.0; final b = bg.blue / 255.0;
-  double lum(double c) => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4) as double;
+  final r = bg.red / 255.0;
+  final g = bg.green / 255.0;
+  final b = bg.blue / 255.0;
+  double lum(double c) =>
+      c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4) as double;
   final L = 0.2126 * lum(r) + 0.7152 * lum(g) + 0.0722 * lum(b);
   return L > 0.5 ? CupertinoColors.black : CupertinoColors.white;
 }
@@ -611,7 +723,11 @@ class _Arrow extends StatelessWidget {
       behavior: HitTestBehavior.opaque,
       child: Padding(
         padding: const EdgeInsets.all(6),
-        child: Icon(icon, size: 26, color: enabled ? CupertinoColors.systemGrey : CupertinoColors.systemGrey4),
+        child: Icon(icon,
+            size: 26,
+            color: enabled
+                ? CupertinoColors.systemGrey
+                : CupertinoColors.systemGrey4),
       ),
     );
   }
@@ -623,5 +739,10 @@ class _DueHit {
   final int stackId;
   final String stackTitle;
   final CardItem card;
-  _DueHit({required this.boardId, required this.boardTitle, required this.stackId, required this.stackTitle, required this.card});
+  _DueHit(
+      {required this.boardId,
+      required this.boardTitle,
+      required this.stackId,
+      required this.stackTitle,
+      required this.card});
 }

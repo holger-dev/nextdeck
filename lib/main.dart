@@ -7,6 +7,7 @@ import 'pages/overview_page.dart';
 import 'pages/board_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/upcoming_page.dart';
+import 'pages/splash_page.dart';
 import 'l10n/app_localizations.dart';
 
 import 'package:hive_flutter/hive_flutter.dart';
@@ -60,6 +61,18 @@ class NextDeckApp extends StatelessWidget {
         },
       ),
     );
+  }
+}
+
+class _HomeSwitcher extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final needSplash = (!app.localMode && app.baseUrl != null && app.username != null)
+        ? (app.bootSyncing || app.boards.isEmpty)
+        : false;
+    if (needSplash) return const SplashPage();
+    return const _RootTabs();
   }
 }
 

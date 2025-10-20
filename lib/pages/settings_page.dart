@@ -7,7 +7,6 @@ import '../services/log_service.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
 import 'debug_log_page.dart';
-import 'board_sharing_page.dart';
 import '../version.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -102,13 +101,17 @@ class _SettingsPageState extends State<SettingsPage> {
       final n = _stripScheme(t);
       if (t != n) {
         _updatingUrl = true;
-        _url.value = TextEditingValue(text: n, selection: TextSelection.collapsed(offset: n.length));
+        _url.value = TextEditingValue(
+            text: n, selection: TextSelection.collapsed(offset: n.length));
         _updatingUrl = false;
       }
       final valid = n.isEmpty ? true : _isValidHost(n);
       final slash = n.trim().startsWith('/');
       if (valid != _hostValid || slash != _slashMode) {
-        setState(() { _hostValid = valid; _slashMode = slash; });
+        setState(() {
+          _hostValid = valid;
+          _slashMode = slash;
+        });
       }
     });
   }
@@ -126,29 +129,123 @@ class _SettingsPageState extends State<SettingsPage> {
     final l10n = L10n.of(context);
     final hostOnly = _stripScheme(_url.text);
     if (!_isValidHost(hostOnly)) {
-      setState(() { _testMsg = l10n.invalidServerAddress; });
+      setState(() {
+        _testMsg = l10n.invalidServerAddress;
+      });
       return;
     }
     final fullUrl = hostOnly.startsWith('/') ? hostOnly : 'https://$hostOnly';
-    app.setCredentials(baseUrl: fullUrl, username: _user.text, password: _pass.text);
-    setState(() { _testing = true; _testMsg = null; _testOk = false; });
+    app.setCredentials(
+        baseUrl: fullUrl, username: _user.text, password: _pass.text);
+    setState(() {
+      _testing = true;
+      _testMsg = null;
+      _testOk = false;
+    });
     try {
       final ok = await app.testLogin();
       if (!ok) {
-        setState(() { _testing = false; _testMsg = l10n.errorMsg('Login'); _testOk = false; });
+        setState(() {
+          _testing = false;
+          _testMsg = l10n.errorMsg('Login');
+          _testOk = false;
+        });
         return;
       }
       // Prüfen, ob Deck aktiviert ist
-      final hasDeck = await app.api.hasDeckEnabled(app.baseUrl!, app.username!, _pass.text);
+      final hasDeck =
+          await app.api.hasDeckEnabled(app.baseUrl!, app.username!, _pass.text);
       if (!hasDeck) {
-        setState(() { _testing = false; _testMsg = l10n.errorMsg('Deck-App nicht verfügbar'); _testOk = false; });
+        setState(() {
+          _testing = false;
+          _testMsg = l10n.errorMsg('Deck-App nicht verfügbar');
+          _testOk = false;
+        });
         return;
       }
       await app.refreshBoards();
+      if (!mounted) return;
       final count = app.boards.length;
-      setState(() { _testing = false; _testMsg = count > 0 ? l10n.loginSuccessBoards(count) : l10n.loginOkNoBoards; _testOk = true; });
+      final warmTotal = app.boards.where((b) => !b.archived).length;
+      if (warmTotal == 0) {
+        setState(() {
+          _testing = false;
+          _testMsg = l10n.loginOkNoBoards;
+          _testOk = true;
+        });
+        await app.runWithSyncing(() async {
+          await app.configureSyncForCurrentAccount();
+        });
+        return;
+      }
+      setState(() {
+        _testMsg = l10n.initialSyncStarting(warmTotal);
+        _testOk = true;
+      });
+      try {
+        await app.runWithSyncing(() async {
+          await app.warmAllBoards(
+            boardConcurrency: 2,
+            listConcurrency: 2,
+            onProgress: (done, total) {
+              if (!mounted) return;
+              setState(() {
+                _testMsg = done >= total
+                    ? l10n.initialSyncDone(total)
+                    : l10n.initialSyncProgress(done, total);
+              });
+            },
+          );
+          await app.configureSyncForCurrentAccount();
+        });
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _testing = false;
+          _testMsg = l10n.errorMsg(e.toString());
+          _testOk = false;
+        });
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        _testing = false;
+        _testMsg = l10n.initialSyncDone(warmTotal);
+        _testOk = true;
+      });
     } catch (e) {
-      setState(() { _testing = false; _testMsg = l10n.errorMsg(e.toString()); _testOk = false; });
+      setState(() {
+        _testing = false;
+        _testMsg = l10n.errorMsg(e.toString());
+        _testOk = false;
+      });
+    }
+  }
+
+  Future<void> _confirmClearLocalData() async {
+    final l10n = L10n.of(context);
+    final result = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text(l10n.clearLocalDataConfirmTitle),
+        content: Text(l10n.clearLocalDataConfirmMessage),
+        actions: [
+          CupertinoDialogAction(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(l10n.cancel)),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.clearLocalDataConfirmAction),
+          ),
+        ],
+      ),
+    );
+    if (result == true && mounted) {
+      final app = context.read<AppState>();
+      await app.runWithSyncing(() async {
+        await app.clearLocalData();
+      });
     }
   }
 
@@ -159,12 +256,14 @@ class _SettingsPageState extends State<SettingsPage> {
     final l10n = L10n.of(context);
     return CupertinoPageScaffold(
       backgroundColor: AppTheme.appBackground(app),
-      navigationBar: CupertinoNavigationBar(middle: Text(l10n.settingsTitle)) ,
+      navigationBar: CupertinoNavigationBar(middle: Text(l10n.settingsTitle)),
       child: SafeArea(
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text(l10n.nextcloudAccess,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             CupertinoTextField(
               controller: _url,
@@ -175,24 +274,33 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
               enableSuggestions: false,
               prefix: Padding(
                 padding: const EdgeInsets.only(left: 6, right: 4),
-                child: Text('https://', style: TextStyle(color: CupertinoColors.secondaryLabel.resolveFrom(context))),
+                child: Text('https://',
+                    style: TextStyle(
+                        color: CupertinoColors.secondaryLabel
+                            .resolveFrom(context))),
               ),
               suffix: _hostValid
                   ? null
                   : const Padding(
                       padding: EdgeInsets.only(right: 6),
-                      child: Icon(CupertinoIcons.exclamationmark_circle, color: CupertinoColors.systemRed, size: 18),
+                      child: Icon(CupertinoIcons.exclamationmark_circle,
+                          color: CupertinoColors.systemRed, size: 18),
                     ),
               decoration: BoxDecoration(
                 color: CupertinoColors.tertiarySystemFill.resolveFrom(context),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _hostValid ? CupertinoColors.separator.resolveFrom(context) : CupertinoColors.systemRed, width: _hostValid ? 0.5 : 1.0),
+                border: Border.all(
+                    color: _hostValid
+                        ? CupertinoColors.separator.resolveFrom(context)
+                        : CupertinoColors.systemRed,
+                    width: _hostValid ? 0.5 : 1.0),
               ),
             ),
             const SizedBox(height: 6),
             Text(
               l10n.httpsEnforcedInfo,
-              style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12),
+              style: const TextStyle(
+                  color: CupertinoColors.systemGrey, fontSize: 12),
             ),
             const SizedBox(height: 8),
             CupertinoTextField(
@@ -210,16 +318,23 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
             const SizedBox(height: 6),
             Text(
               l10n.appPasswordHint,
-              style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12),
+              style: const TextStyle(
+                  color: CupertinoColors.systemGrey, fontSize: 12),
             ),
             const SizedBox(height: 12),
             CupertinoButton.filled(
               onPressed: _testing ? null : _saveAndTest,
-              child: _testing ? const CupertinoActivityIndicator() : Text(l10n.loginAndLoadBoards),
+              child: _testing
+                  ? const CupertinoActivityIndicator()
+                  : Text(l10n.loginAndLoadBoards),
             ),
             if (_testMsg != null) ...[
               const SizedBox(height: 8),
-              Text(_testMsg!, style: TextStyle(color: _testOk ? CupertinoColors.activeGreen : CupertinoColors.destructiveRed)),
+              Text(_testMsg!,
+                  style: TextStyle(
+                      color: _testOk
+                          ? CupertinoColors.activeGreen
+                          : CupertinoColors.destructiveRed)),
             ],
             const SizedBox(height: 12),
             const _Divider(),
@@ -227,9 +342,11 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
             // Konto
             const _Divider(),
             const SizedBox(height: 20),
-            
+
             // Startup tab selection
-            Text(L10n.of(context).startupPage, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text(L10n.of(context).startupPage,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Builder(builder: (ctx) {
               final options = <int, Widget>{
@@ -249,28 +366,35 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
             const _Divider(),
             const SizedBox(height: 20),
             // Performance
-            Text(L10n.of(context).performance, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text(L10n.of(context).performance,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            Row(children: [ Expanded(child: Text(L10n.of(context).bgPreloadShort)), CupertinoSwitch(value: app.backgroundPreload, onChanged: (v) => app.setBackgroundPreload(v)) ]),
-            const SizedBox(height: 6),
-            Text(L10n.of(context).bgPreloadHelpShort, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
-            const SizedBox(height: 6),
-            Text(L10n.of(context).fullSyncManualHint, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            Text(L10n.of(context).fullSyncManualHint,
+                style: const TextStyle(
+                    color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 8),
-            Row(children: [ Expanded(child: Text(L10n.of(context).upcomingSingleColumnLabel)), CupertinoSwitch(value: app.upcomingSingleColumn, onChanged: (v) => app.setUpcomingSingleColumn(v)) ]),
+            Row(children: [
+              Expanded(child: Text(L10n.of(context).upcomingSingleColumnLabel)),
+              CupertinoSwitch(
+                  value: app.upcomingSingleColumn,
+                  onChanged: (v) => app.setUpcomingSingleColumn(v))
+            ]),
             const SizedBox(height: 6),
-            Text(L10n.of(context).upcomingSingleColumnHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            Text(L10n.of(context).upcomingSingleColumnHelp,
+                style: const TextStyle(
+                    color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 8),
-            Text(L10n.of(context).upcomingProgressHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
-            const SizedBox(height: 12),
-            Row(children: [ Expanded(child: Text(L10n.of(context).cacheBoardsLocalShort)), CupertinoSwitch(value: app.cacheBoardsLocal, onChanged: (v) => app.setCacheBoardsLocal(v)) ]),
-            const SizedBox(height: 6),
-            Text(L10n.of(context).cacheBoardsLocalHelpShort, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            Text(L10n.of(context).upcomingProgressHelp,
+                style: const TextStyle(
+                    color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),
             // Language selector
-            Text(l10n.language, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text(l10n.language,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -278,7 +402,11 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
                   child: Text(
                     app.localeCode == null
                         ? l10n.systemLanguage
-                        : (app.localeCode == 'de' ? l10n.german : app.localeCode == 'es' ? l10n.spanish : l10n.english),
+                        : (app.localeCode == 'de'
+                            ? l10n.german
+                            : app.localeCode == 'es'
+                                ? l10n.spanish
+                                : l10n.english),
                   ),
                 ),
                 CupertinoButton(
@@ -289,12 +417,35 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
                       builder: (ctx) => CupertinoActionSheet(
                         title: Text(l10n.language),
                         actions: [
-                          CupertinoActionSheetAction(onPressed: () { Navigator.of(ctx).pop(); app.setLocale(null); }, child: Text(l10n.systemLanguage)),
-                          CupertinoActionSheetAction(onPressed: () { Navigator.of(ctx).pop(); app.setLocale('de'); }, child: Text(l10n.german)),
-                          CupertinoActionSheetAction(onPressed: () { Navigator.of(ctx).pop(); app.setLocale('en'); }, child: Text(l10n.english)),
-                          CupertinoActionSheetAction(onPressed: () { Navigator.of(ctx).pop(); app.setLocale('es'); }, child: Text(l10n.spanish)),
+                          CupertinoActionSheetAction(
+                              onPressed: () {
+                                Navigator.of(ctx).pop();
+                                app.setLocale(null);
+                              },
+                              child: Text(l10n.systemLanguage)),
+                          CupertinoActionSheetAction(
+                              onPressed: () {
+                                Navigator.of(ctx).pop();
+                                app.setLocale('de');
+                              },
+                              child: Text(l10n.german)),
+                          CupertinoActionSheetAction(
+                              onPressed: () {
+                                Navigator.of(ctx).pop();
+                                app.setLocale('en');
+                              },
+                              child: Text(l10n.english)),
+                          CupertinoActionSheetAction(
+                              onPressed: () {
+                                Navigator.of(ctx).pop();
+                                app.setLocale('es');
+                              },
+                              child: Text(l10n.spanish)),
                         ],
-                        cancelButton: CupertinoActionSheetAction(onPressed: () => Navigator.of(ctx).pop(), isDefaultAction: true, child: Text(l10n.cancel)),
+                        cancelButton: CupertinoActionSheetAction(
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            isDefaultAction: true,
+                            child: Text(l10n.cancel)),
                       ),
                     );
                   },
@@ -305,8 +456,10 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),
-            
-            Text(l10n.activeBoardSection, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+
+            Text(l10n.activeBoardSection,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             // Startup board behavior
             Row(
@@ -324,12 +477,15 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
                 groupValue: app.startupBoardMode,
                 children: options,
                 onValueChanged: (v) {
-                  if (v != null) context.read<AppState>().setStartupBoardMode(v);
+                  if (v != null)
+                    context.read<AppState>().setStartupBoardMode(v);
                 },
               );
             }),
             const SizedBox(height: 6),
-            Text(l10n.startupBoardHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            Text(l10n.startupBoardHelp,
+                style: const TextStyle(
+                    color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),
             if (app.boards.isEmpty)
               Text(l10n.noBoardsPleaseTest)
@@ -341,7 +497,11 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
                   if (d != null) {
                     return app.boards.firstWhere(
                       (b) => b.id == d,
-                      orElse: () => app.activeBoard ?? (app.boards.isNotEmpty ? app.boards.first : Board.empty()),
+                      orElse: () =>
+                          app.activeBoard ??
+                          (app.boards.isNotEmpty
+                              ? app.boards.first
+                              : Board.empty()),
                     );
                   }
                   return app.activeBoard;
@@ -352,12 +512,15 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),
-            Text(l10n.appearance, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text(l10n.appearance,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(child: Text(l10n.darkMode)),
-                CupertinoSwitch(value: isDark, onChanged: (v) => app.setDarkMode(v)),
+                CupertinoSwitch(
+                    value: isDark, onChanged: (v) => app.setDarkMode(v)),
               ],
             ),
             const SizedBox(height: 12),
@@ -365,31 +528,43 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(child: Text(l10n.smartColors)),
-                CupertinoSwitch(value: app.smartColors, onChanged: (v) => app.setSmartColors(v)),
+                CupertinoSwitch(
+                    value: app.smartColors,
+                    onChanged: (v) => app.setSmartColors(v)),
               ],
             ),
             const SizedBox(height: 6),
-            Text(l10n.smartColorsHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            Text(l10n.smartColorsHelp,
+                style: const TextStyle(
+                    color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(child: Text(l10n.showDescriptionAlways)),
-                CupertinoSwitch(value: app.showDescriptionText, onChanged: (v) => app.setShowDescriptionText(v)),
+                CupertinoSwitch(
+                    value: app.showDescriptionText,
+                    onChanged: (v) => app.setShowDescriptionText(v)),
               ],
             ),
             const SizedBox(height: 6),
-            Text(l10n.showDescriptionHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            Text(l10n.showDescriptionHelp,
+                style: const TextStyle(
+                    color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(child: Text(l10n.overviewShowBoardInfo)),
-                CupertinoSwitch(value: app.overviewShowBoardInfo, onChanged: (v) => app.setOverviewShowBoardInfo(v)),
+                CupertinoSwitch(
+                    value: app.overviewShowBoardInfo,
+                    onChanged: (v) => app.setOverviewShowBoardInfo(v)),
               ],
             ),
             const SizedBox(height: 6),
-            Text(l10n.overviewShowBoardInfoHelp, style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12)),
+            Text(l10n.overviewShowBoardInfoHelp,
+                style: const TextStyle(
+                    color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),
@@ -402,11 +577,14 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: CupertinoColors.systemYellow),
                 ),
-                child: Text(l10n.localModeBanner, style: const TextStyle(fontSize: 13)),
+                child: Text(l10n.localModeBanner,
+                    style: const TextStyle(fontSize: 13)),
               ),
               const SizedBox(height: 16),
             ],
-            Text(l10n.localBoardSection, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text(l10n.localBoardSection,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -422,12 +600,16 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
                           title: Text(l10n.localModeEnableTitle),
                           content: Text(l10n.localModeEnableContent),
                           actions: [
-                            CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: Text(l10n.cancel)),
+                            CupertinoDialogAction(
+                                onPressed: () => Navigator.of(ctx).pop(),
+                                child: Text(l10n.cancel)),
                             CupertinoDialogAction(
                               isDefaultAction: true,
                               onPressed: () async {
                                 Navigator.of(ctx).pop();
-                                await context.read<AppState>().setLocalMode(true);
+                                await context
+                                    .read<AppState>()
+                                    .setLocalMode(true);
                               },
                               child: Text(l10n.enable),
                             ),
@@ -444,7 +626,9 @@ Text(l10n.nextcloudAccess, style: const TextStyle(fontSize: 18, fontWeight: Font
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),
-Text(l10n.developer, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text(l10n.developer,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -460,21 +644,39 @@ Text(l10n.developer, style: const TextStyle(fontSize: 18, fontWeight: FontWeight
             ),
             const SizedBox(height: 8),
             CupertinoButton(
-              onPressed: () => Navigator.of(context).push(CupertinoPageRoute(builder: (_) => const DebugLogPage())),
+              onPressed: () => Navigator.of(context).push(
+                  CupertinoPageRoute(builder: (_) => const DebugLogPage())),
               child: Text(l10n.viewLogs),
             ),
             const SizedBox(height: 20),
             const _Divider(),
             const SizedBox(height: 12),
+            Text(L10n.of(context).clearLocalDataHelp,
+                style: const TextStyle(
+                    color: CupertinoColors.systemGrey, fontSize: 12)),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: CupertinoButton(
+                color: CupertinoDynamicColor.resolve(
+                    CupertinoColors.systemRed, context),
+                onPressed: app.isSyncing ? null : _confirmClearLocalData,
+                child: Text(L10n.of(context).clearLocalData),
+              ),
+            ),
+            const SizedBox(height: 16),
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
                 () {
                   final idx = kAppVersion.indexOf('+');
-                  final pretty = idx > 0 ? '${kAppVersion.substring(0, idx)} (${kAppVersion.substring(idx + 1)})' : kAppVersion;
+                  final pretty = idx > 0
+                      ? '${kAppVersion.substring(0, idx)} (${kAppVersion.substring(idx + 1)})'
+                      : kAppVersion;
                   return '${l10n.appVersionLabel}: $pretty';
                 }(),
-                style: const TextStyle(color: CupertinoColors.systemGrey, fontSize: 12),
+                style: const TextStyle(
+                    color: CupertinoColors.systemGrey, fontSize: 12),
               ),
             ),
           ],
@@ -502,14 +704,18 @@ class _ThemeSelector extends StatelessWidget {
                     margin: const EdgeInsets.symmetric(horizontal: 4),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: i == selected ? CupertinoColors.activeBlue : CupertinoColors.separator),
+                      border: Border.all(
+                          color: i == selected
+                              ? CupertinoColors.activeBlue
+                              : CupertinoColors.separator),
                       gradient: LinearGradient(colors: [
                         Color(AppTheme.palettesLight[i][0]),
                         Color(AppTheme.palettesLight[i][3]),
                       ]),
                     ),
                     alignment: Alignment.center,
-                    child: Text('Theme ${i + 1}', style: const TextStyle(fontSize: 12)),
+                    child: Text('Theme ${i + 1}',
+                        style: const TextStyle(fontSize: 12)),
                   ),
                 ),
               ))
@@ -522,12 +728,17 @@ class _BoardPicker extends StatelessWidget {
   final List<Board> boards;
   final Board? selected;
   final ValueChanged<Board> onChanged;
-  const _BoardPicker({required this.boards, required this.selected, required this.onChanged});
+  const _BoardPicker(
+      {required this.boards, required this.selected, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     final controller = FixedExtentScrollController(
-      initialItem: selected == null ? 0 : boards.indexWhere((b) => b.id == selected!.id).clamp(0, boards.length - 1),
+      initialItem: selected == null
+          ? 0
+          : boards
+              .indexWhere((b) => b.id == selected!.id)
+              .clamp(0, boards.length - 1),
     );
     return SizedBox(
       height: 180,

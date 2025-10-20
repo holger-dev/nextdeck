@@ -8,8 +8,9 @@ class CardItem {
   final DateTime? due;
   final List<Label> labels;
   final List<UserRef> assignees;
+  final int? order;
 
-  const CardItem({required this.id, required this.title, this.description, this.due, this.labels = const [], this.assignees = const []});
+  const CardItem({required this.id, required this.title, this.description, this.due, this.labels = const [], this.assignees = const [], this.order});
 
   factory CardItem.fromJson(Map<String, dynamic> json) {
     DateTime? due;
@@ -68,6 +69,7 @@ class CardItem {
       due: due,
       labels: labels,
       assignees: assignees,
+      order: (json['order'] is num) ? (json['order'] as num).toInt() : (json['position'] is num ? (json['position'] as num).toInt() : null),
     );
   }
 }

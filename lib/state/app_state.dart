@@ -9,10 +9,13 @@ import '../models/card_item.dart';
 import '../models/label.dart';
 import '../models/user_ref.dart';
 import '../services/nextcloud_deck_api.dart';
+import '../sync/sync_service.dart';
+import '../sync/sync_service_impl.dart';
 
 class AppState extends ChangeNotifier {
   final storage = const FlutterSecureStorage();
-  final CupertinoTabController tabController = CupertinoTabController(initialIndex: 1);
+  final CupertinoTabController tabController =
+      CupertinoTabController(initialIndex: 1);
   final Box cache = Hive.box('nextdeck_cache');
 
   bool _initialized = false;
@@ -30,10 +33,9 @@ class AppState extends ChangeNotifier {
   bool _localMode = false;
   static const int localBoardId = -1;
   bool _isWarming = false;
-  bool _backgroundPreload = false; // user setting: warm stacks in background
-  bool _cacheBoardsLocal = true; // user setting: store boards locally + conditional sync
   int _startupTabIndex = 1; // 0=Upcoming,1=Board,2=Overview
-  bool _upcomingSingleColumn = false; // user setting: show Upcoming as single list
+  bool _upcomingSingleColumn =
+      false; // user setting: show Upcoming as single list
   int? _defaultBoardId; // user-selected default board for startup
   String _startupBoardMode = 'default'; // 'default' | 'last'
 
@@ -61,8 +63,6 @@ class AppState extends ChangeNotifier {
   String? get localeCode => _localeCode;
   bool get isSyncing => _isSyncing;
   bool get isWarming => _isWarming;
-  bool get backgroundPreload => _backgroundPreload;
-  bool get cacheBoardsLocal => _cacheBoardsLocal;
   int get startupTabIndex => _startupTabIndex;
   bool get upcomingSingleColumn => _upcomingSingleColumn;
   String? get baseUrl => _baseUrl;
@@ -75,7 +75,8 @@ class AppState extends ChangeNotifier {
   List<Board> get boards => _boards;
   List<deck.Column> columnsForActiveBoard() =>
       _activeBoard == null ? [] : (_columnsByBoard[_activeBoard!.id] ?? []);
-  List<deck.Column> columnsForBoard(int boardId) => _columnsByBoard[boardId] ?? [];
+  List<deck.Column> columnsForBoard(int boardId) =>
+      _columnsByBoard[boardId] ?? [];
   String? get lastError => _lastError;
   bool isBoardHidden(int id) => _hiddenBoards.contains(id);
   int? boardMemberCount(int boardId) => _boardMemberCount[boardId];
@@ -89,30 +90,40 @@ class AppState extends ChangeNotifier {
     _cardCommentsCount[cardId] = count < 0 ? 0 : count;
     notifyListeners();
   }
+
   void setCardAttachmentsCount(int cardId, int count) {
     _cardAttachmentsCount[cardId] = count < 0 ? 0 : count;
     notifyListeners();
   }
 
   final api = NextcloudDeckApi();
+  SyncService? _sync;
+  bool _bootSyncing = false;
+  String? _bootMessage;
+  bool get bootSyncing => _bootSyncing;
+  String? get bootMessage => _bootMessage;
 
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
     _isDarkMode = (await storage.read(key: 'dark')) == '1';
-    _themeIndex = int.tryParse(await storage.read(key: 'themeIndex') ?? '') ?? 0;
+    _themeIndex =
+        int.tryParse(await storage.read(key: 'themeIndex') ?? '') ?? 0;
     _smartColors = (await storage.read(key: 'smartColors')) != '0';
-    _showDescriptionText = (await storage.read(key: 'showDescriptionText')) != '0';
-    _backgroundPreload = (await storage.read(key: 'bg_preload')) == '1';
-    _cacheBoardsLocal = (await storage.read(key: 'cache_boards_local')) != '0';
+    _showDescriptionText =
+        (await storage.read(key: 'showDescriptionText')) != '0';
     _upcomingSingleColumn = (await storage.read(key: 'up_single')) == '1';
-    _overviewShowBoardInfo = (await storage.read(key: 'overview_board_info')) != '0';
+    _overviewShowBoardInfo =
+        (await storage.read(key: 'overview_board_info')) != '0';
     _localMode = (await storage.read(key: 'local_mode')) == '1';
     _localeCode = await storage.read(key: 'locale');
     _baseUrl = await storage.read(key: 'baseUrl');
-    _defaultBoardId = int.tryParse(await storage.read(key: 'defaultBoardId') ?? '');
+    _defaultBoardId =
+        int.tryParse(await storage.read(key: 'defaultBoardId') ?? '');
     final sbm = await storage.read(key: 'startup_board_mode');
-    if (sbm == 'default' || sbm == 'last') { _startupBoardMode = sbm!; }
+    if (sbm == 'default' || sbm == 'last') {
+      _startupBoardMode = sbm!;
+    }
     // Enforce HTTPS: normalize any stored base URL to https
     if (_baseUrl != null) {
       final normalized = _normalizeHttps(_baseUrl!);
@@ -123,7 +134,10 @@ class AppState extends ChangeNotifier {
     }
     _username = await storage.read(key: 'username');
     _password = await storage.read(key: 'password');
-    _startupTabIndex = int.tryParse(await storage.read(key: 'startup_tab') ?? '')?.clamp(0, 2) ?? 1;
+    _startupTabIndex =
+        int.tryParse(await storage.read(key: 'startup_tab') ?? '')
+                ?.clamp(0, 2) ??
+            1;
     final activeBoardIdStr = await storage.read(key: 'activeBoardId');
     if (_localMode) {
       _setupLocalBoard();
@@ -133,14 +147,35 @@ class AppState extends ChangeNotifier {
     if (_baseUrl != null && _username != null && _password != null) {
       _hydrateFromCache();
       try {
-        await refreshBoards();
+        _sync = SyncServiceImpl(
+            base: _baseUrl!, user: _username!, pass: _password!, cache: cache);
+        // Hintergrund: sofort starten, UI nicht blockieren
+        // ignore: unawaited_futures
+        (() async {
+          try {
+            _bootSyncing = true;
+            _bootMessage = 'Verbinde und lade Boards…';
+            notifyListeners();
+            await _sync!.initSyncOnAppStart();
+            _bootMessage = 'Bereite Ansicht vor…';
+            notifyListeners();
+            await refreshBoards();
+          } finally {
+            _bootSyncing = false;
+            _bootMessage = null;
+            notifyListeners();
+          }
+        })();
       } catch (_) {
         // Ignorieren beim Start; Nutzer kann in den Einstellungen erneut testen
       }
+      // Autosync starten (Board-Delta alle 60s, Gatekeeper+Upcoming selektiv)
+      _startAutoSync();
       // Kein großer Autosync beim Start – Nutzer kann manuell in „Anstehend“ aktualisieren.
       // Startup board selection based on user preference
       if (_startupBoardMode == 'default') {
-        if (_defaultBoardId != null && _boards.any((b) => b.id == _defaultBoardId)) {
+        if (_defaultBoardId != null &&
+            _boards.any((b) => b.id == _defaultBoardId)) {
           _activeBoard = _boards.firstWhere((b) => b.id == _defaultBoardId);
         } else if (activeBoardIdStr != null) {
           final id = int.tryParse(activeBoardIdStr);
@@ -149,25 +184,29 @@ class AppState extends ChangeNotifier {
             orElse: () => _boards.isEmpty ? Board.empty() : _boards.first,
           );
         }
-      } else { // 'last'
+      } else {
+        // 'last'
         if (activeBoardIdStr != null) {
           final id = int.tryParse(activeBoardIdStr);
           _activeBoard = _boards.firstWhere(
             (b) => b.id == id,
             orElse: () {
-              if (_defaultBoardId != null && _boards.any((b) => b.id == _defaultBoardId)) {
+              if (_defaultBoardId != null &&
+                  _boards.any((b) => b.id == _defaultBoardId)) {
                 return _boards.firstWhere((b) => b.id == _defaultBoardId);
               }
               return _boards.isNotEmpty ? _boards.first : Board.empty();
             },
           );
-        } else if (_defaultBoardId != null && _boards.any((b) => b.id == _defaultBoardId)) {
+        } else if (_defaultBoardId != null &&
+            _boards.any((b) => b.id == _defaultBoardId)) {
           _activeBoard = _boards.firstWhere((b) => b.id == _defaultBoardId);
         }
       }
 
       if (_activeBoard != null) {
-        await storage.write(key: 'activeBoardId', value: _activeBoard!.id.toString());
+        await storage.write(
+            key: 'activeBoardId', value: _activeBoard!.id.toString());
         cache.put('activeBoardId', _activeBoard!.id);
         final cachedCols = cache.get('columns_${_activeBoard!.id}');
         if (cachedCols is List) {
@@ -176,7 +215,8 @@ class AppState extends ChangeNotifier {
       } else if (_activeBoard == null && _boards.isNotEmpty) {
         // Kein aktives Board gesetzt, aber Boards vorhanden: erstes wählen
         _activeBoard = _boards.first;
-        await storage.write(key: 'activeBoardId', value: _activeBoard!.id.toString());
+        await storage.write(
+            key: 'activeBoardId', value: _activeBoard!.id.toString());
         cache.put('activeBoardId', _activeBoard!.id);
         final cachedCols = cache.get('columns_${_activeBoard!.id}');
         if (cachedCols is List) {
@@ -185,20 +225,28 @@ class AppState extends ChangeNotifier {
       }
     }
     // Wenn keine Zugangsdaten gesetzt sind (und nicht im lokalen Modus), zur Einstellungs-Registerkarte springen
-    if (!_localMode && (_baseUrl == null || _username == null || _password == null)) {
+    if (!_localMode &&
+        (_baseUrl == null || _username == null || _password == null)) {
       tabController.index = 3; // Settings tab
     }
     // Apply preferred startup tab if credentials vorhanden oder im lokalen Modus
-    if (_localMode || (_baseUrl != null && _username != null && _password != null)) {
+    if (_localMode ||
+        (_baseUrl != null && _username != null && _password != null)) {
       tabController.index = _startupTabIndex;
     }
     notifyListeners();
-    _startAutoSync();
+    // Einmaliger Global-Fetch: alle Boards inkl. Details laden und lokal cachen
+    try {
+      await refreshBoards();
+    } catch (_) {}
   }
 
-  /// Background warm-up of columns and cards for all non-archived boards.
-  /// Best-effort: respects existing caches and lazy flags; avoids duplicate fetches.
-  Future<void> warmAllBoards({int boardConcurrency = 3, int listConcurrency = 3}) async {
+  /// Background warm-up of columns && cards for all non-archived boards.
+  /// Best-effort: respects existing caches && lazy flags; avoids duplicate fetches.
+  Future<void> warmAllBoards(
+      {int boardConcurrency = 3,
+      int listConcurrency = 3,
+      void Function(int done, int total)? onProgress}) async {
     if (_localMode) return;
     if (_baseUrl == null || _username == null || _password == null) return;
     if (_isWarming) return;
@@ -206,18 +254,27 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     try {
       final active = List<Board>.from(_boards.where((b) => !b.archived));
+      final total = active.length;
+      if (total == 0) {
+        onProgress?.call(0, 0);
+        return;
+      }
+      onProgress?.call(0, total);
       // Prioritize active board first in warm-up order
       final aid = _activeBoard?.id;
       if (aid != null) {
         active.sort((a, b) => (a.id == aid ? -1 : (b.id == aid ? 1 : 0)));
       }
+      var processed = 0;
       // Process boards in small batches; nur Spalten (Stacks) laden, Karten lazy
       for (int bi = 0; bi < active.length; bi += boardConcurrency) {
         final slice = active.skip(bi).take(boardConcurrency).toList();
         await Future.wait(slice.map((b) async {
           try {
             // Spalten schlank laden (lazyCards=true) und cachen; send If-Modified-Since, merge partial updates
-            final fetched = await api.fetchColumns(_baseUrl!, _username!, _password!, b.id, lazyCards: true);
+            final fetched = await api.fetchColumns(
+                _baseUrl!, _username!, _password!, b.id,
+                lazyCards: true);
             final prev = _columnsByBoard[b.id] ?? const <deck.Column>[];
             final merged = [
               for (final p in prev)
@@ -226,31 +283,46 @@ class AppState extends ChangeNotifier {
                   if (idx >= 0) {
                     final nc = fetched[idx];
                     final cards = nc.cards.isNotEmpty ? nc.cards : p.cards;
-                    return deck.Column(id: nc.id, title: nc.title, cards: cards);
+                    return deck.Column(
+                        id: nc.id, title: nc.title, cards: cards);
                   } else {
                     return p;
                   }
                 }(),
               for (final nc in fetched)
-                if (!prev.any((p) => p.id == nc.id)) deck.Column(id: nc.id, title: nc.title, cards: nc.cards),
+                if (!prev.any((p) => p.id == nc.id))
+                  deck.Column(id: nc.id, title: nc.title, cards: nc.cards),
             ];
             _columnsByBoard[b.id] = merged;
-            cache.put('columns_${b.id}', merged.map((c) => {
-              'id': c.id,
-              'title': c.title,
-              'cards': c.cards
-                  .map((k) => {
-                        'id': k.id,
-                        'title': k.title,
-                        'description': k.description,
-                        'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                        'labels': k.labels
-                            .map((l) => {'id': l.id, 'title': l.title, 'color': l.color})
-                            .toList(),
-                      })
-                  .toList(),
-            }).toList());
-          } catch (_) {}
+            cache.put(
+                'columns_${b.id}',
+                merged
+                    .map((c) => {
+                          'id': c.id,
+                          'title': c.title,
+                          'cards': c.cards
+                              .map((k) => {
+                                    'id': k.id,
+                                    'title': k.title,
+                                    'description': k.description,
+                                    'duedate':
+                                        k.due?.toUtc().millisecondsSinceEpoch,
+                                    'labels': k.labels
+                                        .map((l) => {
+                                              'id': l.id,
+                                              'title': l.title,
+                                              'color': l.color
+                                            })
+                                        .toList(),
+                                  })
+                              .toList(),
+                        })
+                    .toList());
+          } catch (_) {
+          } finally {
+            processed += 1;
+            onProgress?.call(processed, total);
+          }
         }));
       }
     } finally {
@@ -260,14 +332,32 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> configureSyncForCurrentAccount() async {
+    if (_localMode) return;
+    if (_baseUrl == null || _username == null || _password == null) return;
+    try {
+      _stopAutoSync();
+      _sync = SyncServiceImpl(
+          base: _baseUrl!, user: _username!, pass: _password!, cache: cache);
+      await _sync!.initSyncOnAppStart();
+    } catch (_) {}
+    _startAutoSync();
+  }
+
   void _rebuildUpcomingCacheFromMemory() {
     try {
       final now = DateTime.now();
       final startToday = DateTime(now.year, now.month, now.day);
-      final endToday = startToday.add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1));
+      final endToday = startToday
+          .add(const Duration(days: 1))
+          .subtract(const Duration(milliseconds: 1));
       final startTomorrow = startToday.add(const Duration(days: 1));
-      final endTomorrow = startToday.add(const Duration(days: 2)).subtract(const Duration(milliseconds: 1));
-      final end7 = startToday.add(const Duration(days: 8)).subtract(const Duration(milliseconds: 1));
+      final endTomorrow = startToday
+          .add(const Duration(days: 2))
+          .subtract(const Duration(milliseconds: 1));
+      final end7 = startToday
+          .add(const Duration(days: 8))
+          .subtract(const Duration(milliseconds: 1));
       final o = <Map<String, int>>[];
       final t = <Map<String, int>>[];
       final tm = <Map<String, int>>[];
@@ -277,7 +367,8 @@ class AppState extends ChangeNotifier {
         final cols = _columnsByBoard[b.id] ?? const <deck.Column>[];
         for (final c in cols) {
           final ct = c.title.toLowerCase();
-          if (ct.contains('done') || ct.contains('erledigt')) continue; // exclude done columns
+          if (ct.contains('done') || ct.contains('erledigt'))
+            continue; // exclude done columns
           for (final k in c.cards) {
             final due = k.due;
             if (due == null) continue;
@@ -291,7 +382,8 @@ class AppState extends ChangeNotifier {
               o.add(entry);
             } else if (!due.isBefore(startToday) && !due.isAfter(endToday)) {
               t.add(entry);
-            } else if (!due.isBefore(startTomorrow) && !due.isAfter(endTomorrow)) {
+            } else if (!due.isBefore(startTomorrow) &&
+                !due.isAfter(endTomorrow)) {
               tm.add(entry);
             } else if (due.isAfter(endTomorrow) && !due.isAfter(end7)) {
               n7.add(entry);
@@ -313,14 +405,16 @@ class AppState extends ChangeNotifier {
   }
 
   /// Background scan to build a complete Upcoming view across all (non-archived, non-hidden) boards.
-  /// Only processes boards that actually require work (changed since last board list, or missing local data).
+  /// Only processes boards that actually require work (changed since last board list, || missing local data).
   /// Counter reflects already up-to-date boards immediately.
-  Future<void> scanUpcoming({bool force = false, int listConcurrency = 1}) async {
+  Future<void> scanUpcoming(
+      {bool force = false, int listConcurrency = 1}) async {
     if (_localMode) return;
     if (_baseUrl == null || _username == null || _password == null) return;
     // Global throttle: do not start a new scan more often than every 10s unless forced
     final lastRun = cache.get('up_scan_last');
-    final int? lastRunMs = lastRun is int ? lastRun : (lastRun is num ? lastRun.toInt() : null);
+    final int? lastRunMs =
+        lastRun is int ? lastRun : (lastRun is num ? lastRun.toInt() : null);
     final nowMs0 = DateTime.now().millisecondsSinceEpoch;
     if (!force && lastRunMs != null && (nowMs0 - lastRunMs) < 10000) {
       return;
@@ -329,7 +423,25 @@ class AppState extends ChangeNotifier {
     if (_upScanActive && !force) return;
     _upScanActive = true;
     final mySeq = ++_upScanSeq;
-    final boards = _boards.where((b) => !b.archived && !_hiddenBoards.contains(b.id)).toList();
+    // Einfache, schnelle Variante: genau EIN globaler Fetch mit details=true,
+    // danach Upcoming rein aus dem lokalen Speicher aufbauen und zurückkehren.
+    try {
+      _upScanTotal = 1;
+      _upScanDone = 0;
+      _upScanBoardTitle = null;
+      notifyListeners();
+      await refreshBoards();
+      _rebuildUpcomingCacheFromMemory();
+      _upScanDone = 1;
+      return; // keine weiteren Board-/Card-Requests
+    } finally {
+      _upScanActive = false;
+      _upScanBoardTitle = null;
+      notifyListeners();
+    }
+    final boards = _boards
+        .where((b) => !b.archived && !_hiddenBoards.contains(b.id))
+        .toList();
     // Prioritize active board first
     final aid = _activeBoard?.id;
     if (aid != null) {
@@ -340,7 +452,7 @@ class AppState extends ChangeNotifier {
     final toProcess = <Board>[];
     final changedList = <Board>[];
     final nowMs = DateTime.now().millisecondsSinceEpoch;
-    if (_cacheBoardsLocal && !force) {
+    if (!force) {
       // Periodic rescan disabled to avoid unnecessary syncs if lastModified is unchanged
       for (final b in boards) {
         final cols = _columnsByBoard[b.id] ?? const <deck.Column>[];
@@ -351,40 +463,49 @@ class AppState extends ChangeNotifier {
         final prev = cache.get('board_lastmod_prev_${b.id}');
         int? currMs = curr is int ? curr : (curr is num ? curr.toInt() : null);
         int? prevMs = prev is int ? prev : (prev is num ? prev.toInt() : null);
-        final bool changed = (currMs != null && prevMs != null) ? (currMs > prevMs) : false;
+        final bool changed =
+            (currMs != null && prevMs != null) ? (currMs > prevMs) : false;
         final lastScan = cache.get('board_scan_ts_${b.id}');
-        final int? lastScanMs = lastScan is int ? lastScan : (lastScan is num ? lastScan.toInt() : null);
-        final bool needsInitial = colsEmpty || (!hasAnyCards && lastScanMs == null);
+        final int? lastScanMs = lastScan is int
+            ? lastScan
+            : (lastScan is num ? lastScan.toInt() : null);
+        final bool needsInitial =
+            colsEmpty || (!hasAnyCards && lastScanMs == null);
         // Treat boards with missing prev marker as needing initial processing (to align markers)
-        final bool prevMissing = (prevMs == null && currMs != null && lastScanMs == null);
+        final bool prevMissing =
+            (prevMs == null && currMs != null && lastScanMs == null);
         // Cooldown for changed boards to avoid hammering servers that bump lastModified frequently
-        final bool changedDue = changed && (lastScanMs == null || (nowMs - lastScanMs) > 120000); // >= 2 min
+        final bool changedDue = changed &&
+            (lastScanMs == null || (nowMs - lastScanMs) > 120000); // >= 2 min
         if (changedDue || needsInitial || prevMissing) {
           toProcess.add(b);
         }
         if (changedDue) changedList.add(b);
       }
       // Middle ground: also refresh a tiny rotating subset of "unchanged" boards to catch due-date-only changes.
-      final staleCandidates = boards.where((b) => !toProcess.any((x) => x.id == b.id)).where((b) {
+      final staleCandidates =
+          boards.where((b) => !toProcess.any((x) => x.id == b.id)).where((b) {
         final lastScan = cache.get('board_scan_ts_${b.id}');
-        final int? lastScanMs = lastScan is int ? lastScan : (lastScan is num ? lastScan.toInt() : null);
+        final int? lastScanMs = lastScan is int
+            ? lastScan
+            : (lastScan is num ? lastScan.toInt() : null);
         // Consider stale if not scanned within the past 15 minutes
         return lastScanMs == null || (nowMs - lastScanMs) > 15 * 60 * 1000;
       }).toList();
       // Keine Stale-Rotation im Hintergrund, wenn nichts geändert wurde
-    } else {
-      // Without local caching, keep current behavior: process all
-      toProcess.addAll(boards);
     }
     // If forced, process all boards. Else, process only changed; otherwise do nothing.
     final List<Board> processNow = force
         ? List<Board>.from(boards)
-        : (changedList.isNotEmpty ? List<Board>.from(changedList) : const <Board>[]);
+        : (changedList.isNotEmpty
+            ? List<Board>.from(changedList)
+            : const <Board>[]);
     // Counter zeigt immer die Gesamtzahl der sichtbaren Boards
     _upScanTotal = boards.length;
     // Bereits "up-to-date" Boards zählen wir sofort als erledigt,
     // damit der Zähler nicht bei 0/x startet, wenn nur wenige Boards zu verarbeiten sind.
-    final baselineDone = (_upScanTotal - processNow.length).clamp(0, _upScanTotal);
+    final baselineDone =
+        (_upScanTotal - processNow.length).clamp(0, _upScanTotal);
     _upScanDone = baselineDone;
     _upScanBoardTitle = null;
     notifyListeners();
@@ -402,131 +523,197 @@ class AppState extends ChangeNotifier {
         await Future.wait(chunk.map((b) async {
           if (mySeq != _upScanSeq) return;
           if (b.id != activeId) {
-            final hadAnyPre = (_columnsByBoard[b.id] ?? const <deck.Column>[]).any((c) => c.cards.isNotEmpty);
-          final lastFetch = cache.get('stacks_fetch_ts_${b.id}');
-          final int? lastFetchMs = lastFetch is int ? lastFetch : (lastFetch is num ? lastFetch.toInt() : null);
+            final hadAnyPre = (_columnsByBoard[b.id] ?? const <deck.Column>[])
+                .any((c) => c.cards.isNotEmpty);
+            final lastFetch = cache.get('stacks_fetch_ts_${b.id}');
+            final int? lastFetchMs = lastFetch is int
+                ? lastFetch
+                : (lastFetch is num ? lastFetch.toInt() : null);
             final nowMs2 = DateTime.now().millisecondsSinceEpoch;
-            final bool recentStacks = lastFetchMs != null && (nowMs2 - lastFetchMs) < 5 * 60 * 1000;
-            if (force || (!_stacksLoadingBoards.contains(b.id) && !recentStacks)) {
+            final bool recentStacks =
+                lastFetchMs != null && (nowMs2 - lastFetchMs) < 5 * 60 * 1000;
+            if (force ||
+                (!_stacksLoadingBoards.contains(b.id) && !recentStacks)) {
               _stacksLoadingBoards.add(b.id);
               try {
-                if (_cacheBoardsLocal) {
-                  final etagKey = 'etag_stacks_${b.id}';
-                  final prevEtag = cache.get(etagKey) as String?;
-                  FetchStacksResult? res;
-                  try {
-                    res = await api.fetchStacksWithEtag(_baseUrl!, _username!, _password!, b.id, ifNoneMatch: prevEtag, priority: false);
-                  } catch (_) {}
-                  if (res != null && !res.notModified) {
-                    final prev = _columnsByBoard[b.id] ?? const <deck.Column>[];
-                    final merged = [
-                      // update or keep previous stacks
-                      for (final p in prev)
-                        () {
-                          final idx = res!.columns.indexWhere((x) => x.id == p.id);
-                          if (idx >= 0) {
-                            final nc = res!.columns[idx];
-                            final cards = nc.cards.isNotEmpty ? nc.cards : p.cards;
-                            return deck.Column(id: nc.id, title: nc.title, cards: cards);
-                          } else {
-                            return p;
-                          }
-                        }(),
-                      // add any new stacks not previously present
-                      for (final nc in res.columns)
-                        if (!prev.any((p) => p.id == nc.id)) deck.Column(id: nc.id, title: nc.title, cards: nc.cards),
-                    ];
-                    _columnsByBoard[b.id] = merged;
-                    cache.put('columns_${b.id}', merged.map((c) => {
-                      'id': c.id,
-                      'title': c.title,
-                      'cards': c.cards.map((k) => {
-                        'id': k.id,
-                        'title': k.title,
-                        'description': k.description,
-                        'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                        'labels': k.labels.map((l) => {'id': l.id, 'title': l.title, 'color': l.color}).toList(),
-                      }).toList(),
-                    }).toList());
-                    if (res.etag != null) cache.put(etagKey, res.etag);
-                  } else {
-                    // Not modified (or failed) but we might not have columns yet: fetch baseline stacks without ETag
-                    if ((_columnsByBoard[b.id] ?? const <deck.Column>[]).isEmpty) {
-                      try {
-                        final fetched = await api.fetchColumns(_baseUrl!, _username!, _password!, b.id, lazyCards: true);
-                        final prev = _columnsByBoard[b.id] ?? const <deck.Column>[];
-                        final merged = [
-                          for (final p in prev)
-                            () {
-                              final idx = fetched.indexWhere((x) => x.id == p.id);
-                              if (idx >= 0) {
-                                final nc = fetched[idx];
-                                final cards = nc.cards.isNotEmpty ? nc.cards : p.cards;
-                                return deck.Column(id: nc.id, title: nc.title, cards: cards);
-                              } else {
-                                return p;
-                              }
-                            }(),
-                          for (final nc in fetched)
-                            if (!prev.any((p) => p.id == nc.id)) deck.Column(id: nc.id, title: nc.title, cards: nc.cards),
-                        ];
-                        _columnsByBoard[b.id] = merged;
-                        cache.put('columns_${b.id}', merged.map((c) => {
-                          'id': c.id,
-                          'title': c.title,
-                          'cards': c.cards.map((k) => {
-                            'id': k.id,
-                            'title': k.title,
-                            'description': k.description,
-                            'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                            'labels': k.labels.map((l) => {'id': l.id, 'title': l.title, 'color': l.color}).toList(),
-                          }).toList(),
-                        }).toList());
-                      } catch (_) {}
-                    }
-                  }
+                final etagKey = 'etag_stacks_${b.id}';
+                final prevEtag = cache.get(etagKey) as String?;
+                FetchStacksResult? res;
+                try {
+                  res = await api.fetchStacksWithEtag(
+                      _baseUrl!, _username!, _password!, b.id,
+                      ifNoneMatch: prevEtag, priority: false);
+                } catch (_) {}
+                if (res != null && !res.notModified) {
+                  final prev = _columnsByBoard[b.id] ?? const <deck.Column>[];
+                  final merged = [
+                    // update || keep previous stacks
+                    for (final p in prev)
+                      () {
+                        final idx =
+                            res!.columns.indexWhere((x) => x.id == p.id);
+                        if (idx >= 0) {
+                          final nc = res!.columns[idx];
+                          final cards =
+                              nc.cards.isNotEmpty ? nc.cards : p.cards;
+                          return deck.Column(
+                              id: nc.id, title: nc.title, cards: cards);
+                        } else {
+                          return p;
+                        }
+                      }(),
+                    // add any new stacks not previously present
+                    for (final nc in res.columns)
+                      if (!prev.any((p) => p.id == nc.id))
+                        deck.Column(
+                            id: nc.id, title: nc.title, cards: nc.cards),
+                  ];
+                  _columnsByBoard[b.id] = merged;
+                  cache.put(
+                      'columns_${b.id}',
+                      merged
+                          .map((c) => {
+                                'id': c.id,
+                                'title': c.title,
+                                'cards': c.cards
+                                    .map((k) => {
+                                          'id': k.id,
+                                          'title': k.title,
+                                          'description': k.description,
+                                          'duedate': k.due
+                                              ?.toUtc()
+                                              .millisecondsSinceEpoch,
+                                          'labels': k.labels
+                                              .map((l) => {
+                                                    'id': l.id,
+                                                    'title': l.title,
+                                                    'color': l.color
+                                                  })
+                                              .toList(),
+                                        })
+                                    .toList(),
+                              })
+                          .toList());
+                  if (res.etag != null) cache.put(etagKey, res.etag);
                 } else {
-                  if ((_columnsByBoard[b.id] ?? const <deck.Column>[]).isEmpty) {
-                    try { await refreshColumnsFor(b); } catch (_) {}
+                  // Not modified (or failed) but we might not have columns yet: fetch baseline stacks without ETag
+                  if ((_columnsByBoard[b.id] ?? const <deck.Column>[])
+                      .isEmpty) {
+                    try {
+                      final fetched = await api.fetchColumns(
+                          _baseUrl!, _username!, _password!, b.id,
+                          lazyCards: true);
+                      final prev =
+                          _columnsByBoard[b.id] ?? const <deck.Column>[];
+                      final merged = [
+                        for (final p in prev)
+                          () {
+                            final idx = fetched.indexWhere((x) => x.id == p.id);
+                            if (idx >= 0) {
+                              final nc = fetched[idx];
+                              final cards =
+                                  nc.cards.isNotEmpty ? nc.cards : p.cards;
+                              return deck.Column(
+                                  id: nc.id, title: nc.title, cards: cards);
+                            } else {
+                              return p;
+                            }
+                          }(),
+                        for (final nc in fetched)
+                          if (!prev.any((p) => p.id == nc.id))
+                            deck.Column(
+                                id: nc.id, title: nc.title, cards: nc.cards),
+                      ];
+                      _columnsByBoard[b.id] = merged;
+                      cache.put(
+                          'columns_${b.id}',
+                          merged
+                              .map((c) => {
+                                    'id': c.id,
+                                    'title': c.title,
+                                    'cards': c.cards
+                                        .map((k) => {
+                                              'id': k.id,
+                                              'title': k.title,
+                                              'description': k.description,
+                                              'duedate': k.due
+                                                  ?.toUtc()
+                                                  .millisecondsSinceEpoch,
+                                              'labels': k.labels
+                                                  .map((l) => {
+                                                        'id': l.id,
+                                                        'title': l.title,
+                                                        'color': l.color
+                                                      })
+                                                  .toList(),
+                                            })
+                                        .toList(),
+                                  })
+                              .toList());
+                    } catch (_) {}
                   }
                 }
                 // Light background when not forced
                 if (!force) {
-                  try { await _ensureSomeCardsForBoard(b.id, limit: 2); } catch (_) {}
+                  try {
+                    await _ensureSomeCardsForBoard(b.id, limit: 2);
+                  } catch (_) {}
                 }
                 // If this scan is user-forced, aggressively refresh cards for all non-done stacks to update Upcoming immediately
                 if (force) {
                   try {
                     // For forced scans, prefer a single board-wide columns fetch with inline cards
                     // to avoid N-per-stack requests on servers without card list endpoints.
-                    final fetched = await api.fetchColumns(_baseUrl!, _username!, _password!, b.id, lazyCards: false, priority: false, bypassCooldown: true);
+                    final fetched = await api.fetchColumns(
+                        _baseUrl!, _username!, _password!, b.id,
+                        lazyCards: false,
+                        priority: false,
+                        bypassCooldown: true);
                     final prev = _columnsByBoard[b.id] ?? const <deck.Column>[];
-                    final merged = _mergeColumnsReplaceChangedForBoard(b.id, prev, fetched);
+                    final merged = _mergeColumnsReplaceChangedForBoard(
+                        b.id, prev, fetched);
                     _columnsByBoard[b.id] = merged;
-                    cache.put('columns_${b.id}', merged.map((c) => {
-                      'id': c.id,
-                      'title': c.title,
-                      'cards': c.cards.map((k) => {
-                        'id': k.id,
-                        'title': k.title,
-                        'description': k.description,
-                        'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                        'labels': k.labels.map((l) => {'id': l.id, 'title': l.title, 'color': l.color}).toList(),
-                      }).toList(),
-                    }).toList());
+                    cache.put(
+                        'columns_${b.id}',
+                        merged
+                            .map((c) => {
+                                  'id': c.id,
+                                  'title': c.title,
+                                  'cards': c.cards
+                                      .map((k) => {
+                                            'id': k.id,
+                                            'title': k.title,
+                                            'description': k.description,
+                                            'duedate': k.due
+                                                ?.toUtc()
+                                                .millisecondsSinceEpoch,
+                                            'labels': k.labels
+                                                .map((l) => {
+                                                      'id': l.id,
+                                                      'title': l.title,
+                                                      'color': l.color
+                                                    })
+                                                .toList(),
+                                          })
+                                      .toList(),
+                                })
+                            .toList());
                   } catch (_) {}
                 }
               } finally {
-                cache.put('stacks_fetch_ts_${b.id}', DateTime.now().millisecondsSinceEpoch);
+                cache.put('stacks_fetch_ts_${b.id}',
+                    DateTime.now().millisecondsSinceEpoch);
                 _stacksLoadingBoards.remove(b.id);
               }
             }
             // Karten nicht im Hintergrund scanUpcoming() nachladen – hält Netzlast niedrig.
           }
-          cache.put('board_scan_ts_${b.id}', DateTime.now().millisecondsSinceEpoch);
+          cache.put(
+              'board_scan_ts_${b.id}', DateTime.now().millisecondsSinceEpoch);
           // Nach erfolgreicher Verarbeitung gilt der aktuelle lastModified-Stand als abgearbeitet.
           final curr = cache.get('board_lastmod_${b.id}');
-          final int? currMs = curr is int ? curr : (curr is num ? curr.toInt() : null);
+          final int? currMs =
+              curr is int ? curr : (curr is num ? curr.toInt() : null);
           if (currMs != null) {
             cache.put('board_lastmod_prev_${b.id}', currMs);
           }
@@ -545,12 +732,14 @@ class AppState extends ChangeNotifier {
   }
 
   /// Full, sequential sync of all boards (stacks + cards) regardless of lastModified.
-  /// Intended for manual refresh from Upcoming: minimizes surprises by avoiding throttles and running serially.
+  /// Intended for manual refresh from Upcoming: minimizes surprises by avoiding throttles && running serially.
   Future<void> syncAllBoardsNow() async {
     if (_localMode) return;
     if (_baseUrl == null || _username == null || _password == null) return;
     // Initialize progress as in Upcoming
-    final boards = _boards.where((b) => !b.archived && !_hiddenBoards.contains(b.id)).toList();
+    final boards = _boards
+        .where((b) => !b.archived && !_hiddenBoards.contains(b.id))
+        .toList();
     _upScanActive = true;
     _upScanTotal = boards.length;
     _upScanDone = 0;
@@ -562,26 +751,46 @@ class AppState extends ChangeNotifier {
         _upScanBoardTitle = b.title;
         notifyListeners();
         try {
-          // Single call per board to fetch stacks WITH cards; bypass cooldowns to ensure freshness.
-          final fetched = await api.fetchColumns(_baseUrl!, _username!, _password!, b.id, lazyCards: false, priority: false, bypassCooldown: true);
+          // Single call per board to fetch stacks WITH cards; by cooldowns to ensure freshness.
+          final fetched = await api.fetchColumns(
+              _baseUrl!, _username!, _password!, b.id,
+              lazyCards: false, priority: false, bypassCooldown: true);
           final prev = _columnsByBoard[b.id] ?? const <deck.Column>[];
-          final merged0 = _mergeColumnsReplaceChangedForBoard(b.id, prev, fetched);
+          final merged0 =
+              _mergeColumnsReplaceChangedForBoard(b.id, prev, fetched);
           _columnsByBoard[b.id] = merged0;
-          cache.put('columns_${b.id}', merged0.map((c) => {
-            'id': c.id,
-            'title': c.title,
-            'cards': c.cards.map((k) => {
-              'id': k.id,
-              'title': k.title,
-              'description': k.description,
-              'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-              'labels': k.labels.map((l) => {'id': l.id, 'title': l.title, 'color': l.color}).toList(),
-            }).toList(),
-          }).toList());
+          cache.put(
+              'columns_${b.id}',
+              merged0
+                  .map((c) => {
+                        'id': c.id,
+                        'title': c.title,
+                        'cards': c.cards
+                            .map((k) => {
+                                  'id': k.id,
+                                  'title': k.title,
+                                  'description': k.description,
+                                  'duedate':
+                                      k.due?.toUtc().millisecondsSinceEpoch,
+                                  'labels': k.labels
+                                      .map((l) => {
+                                            'id': l.id,
+                                            'title': l.title,
+                                            'color': l.color
+                                          })
+                                      .toList(),
+                                })
+                            .toList(),
+                      })
+                  .toList());
         } catch (_) {
           // Fallback: best-effort stacks (lazy) then ensure a few cards
-          try { await refreshColumnsFor(b); } catch (_) {}
-          try { await _ensureSomeCardsForBoard(b.id, limit: 3); } catch (_) {}
+          try {
+            await refreshColumnsFor(b);
+          } catch (_) {}
+          try {
+            await _ensureSomeCardsForBoard(b.id, limit: 3);
+          } catch (_) {}
         }
         // Rebuild Upcoming cache incrementally to reflect progress
         _rebuildUpcomingCacheFromMemory();
@@ -596,12 +805,13 @@ class AppState extends ChangeNotifier {
   }
 
   /// Parallel full sync for many boards with bounded concurrency.
-  /// Fetches stacks WITH cards for each board (bypass cooldowns), updates cache and
-  /// rebuilds Upcoming incrementally. Optimized for large board counts (e.g., 150).
+  /// Fetches stacks WITH cards for each board (by cooldowns), updates cache &&   /// rebuilds Upcoming incrementally. Optimized for large board counts (e.g., 150).
   Future<void> syncAllBoardsFast({int concurrency = 6}) async {
     if (_localMode) return;
     if (_baseUrl == null || _username == null || _password == null) return;
-    final boards = _boards.where((b) => !b.archived && !_hiddenBoards.contains(b.id)).toList();
+    final boards = _boards
+        .where((b) => !b.archived && !_hiddenBoards.contains(b.id))
+        .toList();
     if (boards.isEmpty) return;
     // Bounded parallelism for speed; keep within safe range
     final pool = concurrency.clamp(2, 8);
@@ -620,29 +830,52 @@ class AppState extends ChangeNotifier {
           try {
             final isActive = (_activeBoard?.id == b.id);
             final fetched = await api.fetchColumns(
-              _baseUrl!, _username!, _password!, b.id,
-              lazyCards: false, priority: isActive, bypassCooldown: true,
+              _baseUrl!,
+              _username!,
+              _password!,
+              b.id,
+              lazyCards: false,
+              priority: isActive,
+              bypassCooldown: true,
             );
             final prev = _columnsByBoard[b.id] ?? const <deck.Column>[];
-            final merged = _mergeColumnsReplaceChangedForBoard(b.id, prev, fetched);
+            final merged =
+                _mergeColumnsReplaceChangedForBoard(b.id, prev, fetched);
             _columnsByBoard[b.id] = merged;
-            cache.put('columns_${b.id}', merged.map((c) => {
-              'id': c.id,
-              'title': c.title,
-              'cards': c.cards.map((k) => {
-                'id': k.id,
-                'title': k.title,
-                'description': k.description,
-                'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                'labels': k.labels.map((l) => {'id': l.id, 'title': l.title, 'color': l.color}).toList(),
-              }).toList(),
-            }).toList());
+            cache.put(
+                'columns_${b.id}',
+                merged
+                    .map((c) => {
+                          'id': c.id,
+                          'title': c.title,
+                          'cards': c.cards
+                              .map((k) => {
+                                    'id': k.id,
+                                    'title': k.title,
+                                    'description': k.description,
+                                    'duedate':
+                                        k.due?.toUtc().millisecondsSinceEpoch,
+                                    'labels': k.labels
+                                        .map((l) => {
+                                              'id': l.id,
+                                              'title': l.title,
+                                              'color': l.color
+                                            })
+                                        .toList(),
+                                  })
+                              .toList(),
+                        })
+                    .toList());
           } catch (_) {
-            // Fallback for problematic boards: fetch stacks lazily and ensure a few cards
-            try { await refreshColumnsFor(b); } catch (_) {}
-            try { await _ensureSomeCardsForBoard(b.id, limit: 3); } catch (_) {}
+            // Fallback for problematic boards: fetch stacks lazily && ensure a few cards
+            try {
+              await refreshColumnsFor(b);
+            } catch (_) {}
+            try {
+              await _ensureSomeCardsForBoard(b.id, limit: 3);
+            } catch (_) {}
           }
-          // Rebuild Upcoming cache incrementally and yield a tiny gap to keep UI responsive
+          // Rebuild Upcoming cache incrementally && yield a tiny gap to keep UI responsive
           _rebuildUpcomingCacheFromMemory();
           _upScanDone = (_upScanDone + 1).clamp(0, _upScanTotal);
           notifyListeners();
@@ -661,11 +894,26 @@ class AppState extends ChangeNotifier {
     if (m is Map) {
       try {
         return {
-          'overdue': (m['overdue'] as List).cast<Map>().map((e) => (e as Map).cast<String, int>()).toList(),
-          'today': (m['today'] as List).cast<Map>().map((e) => (e as Map).cast<String, int>()).toList(),
-          'tomorrow': (m['tomorrow'] as List).cast<Map>().map((e) => (e as Map).cast<String, int>()).toList(),
-          'next7': (m['next7'] as List).cast<Map>().map((e) => (e as Map).cast<String, int>()).toList(),
-          'later': (m['later'] as List).cast<Map>().map((e) => (e as Map).cast<String, int>()).toList(),
+          'overdue': (m['overdue'] as List)
+              .cast<Map>()
+              .map((e) => (e as Map).cast<String, int>())
+              .toList(),
+          'today': (m['today'] as List)
+              .cast<Map>()
+              .map((e) => (e as Map).cast<String, int>())
+              .toList(),
+          'tomorrow': (m['tomorrow'] as List)
+              .cast<Map>()
+              .map((e) => (e as Map).cast<String, int>())
+              .toList(),
+          'next7': (m['next7'] as List)
+              .cast<Map>()
+              .map((e) => (e as Map).cast<String, int>())
+              .toList(),
+          'later': (m['later'] as List)
+              .cast<Map>()
+              .map((e) => (e as Map).cast<String, int>())
+              .toList(),
         };
       } catch (_) {}
     }
@@ -703,7 +951,7 @@ class AppState extends ChangeNotifier {
   }
 
   void setLocale(String? code) {
-    // code must be one of 'de','en','es' or null for system
+    // code must be one of 'de','en','es' || null for system
     if (code != null && code != 'de' && code != 'en' && code != 'es') return;
     _localeCode = code;
     if (code == null) {
@@ -716,17 +964,6 @@ class AppState extends ChangeNotifier {
 
   void selectTab(int index) {
     tabController.index = index;
-    // On Board tab (index 1 in current layout), refresh meta counters in background
-    if (index == 1) {
-      final b = _activeBoard;
-      if (b != null && _baseUrl != null && _username != null && _password != null) {
-        // Lightweight: refresh stacks first (priority), then meta in background
-        unawaited(() async {
-          try { await refreshColumnsFor(b); } catch (_) {}
-          await refreshActiveBoardMeta();
-        }());
-      }
-    }
   }
 
   Future<void> setLocalMode(bool enabled) async {
@@ -734,7 +971,9 @@ class AppState extends ChangeNotifier {
     await storage.write(key: 'local_mode', value: enabled ? '1' : '0');
     if (enabled) {
       // Clear credentials to avoid accidental network
-      _baseUrl = null; _username = null; _password = null;
+      _baseUrl = null;
+      _username = null;
+      _password = null;
       await storage.delete(key: 'baseUrl');
       await storage.delete(key: 'username');
       await storage.delete(key: 'password');
@@ -759,23 +998,40 @@ class AppState extends ChangeNotifier {
         deck.Column(id: -103, title: 'Erledigt', cards: const []),
       ];
       _columnsByBoard[localBoardId] = initCols;
-      cache.put('columns_$localBoardId', initCols.map((c) => {'id': c.id, 'title': c.title, 'cards': const []}).toList());
+      cache.put(
+          'columns_$localBoardId',
+          initCols
+              .map((c) => {'id': c.id, 'title': c.title, 'cards': const []})
+              .toList());
     }
-    _boards = [Board(id: localBoardId, title: 'Lokales Board', archived: false)];
+    _boards = [
+      Board(id: localBoardId, title: 'Lokales Board', archived: false)
+    ];
     _activeBoard = _boards.first;
     storage.write(key: 'activeBoardId', value: localBoardId.toString());
     cache.put('activeBoardId', localBoardId);
-    cache.put('boards', _boards.map((b) => {'id': b.id, 'title': b.title, 'archived': b.archived}).toList());
+    cache.put(
+        'boards',
+        _boards
+            .map((b) => {'id': b.id, 'title': b.title, 'archived': b.archived})
+            .toList());
   }
 
-  void setCredentials({required String baseUrl, required String username, required String password}) {
+  void setCredentials(
+      {required String baseUrl,
+      required String username,
+      required String password}) {
     _localMode = false;
     storage.write(key: 'local_mode', value: '0');
+    _stopAutoSync();
+    _sync = null;
     final prevBase = _baseUrl;
     final prevUser = _username;
     final nextBase = _normalizeHttps(baseUrl);
     final nextUser = username.trim();
-    final changedServer = prevBase != null && prevUser != null && (prevBase != nextBase || prevUser != nextUser);
+    final changedServer = prevBase != null &&
+        prevUser != null &&
+        (prevBase != nextBase || prevUser != nextUser);
     _baseUrl = nextBase;
     _username = nextUser;
     _password = password;
@@ -790,11 +1046,17 @@ class AppState extends ChangeNotifier {
 
   void _clearAllServerCaches() {
     try {
+      _stopAutoSync();
       // Clear persisted keys
       final keys = cache.keys.toList();
       for (final k in keys) {
         if (k is String) {
-          if (k == 'boards' || k == 'activeBoardId' || k == 'hiddenBoards' || k == 'upcoming_cache') {
+          if (k == 'boards' ||
+              k == 'activeBoardId' ||
+              k == 'hiddenBoards' ||
+              k == 'upcoming_cache' ||
+              k == 'etag_boards_details' ||
+              k == 'etag_boards_list') {
             cache.delete(k);
           }
           if (k.startsWith('columns_') ||
@@ -816,107 +1078,265 @@ class AppState extends ChangeNotifier {
       _cardAttachmentsCount.clear();
       _stackLoaded.clear();
       _stackLoading.clear();
-      _upScanActive = false; _upScanDone = 0; _upScanTotal = 0; _upScanBoardTitle = null;
+      _stacksLoadingBoards.clear();
+      _stacksLastFetchMsMem.clear();
+      _orderSyncingStacks.clear();
+      _protectStacksUntilMs.clear();
+      _upScanActive = false;
+      _upScanDone = 0;
+      _upScanTotal = 0;
+      _upScanBoardTitle = null;
       // Reset default board selection for new server
       _defaultBoardId = null;
       storage.delete(key: 'defaultBoardId');
+      storage.delete(key: 'activeBoardId');
+      storage.delete(key: 'hiddenBoards');
     } catch (_) {}
   }
 
-  // Ensure we always talk HTTPS regardless of user input, except when using server-relative base ('/' or '/path')
+  // Ensure we always talk HTTPS regardless of user input, except when using server-relative base ('/' || '/path')
   String _normalizeHttps(String input) {
     var v = input.trim();
     if (v.isEmpty) return v;
     if (v.startsWith('/')) {
-      // Normalize multiple leading slashes and trailing slash (except root)
+      // Normalize multiple leading slashes && trailing slash (except root)
       v = '/' + v.replaceFirst(RegExp(r'^/+'), '');
       if (v.length > 1 && v.endsWith('/')) v = v.substring(0, v.length - 1);
       return v; // keep server-relative base for Web deployments
     }
     if (v.startsWith('http://')) v = 'https://' + v.substring(7);
-    if (!v.startsWith('https://')) v = 'https://' + v.replaceFirst(RegExp(r'^/+'), '');
+    if (!v.startsWith('https://'))
+      v = 'https://' + v.replaceFirst(RegExp(r'^/+'), '');
     // Remove trailing slash to avoid double slashes when building paths
     if (v.endsWith('/')) v = v.substring(0, v.length - 1);
     return v;
   }
 
   Future<bool> testLogin() async {
-    if (_baseUrl == null || _username == null || _password == null) return false;
+    if (_baseUrl == null || _username == null || _password == null)
+      return false;
     return api.testLogin(_baseUrl!, _username!, _password!);
   }
 
   Future<void> refreshBoards() async {
     if (_localMode) return;
     if (_baseUrl == null || _username == null || _password == null) return;
-    // Load raw to access lastModified and build both: boards list and lastmod map
-    final raw = await api.fetchBoardsRaw(_baseUrl!, _username!, _password!);
-    _boards = raw.map((m) => Board.fromJson(m)).toList();
-    // Cache Boards schlank ablegen (inkl. Farbe/archived, falls vorhanden)
-    cache.put('boards', _boards.map((b) => {
-          'id': b.id,
-          'title': b.title,
-          if (b.color != null) 'color': b.color,
-          'archived': b.archived,
-        }).toList());
-    // Extract and persist lastModified per board, compute changed boards list
-    final nowMarks = <int, int>{};
-    for (final m in raw) {
-      final id = (m['id'] as num?)?.toInt();
-      if (id == null) continue;
-      final lmRaw = m['lastModified'] ?? m['lastmodified'] ?? m['lastActivity'] ?? m['updatedAt'] ?? m['mtime'] ?? m['modified'];
-      int? lm;
-      if (lmRaw is num) {
-        final v = lmRaw.toInt();
-        // Heuristic: treat values < 10^12 as seconds
-        lm = v < 1000000000000 ? v * 1000 : v;
-      } else if (lmRaw is String) {
-        final s = lmRaw.trim();
-        final asNum = int.tryParse(s);
+
+    final detailsEtagKey = 'etag_boards_details';
+
+    FetchBoardsDetailsResult res;
+    try {
+      final prevDetailsEtag = cache.get(detailsEtagKey) as String?;
+      res = await api.fetchBoardsWithDetailsEtag(
+          _baseUrl!, _username!, _password!,
+          ifNoneMatch: prevDetailsEtag);
+      if (res.notModified && (_boards.isEmpty || _columnsByBoard.isEmpty)) {
+        res = await api.fetchBoardsWithDetailsEtag(
+            _baseUrl!, _username!, _password!,
+            ifNoneMatch: null);
+      }
+    } catch (_) {
+      await _ensureActiveBoardValid();
+      _rebuildUpcomingCacheFromMemory();
+      notifyListeners();
+      return;
+    }
+
+    if (res.notModified) {
+      await _ensureActiveBoardValid();
+      _rebuildUpcomingCacheFromMemory();
+      notifyListeners();
+      return;
+    }
+
+    final updatedBoards = <Board>[];
+    final updatedColumns = <int, List<deck.Column>>{};
+
+    int? _parseLastModified(dynamic value) {
+      if (value == null) return null;
+      if (value is num) {
+        final v = value.toInt();
+        return v < 1000000000000 ? v * 1000 : v;
+      }
+      if (value is String) {
+        final trimmed = value.trim();
+        final asNum = int.tryParse(trimmed);
         if (asNum != null) {
-          lm = asNum < 1000000000000 ? asNum * 1000 : asNum;
-        } else {
-          try { lm = DateTime.parse(s).toUtc().millisecondsSinceEpoch; } catch (_) {}
+          return asNum < 1000000000000 ? asNum * 1000 : asNum;
+        }
+        try {
+          return DateTime.parse(trimmed).toUtc().millisecondsSinceEpoch;
+        } catch (_) {
+          return null;
         }
       }
-      if (lm != null) {
-        nowMarks[id] = lm;
-        cache.put('board_lastmod_$id', lm);
-      }
+      return null;
     }
-    // Do NOT update the "prev" markers here. We only set
-    // board_lastmod_prev_* after a board was processed in scanUpcoming().
-    // This allows scanUpcoming() to detect changed boards reliably.
-    // Prune hidden list to existing boards
+
+    List<deck.Column> _buildColumns(
+        Map<String, dynamic> board, List<deck.Column> previous) {
+      final stacks = board['stacks'] ?? board['columns'] ?? board['lists'];
+      if (stacks is! List) return previous;
+      final Map<int, List<CardItem>> cardsByStack = () {
+        final list = board['cards'];
+        if (list is! List) return <int, List<CardItem>>{};
+        final out = <int, List<CardItem>>{};
+        for (final e in list.whereType<Map>()) {
+          final em = e.cast<String, dynamic>();
+          int? sid;
+          final vsid = em['stackId'];
+          if (vsid is num) sid = vsid.toInt();
+          if (sid == null && em['stack'] is Map && (em['stack']['id'] is num)) {
+            sid = (em['stack']['id'] as num).toInt();
+          }
+          if (sid == null) continue;
+          (out[sid] ??= <CardItem>[]).add(CardItem.fromJson(em));
+        }
+        return out;
+      }();
+      final cols = <deck.Column>[];
+      for (final entry in stacks.whereType<Map>()) {
+        final stack = entry.cast<String, dynamic>();
+        final stackId = (stack['id'] as num?)?.toInt();
+        if (stackId == null) continue;
+        final title = (stack['title'] ?? stack['name'] ?? '').toString();
+        final cardsRaw = (stack['cards'] is List)
+            ? (stack['cards'] as List)
+                .whereType<Map>()
+                .map((e) => e.cast<String, dynamic>())
+                .toList()
+            : const <Map<String, dynamic>>[];
+        final parsedCards = cardsRaw.map(CardItem.fromJson).toList();
+        if (parsedCards.isNotEmpty) {
+          cols.add(deck.Column(id: stackId, title: title, cards: parsedCards));
+          continue;
+        }
+        final fallback = cardsByStack[stackId];
+        if (fallback != null && fallback.isNotEmpty) {
+          cols.add(deck.Column(id: stackId, title: title, cards: fallback));
+          continue;
+        }
+        final prev = previous.firstWhere(
+          (element) => element.id == stackId,
+          orElse: () => deck.Column(id: stackId, title: title, cards: const []),
+        );
+        cols.add(deck.Column(id: stackId, title: title, cards: prev.cards));
+      }
+      return cols;
+    }
+
+    for (final raw in res.boards.whereType<Map>()) {
+      final map = raw.cast<String, dynamic>();
+      final id = (map['id'] as num?)?.toInt();
+      if (id == null) continue;
+      updatedBoards.add(Board.fromJson(map));
+      final lastMod = _parseLastModified(
+        map['lastModified'] ??
+            map['lastmodified'] ??
+            map['lastActivity'] ??
+            map['updatedAt'] ??
+            map['mtime'] ??
+            map['modified'],
+      );
+      if (lastMod != null) {
+        cache.put('board_lastmod_$id', lastMod);
+      }
+      final previous = _columnsByBoard[id] ?? const <deck.Column>[];
+      final columns = _buildColumns(map, previous);
+      updatedColumns[id] = columns;
+      cache.put(
+          'columns_$id',
+          columns
+              .map((c) => {
+                    'id': c.id,
+                    'title': c.title,
+                    'cards': c.cards
+                        .map((k) => {
+                              'id': k.id,
+                              'title': k.title,
+                              'description': k.description,
+                              'duedate': k.due?.toUtc().millisecondsSinceEpoch,
+                              'labels': k.labels
+                                  .map((l) => {
+                                        'id': l.id,
+                                        'title': l.title,
+                                        'color': l.color
+                                      })
+                                  .toList(),
+                            })
+                        .toList(),
+                  })
+              .toList());
+    }
+
+    final previousBoardIds = _boards.map((b) => b.id).toSet();
+    _boards = updatedBoards;
+    _columnsByBoard
+      ..clear()
+      ..addAll(updatedColumns);
+    cache.put(
+        'boards',
+        _boards
+            .map((b) => {
+                  'id': b.id,
+                  'title': b.title,
+                  if (b.color != null) 'color': b.color,
+                  'archived': b.archived,
+                })
+            .toList());
+
+    final currentIds = _boards.map((b) => b.id).toSet();
+    _boardMemberCount.removeWhere((key, _) => !currentIds.contains(key));
+    for (final rid in previousBoardIds.difference(currentIds)) {
+      cache.delete('columns_$rid');
+      cache.delete('board_members_$rid');
+      cache.delete('board_lastmod_$rid');
+    }
+
+    if (res.etag != null) {
+      cache.put(detailsEtagKey, res.etag);
+    }
+
     _hiddenBoards.removeWhere((id) => !_boards.any((b) => b.id == id));
     cache.put('hiddenBoards', _hiddenBoards.toList());
-    // If default board no longer exists, clear default
-    if (_defaultBoardId != null && !_boards.any((b) => b.id == _defaultBoardId)) {
+
+    if (_defaultBoardId != null &&
+        !_boards.any((b) => b.id == _defaultBoardId)) {
       _defaultBoardId = null;
       await storage.delete(key: 'defaultBoardId');
     }
-    // Wenn das aktive Board nicht mehr existiert (z. B. serverseitig gelöscht), umschalten
+
+    await _ensureActiveBoardValid();
+
+    _rebuildUpcomingCacheFromMemory();
+    notifyListeners();
+  }
+
+  Future<void> _ensureActiveBoardValid() async {
+    if (_boards.isEmpty) {
+      if (_activeBoard != null) {
+        _activeBoard = null;
+        await storage.write(key: 'activeBoardId', value: '');
+        cache.delete('activeBoardId');
+      }
+      _columnsByBoard.clear();
+      return;
+    }
     if (_activeBoard != null && !_boards.any((b) => b.id == _activeBoard!.id)) {
       final removedId = _activeBoard!.id;
-      _activeBoard = _boards.isNotEmpty ? _boards.first : null;
-      if (_activeBoard != null) {
-        storage.write(key: 'activeBoardId', value: _activeBoard!.id.toString());
-        cache.put('activeBoardId', _activeBoard!.id);
-        // Vorherige Spalten/Caches des entfernten Boards wegräumen
-        _columnsByBoard.remove(removedId);
-        cache.delete('columns_$removedId');
-        cache.delete('board_members_$removedId');
-        // Spalten des neuen aktiven Boards nachladen (lazy Cards)
-        unawaited(refreshColumnsFor(_activeBoard!));
-      } else {
-        // Keine Boards mehr vorhanden
-        storage.write(key: 'activeBoardId', value: '');
-        cache.delete('activeBoardId');
-        _columnsByBoard.clear();
-      }
+      _activeBoard = _boards.first;
+      await storage.write(
+          key: 'activeBoardId', value: _activeBoard!.id.toString());
+      cache.put('activeBoardId', _activeBoard!.id);
+      _columnsByBoard.remove(removedId);
+      cache.delete('columns_$removedId');
+      cache.delete('board_members_$removedId');
+    } else if (_activeBoard == null) {
+      _activeBoard = _boards.first;
+      await storage.write(
+          key: 'activeBoardId', value: _activeBoard!.id.toString());
+      cache.put('activeBoardId', _activeBoard!.id);
     }
-    notifyListeners();
-
-    // Hintergrund-Refresh ausgelagert: scanUpcoming() verarbeitet geänderte Boards gezielt.
   }
 
   Future<void> ensureBoardMemberCount(int boardId) async {
@@ -930,7 +1350,8 @@ class AppState extends ChangeNotifier {
         notifyListeners();
         return;
       }
-      final uids = await api.fetchBoardMemberUids(_baseUrl!, _username!, _password!, boardId);
+      final uids = await api.fetchBoardMemberUids(
+          _baseUrl!, _username!, _password!, boardId);
       _boardMemberCount[boardId] = uids.length;
       cache.put('board_members_$boardId', uids.length);
       notifyListeners();
@@ -945,7 +1366,7 @@ class AppState extends ChangeNotifier {
     _stackLoading.clear();
     await storage.write(key: 'activeBoardId', value: board.id.toString());
     cache.put('activeBoardId', board.id);
-    await refreshColumnsFor(board);
+    // Keine Netz-Requests hier: Spalten/Karten kommen aus Global-Fetch
     notifyListeners();
     _startAutoSync();
   }
@@ -964,25 +1385,156 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> refreshColumnsFor(Board board) async {
+  Future<void> refreshColumnsFor(Board board,
+      {bool bypassCooldown = false, bool full = false}) async {
     if (_localMode) {
       // Already in memory; ensure cached structure exists
       if (_columnsByBoard[board.id] == null) _setupLocalBoard();
       return;
     }
     if (_baseUrl == null || _username == null || _password == null) return;
+    // If full refresh requested || as primary path, prefer per-board details=true with ETag
+    try {
+      final isActive = (_activeBoard?.id == board.id);
+      final etagKey = 'etag_board_details_${board.id}';
+      final prevEtag = cache.get(etagKey) as String?;
+      var res = await api.fetchBoardDetailsWithEtag(
+          _baseUrl!, _username!, _password!, board.id,
+          ifNoneMatch: prevEtag, priority: isActive);
+      if (!res.notModified && res.columns.isNotEmpty) {
+        final prev = _columnsByBoard[board.id] ?? const <deck.Column>[];
+        final merged =
+            _mergeColumnsReplaceChangedForBoard(board.id, prev, res.columns);
+        _columnsByBoard[board.id] = merged;
+        cache.put(
+            'columns_${board.id}',
+            merged
+                .map((c) => {
+                      'id': c.id,
+                      'title': c.title,
+                      'cards': c.cards
+                          .map((k) => {
+                                'id': k.id,
+                                'title': k.title,
+                                'description': k.description,
+                                'duedate':
+                                    k.due?.toUtc().millisecondsSinceEpoch,
+                                'labels': k.labels
+                                    .map((l) => {
+                                          'id': l.id,
+                                          'title': l.title,
+                                          'color': l.color
+                                        })
+                                    .toList(),
+                              })
+                          .toList(),
+                    })
+                .toList());
+        if (res.etag != null) cache.put(etagKey, res.etag);
+        _lastError = null;
+        notifyListeners();
+        return;
+      }
+    } catch (_) {
+      // fall back below
+    }
+    // Wenn ETag-Pfad 304 lieferte, wir aber keine Spalten haben, einmal ohne ETag versuchen
+    final haveCols = (_columnsByBoard[board.id]?.isNotEmpty ?? false);
+    if (!haveCols) {
+      try {
+        final res2 = await api.fetchBoardDetailsWithEtag(
+            _baseUrl!, _username!, _password!, board.id,
+            ifNoneMatch: null, priority: true);
+        if (!res2.notModified && res2.columns.isNotEmpty) {
+          final prev = _columnsByBoard[board.id] ?? const <deck.Column>[];
+          final merged =
+              _mergeColumnsReplaceChangedForBoard(board.id, prev, res2.columns);
+          _columnsByBoard[board.id] = merged;
+          cache.put(
+              'columns_${board.id}',
+              merged
+                  .map((c) => {
+                        'id': c.id,
+                        'title': c.title,
+                        'cards': c.cards
+                            .map((k) => {
+                                  'id': k.id,
+                                  'title': k.title,
+                                  'description': k.description,
+                                  'duedate':
+                                      k.due?.toUtc().millisecondsSinceEpoch,
+                                  'labels': k.labels
+                                      .map((l) => {
+                                            'id': l.id,
+                                            'title': l.title,
+                                            'color': l.color
+                                          })
+                                      .toList(),
+                                })
+                            .toList(),
+                      })
+                  .toList());
+          _lastError = null;
+          notifyListeners();
+          return;
+        }
+      } catch (_) {}
+    }
+    if (full) {
+      // If details path didn't return, still avoid per-card bursts: use stacks with lazyCards=false
+      try {
+        final isActive = (_activeBoard?.id == board.id);
+        final cols = await api.fetchColumns(
+            _baseUrl!, _username!, _password!, board.id,
+            lazyCards: false, priority: isActive, bypassCooldown: true);
+        final prev = _columnsByBoard[board.id] ?? const <deck.Column>[];
+        final merged =
+            _mergeColumnsReplaceChangedForBoard(board.id, prev, cols);
+        _columnsByBoard[board.id] = merged;
+        cache.put(
+            'columns_${board.id}',
+            merged
+                .map((c) => {
+                      'id': c.id,
+                      'title': c.title,
+                      'cards': c.cards
+                          .map((k) => {
+                                'id': k.id,
+                                'title': k.title,
+                                'description': k.description,
+                                'duedate':
+                                    k.due?.toUtc().millisecondsSinceEpoch,
+                                'labels': k.labels
+                                    .map((l) => {
+                                          'id': l.id,
+                                          'title': l.title,
+                                          'color': l.color
+                                        })
+                                    .toList(),
+                              })
+                          .toList(),
+                    })
+                .toList());
+        _lastError = null;
+        notifyListeners();
+      } catch (e) {
+        _lastError = e.toString();
+      }
+      return;
+    }
     // Global throttle: avoid hammering the same board's stacks endpoint
     final throttleKey = 'stacks_fetch_ts_${board.id}';
     final last = cache.get(throttleKey);
-    final int? lastMs = last is int ? last : (last is num ? last.toInt() : null);
+    final int? lastMs =
+        last is int ? last : (last is num ? last.toInt() : null);
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     // Skip network if we fetched stacks for this board very recently (< 30s)
-    if (lastMs != null && (nowMs - lastMs) < 30000) {
+    if (!bypassCooldown && lastMs != null && (nowMs - lastMs) < 30000) {
       return;
     }
     // Additional in-memory guard (covers cases where cache timestamp is missing/cleared)
     final int? lastMem = _stacksLastFetchMsMem[board.id];
-    if (lastMem != null && (nowMs - lastMem) < 30000) {
+    if (!bypassCooldown && lastMem != null && (nowMs - lastMem) < 30000) {
       return;
     }
     // Coalesce concurrent callers for the same board
@@ -995,74 +1547,80 @@ class AppState extends ChangeNotifier {
       _stackLoaded.clear();
       _stackLoading.clear();
       final isActive = (_activeBoard?.id == board.id);
-      if (_cacheBoardsLocal) {
-        final etagKey = 'etag_stacks_${board.id}';
-        final prevEtag = cache.get(etagKey) as String?;
-        try {
-          final res = await api.fetchStacksWithEtag(_baseUrl!, _username!, _password!, board.id, ifNoneMatch: prevEtag, priority: isActive);
-          if (!res.notModified) {
-            // Merge: preserve existing cards if stacks response lacks inline cards
-            final prev = _columnsByBoard[board.id] ?? const <deck.Column>[];
-            final merged = [
-              for (final c in res.columns)
-                () {
-                  final pm = prev.firstWhere((p) => p.id == c.id, orElse: () => deck.Column(id: c.id, title: c.title, cards: const []));
-                  final cards = c.cards.isNotEmpty ? c.cards : pm.cards;
-                  return deck.Column(id: c.id, title: c.title, cards: cards);
-                }()
-            ];
-            _columnsByBoard[board.id] = merged;
-            cache.put('columns_${board.id}', merged.map((c) => {
-                  'id': c.id,
-                  'title': c.title,
-                  'cards': c.cards
-                      .map((k) => {
-                            'id': k.id,
-                            'title': k.title,
-                            'description': k.description,
-                            'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                            'labels': k.labels
-                                .map((l) => {'id': l.id, 'title': l.title, 'color': l.color})
-                                .toList(),
-                          })
-                      .toList(),
-                }).toList());
-            if (res.etag != null) cache.put(etagKey, res.etag);
-          }
-          _lastError = null;
-          notifyListeners();
-          return;
-        } catch (_) {
-          // fall back to non-ETag path below
+      final etagKey = 'etag_stacks_${board.id}';
+      final prevEtag = cache.get(etagKey) as String?;
+      try {
+        final res = await api.fetchStacksWithEtag(
+            _baseUrl!, _username!, _password!, board.id,
+            ifNoneMatch: prevEtag, priority: isActive);
+        if (!res.notModified) {
+          // Merge using protection-aware strategy
+          final prev = _columnsByBoard[board.id] ?? const <deck.Column>[];
+          final merged =
+              _mergeColumnsReplaceChangedForBoard(board.id, prev, res.columns);
+          _columnsByBoard[board.id] = merged;
+          cache.put(
+              'columns_${board.id}',
+              merged
+                  .map((c) => {
+                        'id': c.id,
+                        'title': c.title,
+                        'cards': c.cards
+                            .map((k) => {
+                                  'id': k.id,
+                                  'title': k.title,
+                                  'description': k.description,
+                                  'duedate':
+                                      k.due?.toUtc().millisecondsSinceEpoch,
+                                  'labels': k.labels
+                                      .map((l) => {
+                                            'id': l.id,
+                                            'title': l.title,
+                                            'color': l.color
+                                          })
+                                      .toList(),
+                                })
+                            .toList(),
+                      })
+                  .toList());
+          if (res.etag != null) cache.put(etagKey, res.etag);
         }
+        _lastError = null;
+        notifyListeners();
+        return;
+      } catch (_) {
+        // fall back to non-ETag path below
       }
-      final cols = await api.fetchColumns(_baseUrl!, _username!, _password!, board.id, lazyCards: true, priority: isActive);
-      // Merge with existing to preserve card lists if none inline
+      final cols = await api.fetchColumns(
+          _baseUrl!, _username!, _password!, board.id,
+          lazyCards: true, priority: isActive);
+      // Merge with protection awareness
       final prev = _columnsByBoard[board.id] ?? const <deck.Column>[];
-      final merged = [
-        for (final c in cols)
-          () {
-            final pm = prev.firstWhere((p) => p.id == c.id, orElse: () => deck.Column(id: c.id, title: c.title, cards: const []));
-            final cards = c.cards.isNotEmpty ? c.cards : pm.cards;
-            return deck.Column(id: c.id, title: c.title, cards: cards);
-          }()
-      ];
+      final merged = _mergeColumnsReplaceChangedForBoard(board.id, prev, cols);
       _columnsByBoard[board.id] = merged;
-      cache.put('columns_${board.id}', merged.map((c) => {
-            'id': c.id,
-            'title': c.title,
-            'cards': c.cards
-                .map((k) => {
-                      'id': k.id,
-                      'title': k.title,
-                      'description': k.description,
-                      'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                      'labels': k.labels
-                          .map((l) => {'id': l.id, 'title': l.title, 'color': l.color})
-                          .toList(),
-                    })
-                .toList(),
-          }).toList());
+      cache.put(
+          'columns_${board.id}',
+          merged
+              .map((c) => {
+                    'id': c.id,
+                    'title': c.title,
+                    'cards': c.cards
+                        .map((k) => {
+                              'id': k.id,
+                              'title': k.title,
+                              'description': k.description,
+                              'duedate': k.due?.toUtc().millisecondsSinceEpoch,
+                              'labels': k.labels
+                                  .map((l) => {
+                                        'id': l.id,
+                                        'title': l.title,
+                                        'color': l.color
+                                      })
+                                  .toList(),
+                            })
+                        .toList(),
+                  })
+              .toList());
       _lastError = null;
     } catch (e) {
       _lastError = e.toString();
@@ -1073,25 +1631,37 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<bool> createStack({required int boardId, required String title}) async {
+  Future<bool> createStack(
+      {required int boardId, required String title}) async {
     if (_localMode) {
       final cols = _columnsByBoard[boardId] ?? const <deck.Column>[];
       final nextId = ((cache.get('local_next_stack_id') as int?) ?? 1000) + 1;
-      final updated = [...cols, deck.Column(id: nextId, title: title, cards: const [])];
+      final updated = [
+        ...cols,
+        deck.Column(id: nextId, title: title, cards: const [])
+      ];
       _columnsByBoard[boardId] = updated;
       cache.put('local_next_stack_id', nextId);
-      cache.put('columns_$boardId', updated.map((c) => {'id': c.id, 'title': c.title, 'cards': const []}).toList());
+      cache.put(
+          'columns_$boardId',
+          updated
+              .map((c) => {'id': c.id, 'title': c.title, 'cards': const []})
+              .toList());
       notifyListeners();
       return true;
     }
-    if (_baseUrl == null || _username == null || _password == null) return false;
+    if (_baseUrl == null || _username == null || _password == null)
+      return false;
     try {
       // Provide a best-effort order: append at end
       final existing = _columnsByBoard[boardId] ?? const <deck.Column>[];
       final order = existing.isEmpty ? 0 : existing.length;
-      final created = await api.createStack(_baseUrl!, _username!, _password!, boardId, title: title, order: order);
+      final created = await api.createStack(
+          _baseUrl!, _username!, _password!, boardId,
+          title: title, order: order);
       if (created != null) {
-        final b = _boards.firstWhere((x) => x.id == boardId, orElse: () => Board.empty());
+        final b = _boards.firstWhere((x) => x.id == boardId,
+            orElse: () => Board.empty());
         await refreshColumnsFor(b);
         return true;
       }
@@ -1099,17 +1669,20 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
-  Future<Board?> createBoard({required String title, String? color, bool activate = true}) async {
+  Future<Board?> createBoard(
+      {required String title, String? color, bool activate = true}) async {
     if (_localMode) {
       // Create a local board stub is out of scope for now
       return null;
     }
     if (_baseUrl == null || _username == null || _password == null) return null;
     try {
-      final created = await api.createBoard(_baseUrl!, _username!, _password!, title: title, color: color);
+      final created = await api.createBoard(_baseUrl!, _username!, _password!,
+          title: title, color: color);
       await refreshBoards();
       if (created != null && activate) {
-        final found = _boards.firstWhere((b) => b.id == created.id, orElse: () => created);
+        final found = _boards.firstWhere((b) => b.id == created.id,
+            orElse: () => created);
         await setActiveBoard(found);
       }
       return created;
@@ -1120,23 +1693,28 @@ class AppState extends ChangeNotifier {
 
   void _startAutoSync() {
     _syncTimer?.cancel();
-    if (_localMode || _baseUrl == null || _username == null || _password == null) return;
+    if (_localMode ||
+        _baseUrl == null ||
+        _username == null ||
+        _password == null) return;
     _syncTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
       try {
-        // Refresh boards list to detect changed boards (lastModified) and update only those
+        // Gatekeeper (Boards+Stacks via ETag)
         await refreshBoards();
-        // When on Board tab, also refresh the active board's stacks and lightly ensure some cards
+        // Board-Tab: aktives Board leicht synchronisieren
         if (tabController.index == 1) {
           final b = _activeBoard;
           if (b != null) {
-            try { await refreshColumnsFor(b); } catch (_) {}
-            // Light touch: fetch a couple of empty stacks' cards to keep view fresh
-            unawaited(_ensureSomeCardsForBoard(b.id, limit: 2));
+            try {
+              await refreshColumnsFor(b, bypassCooldown: false, full: false);
+            } catch (_) {}
+            try {
+              await _ensureSomeCardsForBoard(b.id, limit: 2);
+            } catch (_) {}
           }
         }
-        // Kick a light Upcoming scan to process changed boards (ohne Karten-/Meta-Fetch)
-        unawaited(scanUpcoming());
-        // Kein automatisches Meta-/Karten-Refresh mehr im Timer – das bleibt nutzergetrieben.
+        // Anstehend-Delta selektiv
+        unawaited(refreshUpcomingDelta());
       } catch (_) {}
     });
   }
@@ -1144,19 +1722,6 @@ class AppState extends ChangeNotifier {
   void _stopAutoSync() {
     _syncTimer?.cancel();
     _syncTimer = null;
-  }
-
-  void setBackgroundPreload(bool enabled) {
-    _backgroundPreload = enabled;
-    storage.write(key: 'bg_preload', value: enabled ? '1' : '0');
-    // Do not immediately kick off heavy work here; user can use refresh
-    notifyListeners();
-  }
-
-  void setCacheBoardsLocal(bool enabled) {
-    _cacheBoardsLocal = enabled;
-    storage.write(key: 'cache_boards_local', value: enabled ? '1' : '0');
-    notifyListeners();
   }
 
   void setStartupTabIndex(int index) {
@@ -1180,22 +1745,115 @@ class AppState extends ChangeNotifier {
   final Map<int, int> _stacksLastFetchMsMem = {};
   // Protect freshly modified stacks from being overwritten by background fetches for a short window
   final Map<String, int> _protectStacksUntilMs = {};
+  final Set<String> _orderSyncingStacks = {};
   void _protectStack(int boardId, int stackId, {int ms = 10000}) {
-    _protectStacksUntilMs['$boardId:$stackId'] = DateTime.now().millisecondsSinceEpoch + ms;
+    _protectStacksUntilMs['$boardId:$stackId'] =
+        DateTime.now().millisecondsSinceEpoch + ms;
   }
+
   void _clearStackProtection(int boardId, int stackId) {
     _protectStacksUntilMs.remove('$boardId:$stackId');
   }
+
   bool _isStackProtected(int boardId, int stackId) {
     final v = _protectStacksUntilMs['$boardId:$stackId'];
     if (v == null) return false;
-    if (DateTime.now().millisecondsSinceEpoch > v) { _protectStacksUntilMs.remove('$boardId:$stackId'); return false; }
+    if (DateTime.now().millisecondsSinceEpoch > v) {
+      _protectStacksUntilMs.remove('$boardId:$stackId');
+      return false;
+    }
     return true;
+  }
+
+  Future<void> syncStackOrder(
+      {required int boardId, required int stackId}) async {
+    if (_localMode) return;
+    if (_baseUrl == null || _username == null) return;
+    if (_password == null) {
+      _password = await storage.read(key: 'password');
+      if (_password == null) return;
+    }
+    final key = '$boardId:$stackId';
+    if (_orderSyncingStacks.contains(key)) return;
+    final cols = _columnsByBoard[boardId];
+    if (cols == null) return;
+    final stack = cols.firstWhere((c) => c.id == stackId,
+        orElse: () => deck.Column(id: stackId, title: '', cards: const []));
+    if (stack.cards.isEmpty) return;
+    _orderSyncingStacks.add(key);
+    _protectStack(boardId, stackId, ms: 15000);
+    String? error;
+    try {
+      for (int i = 0; i < stack.cards.length; i++) {
+        final card = stack.cards[i];
+        final payload = <String, dynamic>{
+          'order': i + 1,
+          'position': i,
+          'stackId': stackId,
+          'title': card.title,
+        };
+        if ((card.description ?? '').isNotEmpty)
+          payload['description'] = card.description;
+        if (card.due != null)
+          payload['duedate'] = card.due!.toUtc().toIso8601String();
+        if (card.labels.isNotEmpty)
+          payload['labels'] = card.labels.map((l) => l.id).toList();
+        if (card.assignees.isNotEmpty)
+          payload['assignedUsers'] = card.assignees
+              .map((u) => u.id)
+              .where((id) => id.isNotEmpty)
+              .toList();
+        try {
+          await api.updateCard(_baseUrl!, _username!, _password!, boardId,
+              stackId, card.id, payload);
+        } catch (e) {
+          error = e.toString();
+        }
+      }
+      _lastError = error;
+    } finally {
+      _orderSyncingStacks.remove(key);
+      notifyListeners();
+    }
+  }
+
+  Future<void> clearLocalData() async {
+    if (_localMode) return;
+    _stopAutoSync();
+    _clearAllServerCaches();
+    _orderSyncingStacks.clear();
+    _stacksLoadingBoards.clear();
+    _stacksLastFetchMsMem.clear();
+    _protectStacksUntilMs.clear();
+    _lastError = null;
+    notifyListeners();
+    if (_baseUrl != null && _username != null) {
+      if (_password == null) {
+        _password = await storage.read(key: 'password');
+      }
+      if (_password != null) {
+        try {
+          await refreshBoards();
+          Board? board = _activeBoard;
+          board ??= _boards.isNotEmpty ? _boards.first : null;
+          if (board != null) {
+            if (_activeBoard == null || _activeBoard!.id != board.id) {
+              await setActiveBoard(board);
+            }
+            try {
+              await refreshColumnsFor(board, bypassCooldown: true, full: true);
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
+    }
+    _startAutoSync();
   }
 
   // Merge utility: replace only stacks present in 'next'; keep others, add new ones.
   // If a stack is protected for this board, keep its previous cards to avoid flicker after local changes.
-  List<deck.Column> _mergeColumnsReplaceChangedForBoard(int boardId, List<deck.Column> prev, List<deck.Column> next) {
+  List<deck.Column> _mergeColumnsReplaceChangedForBoard(
+      int boardId, List<deck.Column> prev, List<deck.Column> next) {
     final out = <deck.Column>[];
     for (final p in prev) {
       final idx = next.indexWhere((n) => n.id == p.id);
@@ -1216,8 +1874,10 @@ class AppState extends ChangeNotifier {
     }
     return out;
   }
+
   bool isStackLoading(int stackId) => _stackLoading.contains(stackId);
-  Future<void> ensureCardsFor(int boardId, int stackId, {bool force = false}) async {
+  Future<void> ensureCardsFor(int boardId, int stackId,
+      {bool force = false}) async {
     if (_localMode) return;
     if (_baseUrl == null || _username == null || _password == null) return;
     if (_stackLoading.contains(stackId)) return;
@@ -1226,29 +1886,53 @@ class AppState extends ChangeNotifier {
     if (cols == null) return;
     final idx = cols.indexWhere((c) => c.id == stackId);
     if (idx < 0) return;
-    if (!force && cols[idx].cards.isNotEmpty) { _stackLoaded.add(stackId); return; }
+    if (!force && cols[idx].cards.isNotEmpty) {
+      _stackLoaded.add(stackId);
+      return;
+    }
     _stackLoading.add(stackId);
     try {
       final isActive = (_activeBoard?.id == boardId);
-      final cards = await api.fetchCards(_baseUrl!, _username!, _password!, boardId, stackId, priority: isActive);
+      final etKey = 'etag_stack_$stackId';
+      final prev = cache.get(etKey) as String?;
+      final res = await api.fetchStackCardsStrict(
+          _baseUrl!, _username!, _password!, boardId, stackId,
+          ifNoneMatch: (force ? null : prev), priority: isActive);
+      final cards = res.notModified ? cols[idx].cards : res.cards;
       final updated = [
         for (final c in cols)
-          if (c.id == stackId) deck.Column(id: c.id, title: c.title, cards: cards) else c
+          if (c.id == stackId)
+            deck.Column(id: c.id, title: c.title, cards: cards)
+          else
+            c
       ];
       _columnsByBoard[boardId] = updated;
       // Do not clear protection here; it prevents flicker right after local create/update
       // Persist updated columns to local cache so partial progress survives app restarts
-      cache.put('columns_$boardId', updated.map((c) => {
-        'id': c.id,
-        'title': c.title,
-        'cards': c.cards.map((k) => {
-          'id': k.id,
-          'title': k.title,
-          'description': k.description,
-          'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-          'labels': k.labels.map((l) => {'id': l.id, 'title': l.title, 'color': l.color}).toList(),
-        }).toList(),
-      }).toList());
+      cache.put(
+          'columns_$boardId',
+          updated
+              .map((c) => {
+                    'id': c.id,
+                    'title': c.title,
+                    'cards': c.cards
+                        .map((k) => {
+                              'id': k.id,
+                              'title': k.title,
+                              'description': k.description,
+                              'duedate': k.due?.toUtc().millisecondsSinceEpoch,
+                              'labels': k.labels
+                                  .map((l) => {
+                                        'id': l.id,
+                                        'title': l.title,
+                                        'color': l.color
+                                      })
+                                  .toList(),
+                            })
+                        .toList(),
+                  })
+              .toList());
+      if (!res.notModified && res.etag != null) cache.put(etKey, res.etag);
       _stackLoaded.add(stackId);
       notifyListeners();
     } catch (_) {
@@ -1258,7 +1942,7 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  // Fetch cards for a limited number of stacks on a board, prioritizing stacks without cards and excluding "done" columns.
+  // Fetch cards for a limited number of stacks on a board, prioritizing stacks without cards && excluding "done" columns.
   Future<void> _ensureSomeCardsForBoard(int boardId, {int limit = 2}) async {
     if (_localMode) return;
     if (_baseUrl == null || _username == null || _password == null) return;
@@ -1269,7 +1953,9 @@ class AppState extends ChangeNotifier {
       final ct = c.title.toLowerCase();
       if (ct.contains('done') || ct.contains('erledigt')) continue;
       if (c.cards.isEmpty) {
-        try { await ensureCardsFor(boardId, c.id); } catch (_) {}
+        try {
+          await ensureCardsFor(boardId, c.id);
+        } catch (_) {}
         fetched++;
         if (fetched >= limit) break;
       }
@@ -1278,42 +1964,32 @@ class AppState extends ChangeNotifier {
     if (fetched == 0) {
       final key = 'board_cards_force_ts_$boardId';
       final last = cache.get(key);
-      final int? lastMs = last is int ? last : (last is num ? last.toInt() : null);
+      final int? lastMs =
+          last is int ? last : (last is num ? last.toInt() : null);
       final nowMs = DateTime.now().millisecondsSinceEpoch;
       if (lastMs == null || (nowMs - lastMs) > 30 * 60 * 1000) {
         final pick = cols.firstWhere(
-          (c) => !c.title.toLowerCase().contains('done') && !c.title.toLowerCase().contains('erledigt'),
+          (c) =>
+              !c.title.toLowerCase().contains('done') &&
+              !c.title.toLowerCase().contains('erledigt'),
           orElse: () => cols.first,
         );
-        try { await ensureCardsFor(boardId, pick.id, force: true); } catch (_) {}
+        try {
+          await ensureCardsFor(boardId, pick.id, force: true);
+        } catch (_) {}
         cache.put(key, nowMs);
       }
     }
   }
 
   Future<void> refreshActiveBoardMeta() async {
-    if (_localMode) return; // local mode: meta is maintained via UI actions
-    final b = _activeBoard;
-    if (b == null) return;
-    if (_baseUrl == null || _username == null || _password == null) return;
-    // Ensure cards are present in small batches (2-3 stacks parallel)
-    final cols = columnsForActiveBoard();
-    const pool = 3;
-    for (int i = 0; i < cols.length; i += pool) {
-      final slice = cols.skip(i).take(pool).toList();
-      await Future.wait(slice.map((c) => ensureCardsFor(b.id, c.id)));
-    }
-    // Now kick off meta count fetch for all cards
-    final cols2 = columnsForActiveBoard();
-    for (final c in cols2) {
-      for (final k in c.cards) {
-        // force refresh to catch external changes
-        unawaited(ensureCardMetaCounts(boardId: b.id, stackId: c.id, cardId: k.id, force: true));
-      }
-    }
+    /* disabled to avoid per-card bursts */
   }
 
-  Future<void> syncActiveBoard({bool forceMeta = false}) async {
+  Future<void> syncActiveBoard(
+      {bool forceMeta = false,
+      bool full = false,
+      bool bypassCooldown = false}) async {
     if (_localMode) return;
     final b = _activeBoard;
     if (b == null) return;
@@ -1321,33 +1997,88 @@ class AppState extends ChangeNotifier {
     _isSyncing = true;
     notifyListeners();
     try {
-      await refreshColumnsFor(b);
-      final cols = columnsForActiveBoard();
-      const pool = 3;
-      for (int i = 0; i < cols.length; i += pool) {
-        final slice = cols.skip(i).take(pool).toList();
-        await Future.wait(slice.map((c) => ensureCardsFor(b.id, c.id)));
-      }
-      final cols2 = columnsForActiveBoard();
-      final jobs = <Future<void>>[];
-      for (final c in cols2) {
-        for (final k in c.cards) {
-          jobs.add(ensureCardMetaCounts(boardId: b.id, stackId: c.id, cardId: k.id, force: forceMeta));
-        }
-      }
-      if (jobs.isNotEmpty) await Future.wait(jobs);
+      await refreshColumnsFor(b, bypassCooldown: bypassCooldown, full: true);
     } finally {
       _isSyncing = false;
       notifyListeners();
     }
   }
 
-  // Lazy load counts for comments and attachments per card
-  Future<void> ensureCardMetaCounts({required int boardId, required int stackId, required int cardId, bool force = false}) async {
+  // Lazy load counts for comments && attachments per card
+  // Upcoming delta: Gatekeeper + refresh only changed boards' stacks; then load cards only for stacks with due hits.
+  Future<void> refreshUpcomingDelta({bool forceFull = false}) async {
+    if (_localMode) return;
+    if (_baseUrl == null || _username == null || _password == null) return;
+    _upScanActive = true;
+    notifyListeners();
+    try {
+      await refreshBoards();
+      final boardsToProcess =
+          forceFull ? _boards.where((x) => !x.archived).toList() : <Board>[];
+      if (!forceFull) {
+        for (final b in _boards.where((x) => !x.archived)) {
+          final curr = cache.get('board_lastmod_${b.id}');
+          final prev = cache.get('board_lastmod_prev_${b.id}');
+          final int? currMs =
+              curr is int ? curr : (curr is num ? curr.toInt() : null);
+          final int? prevMs =
+              prev is int ? prev : (prev is num ? prev.toInt() : null);
+          final changed = (currMs != null && prevMs != null)
+              ? (currMs > prevMs)
+              : (prevMs == null);
+          if (changed) boardsToProcess.add(b);
+        }
+      }
+      for (final b in boardsToProcess) {
+        try {
+          await refreshColumnsFor(b, bypassCooldown: true, full: forceFull);
+        } catch (_) {}
+        final dueStacks = _dueStackIdsForBoard(b.id);
+        for (final sid in dueStacks) {
+          try {
+            await ensureCardsFor(b.id, sid, force: forceFull);
+          } catch (_) {}
+        }
+        final curr = cache.get('board_lastmod_${b.id}');
+        final int? currMs =
+            curr is int ? curr : (curr is num ? curr.toInt() : null);
+        if (currMs != null) cache.put('board_lastmod_prev_${b.id}', currMs);
+      }
+      _rebuildUpcomingCacheFromMemory();
+      notifyListeners();
+    } catch (_) {
+    } finally {
+      _upScanActive = false;
+      notifyListeners();
+    }
+  }
+
+  Set<int> _dueStackIdsForBoard(int boardId) {
+    final out = <int>{};
+    final cols = _columnsByBoard[boardId] ?? const <deck.Column>[];
+    for (final c in cols) {
+      final ct = c.title.toLowerCase();
+      if (ct.contains('done') || ct.contains('erledigt')) continue;
+      for (final k in c.cards) {
+        if (k.due != null) {
+          out.add(c.id);
+          break;
+        }
+      }
+    }
+    return out;
+  }
+
+  Future<void> ensureCardMetaCounts(
+      {required int boardId,
+      required int stackId,
+      required int cardId,
+      bool force = false}) async {
     if (_localMode) return; // no meta in local mode
     if (_baseUrl == null || _username == null || _password == null) return;
     final needsComments = force || !_cardCommentsCount.containsKey(cardId);
-    final needsAttachments = force || !_cardAttachmentsCount.containsKey(cardId);
+    final needsAttachments =
+        force || !_cardAttachmentsCount.containsKey(cardId);
     if (!needsComments && !needsAttachments) return;
     try {
       final base = _baseUrl!, user = _username!, pass = _password!;
@@ -1356,7 +2087,8 @@ class AppState extends ChangeNotifier {
       if (needsComments) {
         futures.add(() async {
           try {
-            final raw = await api.fetchCommentsRaw(base, user, pass, cardId, limit: 200, offset: 0);
+            final raw = await api.fetchCommentsRaw(base, user, pass, cardId,
+                limit: 200, offset: 0);
             // Some Deck instances return threaded comments: top-level with nested 'replies'
             int total = 0;
             for (final e in raw) {
@@ -1376,7 +2108,8 @@ class AppState extends ChangeNotifier {
       if (needsAttachments) {
         futures.add(() async {
           try {
-            final list = await api.fetchCardAttachments(base, user, pass, boardId: boardId, stackId: stackId, cardId: cardId);
+            final list = await api.fetchCardAttachments(base, user, pass,
+                boardId: boardId, stackId: stackId, cardId: cardId);
             _cardAttachmentsCount[cardId] = list.length;
           } catch (_) {}
         }());
@@ -1388,25 +2121,52 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
+  // Server update helper: apply update on server, then refresh this board from server to converge state.
+  Future<void> updateCardAndRefresh({
+    required int boardId,
+    required int stackId,
+    required int cardId,
+    required Map<String, dynamic> patch,
+  }) async {
+    if (_localMode)
+      return; // local-only mode: callers already did optimistic update
+    if (_baseUrl == null || _username == null || _password == null) return;
+    try {
+      await api.updateCard(
+          _baseUrl!, _username!, _password!, boardId, stackId, cardId, patch);
+    } catch (_) {
+      // Even if update fails, try to refetch to keep view coherent
+    }
+    // Force a focused board refresh (with cards inline) to pick up any server-side changes
+    final b = _boards.firstWhere((x) => x.id == boardId,
+        orElse: () => _activeBoard ?? Board.empty());
+    if (b.id != -1) {
+      try {
+        await refreshColumnsFor(b, bypassCooldown: true, full: true);
+      } catch (_) {}
+      // Also refresh Upcoming due lists after board update
+      try {
+        await refreshUpcomingDelta();
+      } catch (_) {}
+    }
+  }
+
   void _hydrateFromCache() {
     final rawBoards = cache.get('boards');
     if (rawBoards is List) {
-      _boards = rawBoards
-          .whereType<Map>()
-          .map((e) {
-            final m = e.cast<String, dynamic>();
-            final archivedRaw = m['archived'];
-            final archived = archivedRaw is bool
-                ? archivedRaw
-                : (archivedRaw is num ? (archivedRaw != 0) : false);
-            return Board(
-              id: (m['id'] as num).toInt(),
-              title: (m['title'] ?? '').toString(),
-              color: (m['color'] as String?),
-              archived: archived,
-            );
-          })
-          .toList();
+      _boards = rawBoards.whereType<Map>().map((e) {
+        final m = e.cast<String, dynamic>();
+        final archivedRaw = m['archived'];
+        final archived = archivedRaw is bool
+            ? archivedRaw
+            : (archivedRaw is num ? (archivedRaw != 0) : false);
+        return Board(
+          id: (m['id'] as num).toInt(),
+          title: (m['title'] ?? '').toString(),
+          color: (m['color'] as String?),
+          archived: archived,
+        );
+      }).toList();
     }
     final hidden = cache.get('hiddenBoards');
     if (hidden is List) {
@@ -1416,7 +2176,8 @@ class AppState extends ChangeNotifier {
     }
     final activeId = cache.get('activeBoardId');
     if (activeId is int) {
-      _activeBoard = _boards.firstWhere((b) => b.id == activeId, orElse: () => _boards.isEmpty ? Board.empty() : _boards.first);
+      _activeBoard = _boards.firstWhere((b) => b.id == activeId,
+          orElse: () => _boards.isEmpty ? Board.empty() : _boards.first);
     }
     for (final b in _boards) {
       final cols = cache.get('columns_${b.id}');
@@ -1443,7 +2204,8 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void toggleBoardHidden(int boardId) => setBoardHidden(boardId, !isBoardHidden(boardId));
+  void toggleBoardHidden(int boardId) =>
+      setBoardHidden(boardId, !isBoardHidden(boardId));
 
   List<deck.Column> _parseCachedColumns(List colsRaw) {
     final parsed = <deck.Column>[];
@@ -1455,7 +2217,8 @@ class AppState extends ChangeNotifier {
           DateTime? due;
           final dd = k['duedate'];
           if (dd is int) {
-            due = DateTime.fromMillisecondsSinceEpoch(dd, isUtc: true).toLocal();
+            due =
+                DateTime.fromMillisecondsSinceEpoch(dd, isUtc: true).toLocal();
           }
           cards.add(CardItem(
             id: (k['id'] as num).toInt(),
@@ -1464,12 +2227,18 @@ class AppState extends ChangeNotifier {
             due: due,
             labels: ((k['labels'] as List?) ?? const [])
                 .whereType<Map>()
-                .map((l) => Label(id: (l['id'] as num).toInt(), title: (l['title'] ?? '').toString(), color: (l['color'] ?? '').toString()))
+                .map((l) => Label(
+                    id: (l['id'] as num).toInt(),
+                    title: (l['title'] ?? '').toString(),
+                    color: (l['color'] ?? '').toString()))
                 .toList(),
           ));
         }
       }
-      parsed.add(deck.Column(id: (c['id'] as num).toInt(), title: (c['title'] ?? '').toString(), cards: cards));
+      parsed.add(deck.Column(
+          id: (c['id'] as num).toInt(),
+          title: (c['title'] ?? '').toString(),
+          cards: cards));
     }
     return parsed;
   }
@@ -1486,31 +2255,54 @@ class AppState extends ChangeNotifier {
       final idx = cols.indexWhere((c) => c.id == columnId);
       if (idx < 0) return;
       final nextId = (cache.get('local_next_card_id') as int?) ?? 1;
-      final newCard = CardItem(id: nextId, title: title, description: description, labels: const [], assignees: const [], due: null);
+      final newCard = CardItem(
+          id: nextId,
+          title: title,
+          description: description,
+          labels: const [],
+          assignees: const [],
+          due: null);
       final updated = [
         for (final c in cols)
-          if (c.id == columnId) deck.Column(id: c.id, title: c.title, cards: [...c.cards, newCard]) else c
+          if (c.id == columnId)
+            deck.Column(id: c.id, title: c.title, cards: [...c.cards, newCard])
+          else
+            c
       ];
       _columnsByBoard[boardId] = updated;
       cache.put('local_next_card_id', nextId + 1);
-      cache.put('columns_$boardId', updated.map((c) => {
-        'id': c.id,
-        'title': c.title,
-        'cards': c.cards.map((k) => {
-          'id': k.id,
-          'title': k.title,
-          'description': k.description,
-          'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-          'labels': k.labels.map((l) => {'id': l.id, 'title': l.title, 'color': l.color}).toList(),
-        }).toList(),
-      }).toList());
+      cache.put(
+          'columns_$boardId',
+          updated
+              .map((c) => {
+                    'id': c.id,
+                    'title': c.title,
+                    'cards': c.cards
+                        .map((k) => {
+                              'id': k.id,
+                              'title': k.title,
+                              'description': k.description,
+                              'duedate': k.due?.toUtc().millisecondsSinceEpoch,
+                              'labels': k.labels
+                                  .map((l) => {
+                                        'id': l.id,
+                                        'title': l.title,
+                                        'color': l.color
+                                      })
+                                  .toList(),
+                            })
+                        .toList(),
+                  })
+              .toList());
       notifyListeners();
       return;
     }
     if (_baseUrl == null || _username == null || _password == null) return;
     // Server-first: create on server, then insert returned card immediately, then perform a focused board sync
     _protectStack(boardId, columnId);
-    final created = await api.createCard(_baseUrl!, _username!, _password!, boardId, columnId, title, description: description);
+    final created = await api.createCard(
+        _baseUrl!, _username!, _password!, boardId, columnId, title,
+        description: description);
     if (created != null) {
       final cols = _columnsByBoard[boardId] ?? const <deck.Column>[];
       final idx = cols.indexWhere((c) => c.id == columnId);
@@ -1518,20 +2310,37 @@ class AppState extends ChangeNotifier {
       if (idx >= 0) {
         final updated = [
           for (final c in cols)
-            if (c.id == columnId) deck.Column(id: c.id, title: c.title, cards: [...c.cards, newCard]) else c
+            if (c.id == columnId)
+              deck.Column(
+                  id: c.id, title: c.title, cards: [...c.cards, newCard])
+            else
+              c
         ];
         _columnsByBoard[boardId] = updated;
-        cache.put('columns_$boardId', updated.map((c) => {
-          'id': c.id,
-          'title': c.title,
-          'cards': c.cards.map((k) => {
-            'id': k.id,
-            'title': k.title,
-            'description': k.description,
-            'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-            'labels': k.labels.map((l) => {'id': l.id, 'title': l.title, 'color': l.color}).toList(),
-          }).toList(),
-        }).toList());
+        cache.put(
+            'columns_$boardId',
+            updated
+                .map((c) => {
+                      'id': c.id,
+                      'title': c.title,
+                      'cards': c.cards
+                          .map((k) => {
+                                'id': k.id,
+                                'title': k.title,
+                                'description': k.description,
+                                'duedate':
+                                    k.due?.toUtc().millisecondsSinceEpoch,
+                                'labels': k.labels
+                                    .map((l) => {
+                                          'id': l.id,
+                                          'title': l.title,
+                                          'color': l.color
+                                        })
+                                    .toList(),
+                              })
+                          .toList(),
+                    })
+                .toList());
         notifyListeners();
       }
       // Immediately attempt to refresh the whole board to converge, ensuring the newly created card is present
@@ -1539,7 +2348,9 @@ class AppState extends ChangeNotifier {
         final int newId = newCard.id;
         bool updatedWithServer = false;
         for (int attempt = 0; attempt < 3; attempt++) {
-          final fetched = await api.fetchColumns(_baseUrl!, _username!, _password!, boardId, lazyCards: false, priority: true, bypassCooldown: true);
+          final fetched = await api.fetchColumns(
+              _baseUrl!, _username!, _password!, boardId,
+              lazyCards: false, priority: true, bypassCooldown: true);
           // Check if the target column contains the newly created card
           final target = fetched.firstWhere(
             (c) => c.id == columnId,
@@ -1547,19 +2358,33 @@ class AppState extends ChangeNotifier {
           );
           if (target.cards.any((k) => k.id == newId)) {
             final prev = _columnsByBoard[boardId] ?? const <deck.Column>[];
-            final merged = _mergeColumnsReplaceChangedForBoard(boardId, prev, fetched);
+            final merged =
+                _mergeColumnsReplaceChangedForBoard(boardId, prev, fetched);
             _columnsByBoard[boardId] = merged;
-            cache.put('columns_$boardId', merged.map((c) => {
-              'id': c.id,
-              'title': c.title,
-              'cards': c.cards.map((k) => {
-                'id': k.id,
-                'title': k.title,
-                'description': k.description,
-                'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                'labels': k.labels.map((l) => {'id': l.id, 'title': l.title, 'color': l.color}).toList(),
-              }).toList(),
-            }).toList());
+            cache.put(
+                'columns_$boardId',
+                merged
+                    .map((c) => {
+                          'id': c.id,
+                          'title': c.title,
+                          'cards': c.cards
+                              .map((k) => {
+                                    'id': k.id,
+                                    'title': k.title,
+                                    'description': k.description,
+                                    'duedate':
+                                        k.due?.toUtc().millisecondsSinceEpoch,
+                                    'labels': k.labels
+                                        .map((l) => {
+                                              'id': l.id,
+                                              'title': l.title,
+                                              'color': l.color
+                                            })
+                                        .toList(),
+                                  })
+                              .toList(),
+                        })
+                    .toList());
             notifyListeners();
             updatedWithServer = true;
             break;
@@ -1577,36 +2402,53 @@ class AppState extends ChangeNotifier {
   }
 
   // Delete a card (optimistic local update, best-effort server call)
-  Future<void> deleteCard({required int boardId, required int stackId, required int cardId}) async {
+  Future<void> deleteCard(
+      {required int boardId, required int stackId, required int cardId}) async {
     // Local removal
     final cols = _columnsByBoard[boardId];
     if (cols != null) {
       _columnsByBoard[boardId] = [
         for (final c in cols)
           if (c.id == stackId)
-            deck.Column(id: c.id, title: c.title, cards: c.cards.where((k) => k.id != cardId).toList())
+            deck.Column(
+                id: c.id,
+                title: c.title,
+                cards: c.cards.where((k) => k.id != cardId).toList())
           else
             c
       ];
       // persist simplified columns cache
       final updated = _columnsByBoard[boardId]!;
-      cache.put('columns_$boardId', updated.map((c) => {
-        'id': c.id,
-        'title': c.title,
-        'cards': c.cards.map((k) => {
-          'id': k.id,
-          'title': k.title,
-          'description': k.description,
-          'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-          'labels': k.labels.map((l) => {'id': l.id, 'title': l.title, 'color': l.color}).toList(),
-        }).toList(),
-      }).toList());
+      cache.put(
+          'columns_$boardId',
+          updated
+              .map((c) => {
+                    'id': c.id,
+                    'title': c.title,
+                    'cards': c.cards
+                        .map((k) => {
+                              'id': k.id,
+                              'title': k.title,
+                              'description': k.description,
+                              'duedate': k.due?.toUtc().millisecondsSinceEpoch,
+                              'labels': k.labels
+                                  .map((l) => {
+                                        'id': l.id,
+                                        'title': l.title,
+                                        'color': l.color
+                                      })
+                                  .toList(),
+                            })
+                        .toList(),
+                  })
+              .toList());
       notifyListeners();
     }
     if (_localMode) return;
     if (_baseUrl == null || _username == null || _password == null) return;
     try {
-      await api.deleteCard(_baseUrl!, _username!, _password!, boardId: boardId, stackId: stackId, cardId: cardId);
+      await api.deleteCard(_baseUrl!, _username!, _password!,
+          boardId: boardId, stackId: stackId, cardId: cardId);
     } catch (_) {}
   }
 
@@ -1623,6 +2465,8 @@ class AppState extends ChangeNotifier {
     List<Label>? setLabels,
     List<UserRef>? setAssignees,
   }) {
+    // Protect the affected stack(s) from being overwritten by background fetches while update is in-flight
+    _protectStack(boardId, stackId);
     final cols = _columnsByBoard[boardId];
     if (cols == null) return;
     int fromIndex = cols.indexWhere((c) => c.id == stackId);
@@ -1639,8 +2483,9 @@ class AppState extends ChangeNotifier {
       labels: setLabels ?? current.labels,
       assignees: setAssignees ?? current.assignees,
     );
-    // Apply in place or move to another stack
+    // Apply in place || move to another stack
     if (moveToStackId != null && moveToStackId != stackId) {
+      _protectStack(boardId, moveToStackId);
       // remove from current
       final newFromCards = [...from.cards]..removeAt(cardIdx);
       _columnsByBoard[boardId] = [
@@ -1670,7 +2515,10 @@ class AppState extends ChangeNotifier {
       newCards[cardIdx] = updated;
       _columnsByBoard[boardId] = [
         for (final c in cols)
-          if (c.id == from.id) deck.Column(id: c.id, title: c.title, cards: newCards) else c
+          if (c.id == from.id)
+            deck.Column(id: c.id, title: c.title, cards: newCards)
+          else
+            c
       ];
     }
     notifyListeners();
@@ -1683,6 +2531,7 @@ class AppState extends ChangeNotifier {
     required int cardId,
     required int newIndex,
   }) {
+    _protectStack(boardId, stackId);
     final cols = _columnsByBoard[boardId];
     if (cols == null) return;
     final sIdx = cols.indexWhere((c) => c.id == stackId);
@@ -1696,8 +2545,23 @@ class AppState extends ChangeNotifier {
     list.insert(ni, item);
     _columnsByBoard[boardId] = [
       for (int i = 0; i < cols.length; i++)
-        if (i == sIdx) deck.Column(id: stack.id, title: stack.title, cards: list) else cols[i]
+        if (i == sIdx)
+          deck.Column(id: stack.id, title: stack.title, cards: list)
+        else
+          cols[i]
     ];
     notifyListeners();
+  }
+
+  // Helper: toggle global syncing spinner for short manual actions
+  Future<T> runWithSyncing<T>(Future<T> Function() fn) async {
+    _isSyncing = true;
+    notifyListeners();
+    try {
+      return await fn();
+    } finally {
+      _isSyncing = false;
+      notifyListeners();
+    }
   }
 }

@@ -292,11 +292,10 @@ class _CardDetailPageState extends State<CardDetailPage> {
       return;
     }
     try {
-      await app.api.updateCard(baseUrl, user, pass, boardId, stackId, widget.cardId, merged);
+      await app.updateCardAndRefresh(boardId: boardId, stackId: stackId, cardId: widget.cardId, patch: merged);
       if (merged.containsKey('title')) _titleDirty = false;
       if (merged.containsKey('description')) _descDirty = false;
       if (merged.containsKey('duedate')) _dueDirty = false;
-      if (app.activeBoard != null) unawaited(app.refreshColumnsFor(app.activeBoard!));
     } finally {
       if (mounted) setState(() { _saving = false; });
     }
