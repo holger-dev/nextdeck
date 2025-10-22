@@ -286,16 +286,10 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                           ? null
                           : () async {
                               await app.runWithSyncing(() async {
-                                await app.refreshBoards();
                                 final b = app.activeBoard;
                                 if (b != null) {
-                                  await app.refreshColumnsFor(b,
-                                      bypassCooldown: true, full: true);
-                                  final cols = app.columnsForBoard(b.id);
-                                  for (final c in cols) {
-                                    await app.ensureCardsFor(b.id, c.id,
-                                        force: true);
-                                  }
+                                  // Use new sync system instead of old refreshColumnsFor
+                                  await app.refreshSingleBoard(b.id);
                                 }
                               });
                             },

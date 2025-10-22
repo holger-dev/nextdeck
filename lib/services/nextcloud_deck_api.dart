@@ -666,7 +666,44 @@ class NextcloudDeckApi {
               columns[i] = deck.Column(id: c.id, title: c.title, cards: list);
             }
           }
-        } else if (needFetch.isNotEmpty) {
+          needFetch.removeWhere((m) {
+            final id = m['id'];
+            return id is int && byStack.containsKey(id);
+          });
+        }
+        if (needFetch.isNotEmpty) {
+          try {
+            final detail = await fetchBoardDetailsWithEtag(
+              baseUrl,
+              username,
+              password,
+              boardId,
+              ifNoneMatch: null,
+              priority: priority,
+            );
+            final detailColumns = detail.columns;
+            if (detailColumns.isNotEmpty) {
+              final detailMap = {for (final c in detailColumns) c.id: c};
+              bool filled = false;
+              for (int i = 0; i < columns.length; i++) {
+                final current = columns[i];
+                final det = detailMap[current.id];
+                if (det != null && det.cards.isNotEmpty) {
+                  columns[i] =
+                      deck.Column(id: current.id, title: current.title, cards: det.cards);
+                  filled = true;
+                }
+              }
+              if (filled) {
+                needFetch.removeWhere((m) {
+                  final id = m['id'];
+                  return id is int && detailMap.containsKey(id);
+                });
+              }
+            }
+          } catch (_) {}
+        }
+        if (needFetch.isNotEmpty) {
           // Fallback: fetch per stack (bounded by global concurrency limiter)
           final results = await Future.wait(
             needFetch.map((m) => fetchCards(
@@ -947,9 +984,12 @@ class NextcloudDeckApi {
       '/apps/deck/api/v1.0/boards/{boardId}/stacks/{stackId}/cards',
       // Some servers expose cards list under stacks without board scope
       '/apps/deck/api/v1.0/stacks/{stackId}/cards',
-      // OCS variants (some installations only expose OCS for cards list)
+      '/ocs/v2.php/apps/deck/api/v1.1/boards/{boardId}/stacks/{stackId}/cards',
       '/ocs/v2.php/apps/deck/api/v1.0/boards/{boardId}/stacks/{stackId}/cards',
+      '/ocs/v1.php/apps/deck/api/v1.1/boards/{boardId}/stacks/{stackId}/cards',
       '/ocs/v1.php/apps/deck/api/v1.0/boards/{boardId}/stacks/{stackId}/cards',
+      '/ocs/v2.php/apps/deck/api/v1.0/stacks/{stackId}/cards',
+      '/ocs/v1.php/apps/deck/api/v1.0/stacks/{stackId}/cards',
     ];
     http.Response? last;
     for (final templ in variants) {
@@ -966,7 +1006,7 @@ class NextcloudDeckApi {
           final uri = _buildUri(baseUrl, path, withIndex);
           final res = await _send('GET', uri, headers, priority: priority);
           last = res;
-          if (_isOk(res)) {
+          if (_isOk(res) && !_ocsFailure(res)) {
             _cardsVariantCache[cacheKey] = templ;
             _cardsVariantExpiry.remove(cacheKey);
             return _parseCardsList(res.body);
@@ -986,34 +1026,90 @@ class NextcloudDeckApi {
   Future<FetchCardsStrictResult> fetchStackCardsStrict(
       String baseUrl, String user, String pass, int boardId, int stackId,
       {String? ifNoneMatch, bool priority = false}) async {
-    final headers = {
-      ..._restHeader,
-      'authorization': _basicAuth(user, pass),
-      if (ifNoneMatch != null && ifNoneMatch.isNotEmpty)
-        'If-None-Match': ifNoneMatch,
-    };
-    for (final withIndex in [false, true]) {
-      try {
-        final uri = _buildUri(
-            baseUrl,
-            '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards',
-            withIndex);
-        final res = await _send('GET', uri, headers, priority: priority);
-        if (res.statusCode == 304)
-          return const FetchCardsStrictResult(
-              cards: [], etag: null, notModified: true);
-        if (_isOk(res)) {
-          final etag =
-              res.headers['etag'] ?? res.headers['ETag'] ?? res.headers['Etag'];
-          final list = _extractCardsFromAny(res.body);
-          return FetchCardsStrictResult(
-              cards: list, etag: etag, notModified: false);
-        }
-      } catch (_) {}
+    final cacheKey = baseUrl;
+    final negExp = _cardsVariantExpiry[cacheKey];
+
+    Future<FetchCardsStrictResult?> tryTemplate(String templ) async {
+      final path = templ
+          .replaceAll('{boardId}', '$boardId')
+          .replaceAll('{stackId}', '$stackId');
+      final isOcs = templ.startsWith('/ocs/');
+      final headers = {
+        if (isOcs) ..._ocsHeader else ..._restHeader,
+        'authorization': _basicAuth(user, pass),
+        if (ifNoneMatch != null && ifNoneMatch.isNotEmpty)
+          'If-None-Match': ifNoneMatch,
+      };
+      for (final withIndex in [false, true]) {
+        try {
+          final uri = _buildUri(baseUrl, path, withIndex);
+          final res = await _send('GET', uri, headers, priority: priority);
+          if (res.statusCode == 304) {
+            return const FetchCardsStrictResult(
+                cards: [], etag: null, notModified: true);
+          }
+          if (_isOk(res) && !_ocsFailure(res)) {
+            final etag = res.headers['etag'] ??
+                res.headers['ETag'] ??
+                res.headers['Etag'];
+            final list = _extractCardsFromAny(res.body);
+            return FetchCardsStrictResult(
+                cards: list, etag: etag, notModified: false);
+          }
+        } catch (_) {}
+      }
+      return null;
     }
-    // As last resort: treat as not modified to avoid storms
-    return const FetchCardsStrictResult(
-        cards: [], etag: null, notModified: true);
+
+    Future<FetchCardsStrictResult> fallbackViaStacks() async {
+      final cards = await _fallbackCardsViaStacks(
+          baseUrl, user, pass, boardId, stackId,
+          priority: priority);
+      if (cards.isNotEmpty) {
+        return FetchCardsStrictResult(
+            cards: cards, etag: null, notModified: false);
+      }
+      return const FetchCardsStrictResult(
+          cards: [], etag: null, notModified: false);
+    }
+
+    if (_cardsVariantCache.containsKey(cacheKey)) {
+      final templ = _cardsVariantCache[cacheKey];
+      if (templ != null) {
+        final res = await tryTemplate(templ);
+        if (res != null) {
+          return res;
+        }
+        _cardsVariantCache.remove(cacheKey);
+      } else if (negExp != null && negExp.isAfter(DateTime.now())) {
+        return await fallbackViaStacks();
+      }
+    }
+
+    final variants = <String>[
+      '/apps/deck/api/v1.1/boards/{boardId}/stacks/{stackId}/cards',
+      '/apps/deck/api/v1.0/boards/{boardId}/stacks/{stackId}/cards',
+      '/apps/deck/api/v1.0/stacks/{stackId}/cards',
+      '/ocs/v2.php/apps/deck/api/v1.1/boards/{boardId}/stacks/{stackId}/cards',
+      '/ocs/v2.php/apps/deck/api/v1.0/boards/{boardId}/stacks/{stackId}/cards',
+      '/ocs/v1.php/apps/deck/api/v1.1/boards/{boardId}/stacks/{stackId}/cards',
+      '/ocs/v1.php/apps/deck/api/v1.0/boards/{boardId}/stacks/{stackId}/cards',
+      '/ocs/v2.php/apps/deck/api/v1.0/stacks/{stackId}/cards',
+      '/ocs/v1.php/apps/deck/api/v1.0/stacks/{stackId}/cards',
+    ];
+
+    for (final templ in variants) {
+      final res = await tryTemplate(templ);
+      if (res != null) {
+        _cardsVariantCache[cacheKey] = templ;
+        _cardsVariantExpiry.remove(cacheKey);
+        return res;
+      }
+    }
+
+    _cardsVariantCache[cacheKey] = null;
+    _cardsVariantExpiry[cacheKey] = DateTime.now().add(_capsTtl);
+    return await fallbackViaStacks();
   }
 
   List<CardItem> _extractCardsFromAny(String body) {
@@ -1054,7 +1150,7 @@ class NextcloudDeckApi {
           final res = await _send(
               'GET', _buildUri(baseUrl, p, withIndex), headers,
               priority: false);
-          if (_isOk(res)) {
+          if (_isOk(res) && !_ocsFailure(res)) {
             final data = _parseBodyOk(res);
             if (data is List) {
               return data
@@ -1101,7 +1197,7 @@ class NextcloudDeckApi {
             if (res.statusCode == 304)
               return const FetchBoardCardsResult(
                   cards: [], etag: null, notModified: true);
-            if (_isOk(res)) {
+            if (_isOk(res) && !_ocsFailure(res)) {
               final data = _parseBodyOk(res);
               final etag = res.headers['etag'] ??
                   res.headers['ETag'] ??
@@ -1147,7 +1243,7 @@ class NextcloudDeckApi {
           if (res.statusCode == 304)
             return const FetchBoardCardsResult(
                 cards: [], etag: null, notModified: true);
-          if (_isOk(res)) {
+          if (_isOk(res) && !_ocsFailure(res)) {
             _boardCardsVariantCache[key] = templ;
             _boardCardsVariantExpiry.remove(key);
             final data = _parseBodyOk(res);
@@ -1193,10 +1289,20 @@ class NextcloudDeckApi {
       String username, String password, int boardId, int stackId,
       {bool priority = false}) async {
     try {
-      final cols = await fetchColumns(baseUrl, username, password, boardId,
-          lazyCards: false, priority: priority, bypassCooldown: true);
-      final idx = cols.indexWhere((c) => c.id == stackId);
-      if (idx >= 0) return cols[idx].cards;
+      final detail = await fetchBoardDetailsWithEtag(
+        baseUrl,
+        username,
+        password,
+        boardId,
+        ifNoneMatch: null,
+        priority: priority,
+      );
+      final cols = detail.columns;
+      if (cols.isNotEmpty) {
+        for (final c in cols) {
+          if (c.id == stackId) return c.cards;
+        }
+      }
     } catch (_) {}
     return const <CardItem>[];
   }

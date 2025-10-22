@@ -46,15 +46,16 @@ class _BoardSearchPageState extends State<BoardSearchPage> {
       final board = app.activeBoard;
       if (board == null) return;
       final cols = app.columnsForActiveBoard();
-      await Future.wait(cols.map((c) => app.ensureCardsFor(board.id, c.id)));
+      // DISABLED: Use local data only - await Future.wait(cols.map((c) => app.ensureCardsFor(board.id, c.id)));
       return;
     }
-    for (final b in app.boards.where((x) => !x.archived)) {
-      await app.refreshColumnsFor(b);
-      for (final c in app.columnsForBoard(b.id)) {
-        await app.ensureCardsFor(b.id, c.id);
-      }
-    }
+    // DISABLED: Use local data only instead of old sync system  
+    // for (final b in app.boards.where((x) => !x.archived)) {
+    //   await app.refreshColumnsFor(b);
+    //   for (final c in app.columnsForBoard(b.id)) {
+    //     await app.ensureCardsFor(b.id, c.id);
+    //   }
+    // }
   }
 
   Future<void> _doSearch() async {
@@ -129,7 +130,7 @@ class _BoardSearchPageState extends State<BoardSearchPage> {
         (x) => x.id == boardId,
         orElse: () => Board(id: boardId, title: boardTitle, archived: false),
       );
-      await app.refreshColumnsFor(bObj);
+      // DISABLED: Use local data only - await app.refreshColumnsFor(bObj);
       if (mySeq != _searchSeq) return;
     }
     final cols = app.columnsForBoard(boardId);
@@ -155,7 +156,7 @@ class _BoardSearchPageState extends State<BoardSearchPage> {
       final slice = pending.skip(i).take(pool).toList();
       await Future.wait(slice.map((c) async {
         if (mySeq != _searchSeq) return;
-        await app.ensureCardsFor(boardId, c.id);
+        // DISABLED: Use local data only - await app.ensureCardsFor(boardId, c.id);
         if (mySeq != _searchSeq) return;
         final fresh = app.columnsForBoard(boardId).firstWhere((x) => x.id == c.id, orElse: () => c);
         for (final k in fresh.cards) {

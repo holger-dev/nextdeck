@@ -291,10 +291,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
               onPressed: (app.upcomingScanActive || app.isSyncing)
                   ? null
                   : () async {
-                      final state = context.read<AppState>();
-                      await state.runWithSyncing(() async {
-                        await state.refreshUpcomingDelta(forceFull: true);
-                      });
+                      // Just rebuild from local data instead of full sync
                       if (mounted) _rebuildFromCacheAndTrackLoading();
                     },
               child: (app.upcomingScanActive || app.isSyncing)

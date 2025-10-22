@@ -163,40 +163,29 @@ class _SettingsPageState extends State<SettingsPage> {
         });
         return;
       }
-      await app.refreshBoards();
-      if (!mounted) return;
-      final count = app.boards.length;
-      final warmTotal = app.boards.where((b) => !b.archived).length;
-      if (warmTotal == 0) {
+      // Use new sync system - direct call without runWithSyncing wrapper
+      try {
+        // Listen to boot messages during sync
+        void syncListener() {
+          if (mounted && app.bootSyncing) {
+            setState(() {
+              _testMsg = app.bootMessage ?? 'Synchronisiere...';
+            });
+          }
+        }
+        
+        app.addListener(syncListener);
+        
+        await app.configureSyncForCurrentAccount();
+        
+        app.removeListener(syncListener);
+        
+        if (!mounted) return;
+        final count = app.boards.length;
         setState(() {
           _testing = false;
-          _testMsg = l10n.loginOkNoBoards;
+          _testMsg = count == 0 ? l10n.loginOkNoBoards : 'Login OK - $count Boards gefunden, alle Stacks und Karten synchronisiert';
           _testOk = true;
-        });
-        await app.runWithSyncing(() async {
-          await app.configureSyncForCurrentAccount();
-        });
-        return;
-      }
-      setState(() {
-        _testMsg = l10n.initialSyncStarting(warmTotal);
-        _testOk = true;
-      });
-      try {
-        await app.runWithSyncing(() async {
-          await app.warmAllBoards(
-            boardConcurrency: 2,
-            listConcurrency: 2,
-            onProgress: (done, total) {
-              if (!mounted) return;
-              setState(() {
-                _testMsg = done >= total
-                    ? l10n.initialSyncDone(total)
-                    : l10n.initialSyncProgress(done, total);
-              });
-            },
-          );
-          await app.configureSyncForCurrentAccount();
         });
       } catch (e) {
         if (!mounted) return;
@@ -205,14 +194,7 @@ class _SettingsPageState extends State<SettingsPage> {
           _testMsg = l10n.errorMsg(e.toString());
           _testOk = false;
         });
-        return;
       }
-      if (!mounted) return;
-      setState(() {
-        _testing = false;
-        _testMsg = l10n.initialSyncDone(warmTotal);
-        _testOk = true;
-      });
     } catch (e) {
       setState(() {
         _testing = false;
@@ -236,7 +218,10 @@ class _SettingsPageState extends State<SettingsPage> {
           CupertinoDialogAction(
             isDestructiveAction: true,
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(l10n.clearLocalDataConfirmAction),
+            child: Text(
+              l10n.clearLocalDataConfirmAction,
+              style: const TextStyle(color: CupertinoColors.white),
+            ),
           ),
         ],
       ),
@@ -661,7 +646,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 color: CupertinoDynamicColor.resolve(
                     CupertinoColors.systemRed, context),
                 onPressed: app.isSyncing ? null : _confirmClearLocalData,
-                child: Text(L10n.of(context).clearLocalData),
+                child: Text(
+                  L10n.of(context).clearLocalData,
+                  style: const TextStyle(color: CupertinoColors.white),
+                ),
               ),
             ),
             const SizedBox(height: 16),

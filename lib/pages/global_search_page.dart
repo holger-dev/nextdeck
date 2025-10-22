@@ -22,13 +22,14 @@ class _GlobalSearchPageState extends State<GlobalSearchPage> {
   Timer? _debounce;
 
   Future<void> _ensureAllCardsLoaded(AppState app) async {
+    // DISABLED: Use local data only instead of old sync system
     // Load stacks and cards for all boards best-effort
-    for (final b in app.boards.where((x) => !x.archived)) {
-      await app.refreshColumnsFor(b);
-      for (final c in app.columnsForBoard(b.id)) {
-        await app.ensureCardsFor(b.id, c.id);
-      }
-    }
+    // for (final b in app.boards.where((x) => !x.archived)) {
+    //   await app.refreshColumnsFor(b);
+    //   for (final c in app.columnsForBoard(b.id)) {
+    //     await app.ensureCardsFor(b.id, c.id);
+    //   }
+    // }
   }
 
   Future<void> _doSearch() async {

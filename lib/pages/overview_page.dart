@@ -43,10 +43,9 @@ class _OverviewPageState extends State<OverviewPage> {
             CupertinoButton(
               padding: EdgeInsets.zero,
               onPressed: () async {
-                // Refresh only boards list and the active board to reduce load
-                await app.refreshBoards();
+                // Use new sync system instead of old refreshBoards/refreshColumnsFor
                 if (app.activeBoard != null) {
-                  await app.refreshColumnsFor(app.activeBoard!);
+                  await app.refreshSingleBoard(app.activeBoard!.id);
                 }
               },
               child: const Icon(CupertinoIcons.refresh),
