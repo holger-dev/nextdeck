@@ -291,7 +291,9 @@ class _UpcomingPageState extends State<UpcomingPage> {
               onPressed: (app.upcomingScanActive || app.isSyncing)
                   ? null
                   : () async {
-                      // Just rebuild from local data instead of full sync
+                      // Perform delta sync (only changed boards) to avoid overwriting local changes
+                      await app.refreshUpcomingDelta(forceFull: false);
+                      // Rebuild view from updated cache
                       if (mounted) _rebuildFromCacheAndTrackLoading();
                     },
               child: (app.upcomingScanActive || app.isSyncing)

@@ -800,6 +800,7 @@ class AppState extends ChangeNotifier {
         }
       }
 
+      final boardId = (board['id'] as num?)?.toInt();
       final Map<int, List<CardItem>> cardsByStack = () {
         final list = board['cards'];
         if (list is! List) return <int, List<CardItem>>{};
@@ -824,6 +825,20 @@ class AppState extends ChangeNotifier {
         if (stackId == null) continue;
         final title = (stack['title'] ?? stack['name'] ?? '').toString();
         final order = orderMap[stackId];
+
+        // Check if this stack is protected (has recent local changes)
+        final isProtected = boardId != null && _isStackProtected(boardId, stackId);
+
+        if (isProtected) {
+          // Use cards from previous/local state for protected stacks
+          final prev = previous.firstWhere(
+            (element) => element.id == stackId,
+            orElse: () => deck.Column(id: stackId, title: title, cards: const [], order: order),
+          );
+          cols.add(deck.Column(id: stackId, title: title, cards: prev.cards, order: order));
+          continue;
+        }
+
         final cardsRaw = (stack['cards'] is List)
             ? (stack['cards'] as List)
                 .whereType<Map>()
@@ -831,20 +846,34 @@ class AppState extends ChangeNotifier {
                 .toList()
             : const <Map<String, dynamic>>[];
         final parsedCards = cardsRaw.map(CardItem.fromJson).toList();
+
+        // Try to get cards from previous state if available
+        final prev = previous.firstWhere(
+          (element) => element.id == stackId,
+          orElse: () => deck.Column(id: stackId, title: title, cards: const [], order: order),
+        );
+
+        // Use parsed cards if available, otherwise try fallbacks
         if (parsedCards.isNotEmpty) {
           cols.add(deck.Column(id: stackId, title: title, cards: parsedCards, order: order));
           continue;
         }
+
         final fallback = cardsByStack[stackId];
         if (fallback != null && fallback.isNotEmpty) {
           cols.add(deck.Column(id: stackId, title: title, cards: fallback, order: order));
           continue;
         }
-        final prev = previous.firstWhere(
-          (element) => element.id == stackId,
-          orElse: () => deck.Column(id: stackId, title: title, cards: const [], order: order),
-        );
-        cols.add(deck.Column(id: stackId, title: title, cards: prev.cards, order: order));
+
+        // If server returned empty but we have local cards, keep them
+        // This handles the case where the API doesn't include cards in the response
+        if (prev.cards.isNotEmpty) {
+          cols.add(deck.Column(id: stackId, title: title, cards: prev.cards, order: order));
+          continue;
+        }
+
+        // Last resort: empty stack
+        cols.add(deck.Column(id: stackId, title: title, cards: const [], order: order));
       }
 
       // Sort columns by order field (ascending)
@@ -853,12 +882,6 @@ class AppState extends ChangeNotifier {
         final ob = b.order ?? 999999;
         return oa.compareTo(ob);
       });
-
-      final boardId = board['id'];
-      print('[STATE _buildColumns] Board $boardId - After sorting:');
-      for (int i = 0; i < cols.length; i++) {
-        print('  [$i] ${cols[i].title} (id=${cols[i].id}, order=${cols[i].order})');
-      }
 
       return cols;
     }
@@ -880,21 +903,17 @@ class AppState extends ChangeNotifier {
         cache.put('board_lastmod_$id', lastMod);
       }
       final previous = _columnsByBoard[id] ?? const <deck.Column>[];
-      print('[STATE sync] Building columns for board $id...');
       final columns = _buildColumns(map, previous);
-      print('[STATE sync] Board $id - Columns after _buildColumns:');
-      for (int i = 0; i < columns.length; i++) {
-        print('  [$i] ${columns[i].title} (id=${columns[i].id}, order=${columns[i].order})');
-      }
       updatedColumns[id] = columns;
       cache.put('columns_$id', _serializeColumnsForCache(columns));
     }
 
     final previousBoardIds = _boards.map((b) => b.id).toSet();
     _boards = updatedBoards;
-    _columnsByBoard
-      ..clear()
-      ..addAll(updatedColumns);
+    // Update only the boards that were returned from the server, keep others
+    for (final entry in updatedColumns.entries) {
+      _columnsByBoard[entry.key] = entry.value;
+    }
     cache.put(
         'boards',
         _boards
@@ -908,7 +927,9 @@ class AppState extends ChangeNotifier {
 
     final currentIds = _boards.map((b) => b.id).toSet();
     _boardMemberCount.removeWhere((key, _) => !currentIds.contains(key));
+    // Remove deleted boards from memory and cache
     for (final rid in previousBoardIds.difference(currentIds)) {
+      _columnsByBoard.remove(rid);
       cache.delete('columns_$rid');
       cache.delete('board_members_$rid');
       cache.delete('board_lastmod_$rid');
@@ -1050,33 +1071,48 @@ class AppState extends ChangeNotifier {
       return false;
     }
 
-    if (res.notModified) return false;
+    if (res.notModified) {
+      _lastError = null; // Clear any previous errors when 304 (data is still valid)
+      return false;
+    }
 
     final merged = List<deck.Column>.from(res.columns);
-    print('[STATE refreshColumnsFor] Board ${board.id} - Columns from API before caching:');
-    for (int i = 0; i < merged.length; i++) {
-      print('  [$i] ${merged[i].title} (id=${merged[i].id}, order=${merged[i].order})');
+
+    // Preserve cards from protected stacks OR when server returns empty cards
+    final existingCols = _columnsByBoard[board.id];
+    if (existingCols != null) {
+      for (int i = 0; i < merged.length; i++) {
+        final newStack = merged[i];
+        final existingStack = existingCols.firstWhere(
+          (c) => c.id == newStack.id,
+          orElse: () => newStack,
+        );
+
+        // Keep local cards if:
+        // 1. Stack is protected (recent local changes)
+        // 2. Server returned empty cards but we have cards locally
+        if (existingStack.id == newStack.id) {
+          final shouldKeepLocal = _isStackProtected(board.id, newStack.id) ||
+              (newStack.cards.isEmpty && existingStack.cards.isNotEmpty);
+
+          if (shouldKeepLocal) {
+            merged[i] = deck.Column(
+              id: newStack.id,
+              title: newStack.title,
+              cards: existingStack.cards, // Keep local cards
+              order: newStack.order,
+            );
+          }
+        }
+      }
     }
+
     _columnsByBoard[board.id] = merged;
     for (final c in merged) {
       _stackLoaded.add(c.id);
     }
     final serialized = _serializeColumnsForCache(merged);
-    print('[STATE refreshColumnsFor] Board ${board.id} - Serialized to cache:');
-    for (final s in serialized) {
-      print('  ${s['title']} - order=${s['order']}');
-    }
     cache.put('columns_${board.id}', serialized);
-    // Verify cache was written correctly
-    final verifyCache = cache.get('columns_${board.id}');
-    if (verifyCache is List && verifyCache.isNotEmpty) {
-      print('[STATE refreshColumnsFor] Board ${board.id} - Cache verification after write:');
-      for (final s in verifyCache.take(3)) {
-        if (s is Map) print('  ${s['title']} - order=${s['order']}');
-      }
-    } else {
-      print('[STATE refreshColumnsFor] Board ${board.id} - ERROR: Cache write failed or returned null!');
-    }
     if (res.etag != null) cache.put(etagKey, res.etag);
     for (final c in merged) {
       _stackLoaded.add(c.id);
@@ -1557,7 +1593,32 @@ class AppState extends ChangeNotifier {
     for (final b in _boards) {
       final cols = cache.get('columns_${b.id}');
       if (cols is List) {
-        _columnsByBoard[b.id] = _parseCachedColumns(cols);
+        final cachedColumns = _parseCachedColumns(cols);
+
+        // Preserve cards from protected stacks (stacks with recent local changes)
+        final existingColumns = _columnsByBoard[b.id];
+        if (existingColumns != null) {
+          for (int i = 0; i < cachedColumns.length; i++) {
+            final cachedStack = cachedColumns[i];
+            if (_isStackProtected(b.id, cachedStack.id)) {
+              // Stack is protected - keep local cards instead of overwriting with cached data
+              final existingStack = existingColumns.firstWhere(
+                (c) => c.id == cachedStack.id,
+                orElse: () => cachedStack,
+              );
+              if (existingStack.id == cachedStack.id) {
+                cachedColumns[i] = deck.Column(
+                  id: cachedStack.id,
+                  title: cachedStack.title,
+                  cards: existingStack.cards, // Keep local cards
+                  order: cachedStack.order,
+                );
+              }
+            }
+          }
+        }
+
+        _columnsByBoard[b.id] = cachedColumns;
       }
     }
     // Members cache (best-effort)
@@ -1808,7 +1869,7 @@ class AppState extends ChangeNotifier {
     if (moveToStackId != null && moveToStackId != stackId) {
       _protectStack(boardId, moveToStackId);
       // remove from current
-      final newFromCards = _normalizeCardsOrder([...from.cards]..removeAt(cardIdx));
+      final newFromCards = [...from.cards]..removeAt(cardIdx);
       _columnsByBoard[boardId] = [
         for (final c in cols)
           if (c.id == from.id)
@@ -1817,7 +1878,7 @@ class AppState extends ChangeNotifier {
             deck.Column(
               id: c.id,
               title: c.title,
-              cards: _normalizeCardsOrder(() {
+              cards: () {
                 final list = [...c.cards];
                 if (insertIndex == null) {
                   list.add(updated);
@@ -1826,7 +1887,7 @@ class AppState extends ChangeNotifier {
                   list.insert(ni, updated);
                 }
                 return list;
-              }()),
+              }(),
             )
           else
             c
@@ -1834,12 +1895,11 @@ class AppState extends ChangeNotifier {
     } else {
       final newCards = [...from.cards];
       newCards[cardIdx] = updated;
-      // Normalize card order to prevent shuffling
-      final normalizedCards = _normalizeCardsOrder(newCards);
+      // Keep cards in their current position, don't re-sort
       _columnsByBoard[boardId] = [
         for (final c in cols)
           if (c.id == from.id)
-            deck.Column(id: c.id, title: c.title, cards: normalizedCards)
+            deck.Column(id: c.id, title: c.title, cards: newCards)
           else
             c
       ];
@@ -1883,12 +1943,24 @@ class AppState extends ChangeNotifier {
     final item = list.removeAt(cIdx);
     final ni = newIndex.clamp(0, list.length);
     list.insert(ni, item);
-    // Normalize card order after reordering
-    final normalizedCards = _normalizeCardsOrder(list);
+    // Update order properties to reflect new positions
+    final reorderedCards = <CardItem>[];
+    for (int i = 0; i < list.length; i++) {
+      final card = list[i];
+      reorderedCards.add(CardItem(
+        id: card.id,
+        title: card.title,
+        description: card.description,
+        due: card.due,
+        labels: card.labels,
+        assignees: card.assignees,
+        order: i + 1, // Update order to match new position
+      ));
+    }
     _columnsByBoard[boardId] = [
       for (int i = 0; i < cols.length; i++)
         if (i == sIdx)
-          deck.Column(id: stack.id, title: stack.title, cards: normalizedCards)
+          deck.Column(id: stack.id, title: stack.title, cards: reorderedCards)
         else
           cols[i]
     ];

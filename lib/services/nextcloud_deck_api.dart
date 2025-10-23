@@ -319,20 +319,7 @@ class NextcloudDeckApi {
       }
       final stacks = (m?['stacks'] is List) ? (m!['stacks'] as List) : const [];
 
-      print('[API fetchBoardDetailsWithEtag] Board $boardId - Raw stacks from server:');
-      for (final s in stacks) {
-        if (s is! Map) continue;
-        final sm = s as Map;
-        final sid = sm['id'];
-        if (sid is num) {
-          final id = sid.toInt();
-          final ord = sm['order'];
-          print('  Stack "${sm['title']}" - id=$id, order=$ord');
-        }
-      }
-
       final columns = <deck.Column>[];
-      print('[API fetchBoardDetailsWithEtag] Building columns...');
       for (final s in stacks) {
         if (s is! Map) continue;
         try {
@@ -349,12 +336,10 @@ class NextcloudDeckApi {
               : const <Map<String, dynamic>>[];
           final cards = cardsRaw.map(CardItem.fromJson).toList();
           columns.add(deck.Column(id: sid, title: title, cards: cards, order: ord));
-          print('[API fetchBoardDetailsWithEtag] Added column: $title (id=$sid, order=$ord)');
         } catch (e) {
-          print('[API fetchBoardDetailsWithEtag] ERROR building column: $e');
+          // Silently skip invalid columns
         }
       }
-      print('[API fetchBoardDetailsWithEtag] Built ${columns.length} columns, now sorting...');
 
       // Sort by order field from API (ascending)
       columns.sort((a, b) {
@@ -362,11 +347,6 @@ class NextcloudDeckApi {
         final ob = b.order ?? 999999;
         return oa.compareTo(ob);
       });
-
-      print('[API fetchBoardDetailsWithEtag] Board $boardId - After sorting:');
-      for (int i = 0; i < columns.length; i++) {
-        print('  [$i] ${columns[i].title} (id=${columns[i].id}, order=${columns[i].order})');
-      }
 
       return FetchStacksResult(
           columns: columns, etag: etag, notModified: false);
@@ -634,7 +614,6 @@ class NextcloudDeckApi {
 
       // Build order map from API response
       final Map<int, int> orderMap = {};
-      print('[API] Board $boardId - Raw stacks from server:');
       for (final s in rawStacks) {
         if (s is! Map) continue;
         final sm = s as Map;
@@ -643,7 +622,6 @@ class NextcloudDeckApi {
           final id = sid.toInt();
           final ord = sm['order'];
           orderMap[id] = ord is num ? ord.toInt() : 999999;
-          print('  Stack "${sm['title']}" - id=$id, order=$ord');
         }
       }
 
@@ -775,10 +753,6 @@ class NextcloudDeckApi {
         return oa.compareTo(ob);
       });
 
-      print('[API] Board $boardId - After sorting:');
-      for (int i = 0; i < columns.length; i++) {
-        print('  [$i] ${columns[i].title} (id=${columns[i].id}, order=${orderMap[columns[i].id]})');
-      }
 
       // Memoize + cooldown
       _stacksMemo[cdKey] = columns;
@@ -886,7 +860,6 @@ class NextcloudDeckApi {
 
       // Build order map from API response
       final Map<int, int> orderMap = {};
-      print('[API] Board $boardId - Raw stacks from server:');
       for (final s in rawStacks) {
         if (s is! Map) continue;
         final sm = s as Map;
@@ -895,7 +868,6 @@ class NextcloudDeckApi {
           final id = sid.toInt();
           final ord = sm['order'];
           orderMap[id] = ord is num ? ord.toInt() : 999999;
-          print('  Stack "${sm['title']}" - id=$id, order=$ord');
         }
       }
 
@@ -924,10 +896,6 @@ class NextcloudDeckApi {
         return oa.compareTo(ob);
       });
 
-      print('[API] Board $boardId - After sorting:');
-      for (int i = 0; i < columns.length; i++) {
-        print('  [$i] ${columns[i].title} (id=${columns[i].id}, order=${orderMap[columns[i].id]})');
-      }
 
       // Memoize + cooldown
       _stacksMemo[cdKey] = columns;
