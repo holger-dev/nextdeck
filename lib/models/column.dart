@@ -4,8 +4,9 @@ class Column {
   final int id;
   final String title;
   final List<CardItem> cards;
+  final int? order;
 
-  const Column({required this.id, required this.title, required this.cards});
+  const Column({required this.id, required this.title, required this.cards, this.order});
 
   factory Column.fromJson(Map<String, dynamic> json) {
     final raw = json['cards'];

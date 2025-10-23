@@ -146,6 +146,24 @@ class AppState extends ChangeNotifier {
       return;
     }
     if (_baseUrl != null && _username != null && _password != null) {
+      // One-time cache migration: clear old caches without order data
+      final migrationDone = cache.get('cache_migration_v2');
+      if (migrationDone != true) {
+        print('[STATE init] Running cache migration - clearing old column caches...');
+        final boards = cache.get('boards');
+        if (boards is List) {
+          for (final b in boards) {
+            if (b is Map) {
+              final id = b['id'];
+              if (id is num) {
+                cache.delete('columns_${id.toInt()}');
+              }
+            }
+          }
+        }
+        cache.put('cache_migration_v2', true);
+        print('[STATE init] Cache migration complete');
+      }
       _hydrateFromCache();
       try {
         _sync = SyncServiceImpl(
@@ -594,11 +612,7 @@ class AppState extends ChangeNotifier {
         deck.Column(id: -103, title: 'Erledigt', cards: const []),
       ];
       _columnsByBoard[localBoardId] = initCols;
-      cache.put(
-          'columns_$localBoardId',
-          initCols
-              .map((c) => {'id': c.id, 'title': c.title, 'cards': const []})
-              .toList());
+      cache.put('columns_$localBoardId', _serializeColumnsForCache(initCols));
     }
     _boards = [
       Board(id: localBoardId, title: 'Lokales Board', archived: false)
@@ -774,6 +788,18 @@ class AppState extends ChangeNotifier {
         Map<String, dynamic> board, List<deck.Column> previous) {
       final stacks = board['stacks'] ?? board['columns'] ?? board['lists'];
       if (stacks is! List) return previous;
+
+      // Build order map from stacks
+      final Map<int, int> orderMap = {};
+      for (final entry in stacks.whereType<Map>()) {
+        final sid = entry['id'];
+        if (sid is num) {
+          final id = sid.toInt();
+          final ord = entry['order'];
+          orderMap[id] = ord is num ? ord.toInt() : 999999;
+        }
+      }
+
       final Map<int, List<CardItem>> cardsByStack = () {
         final list = board['cards'];
         if (list is! List) return <int, List<CardItem>>{};
@@ -797,6 +823,7 @@ class AppState extends ChangeNotifier {
         final stackId = (stack['id'] as num?)?.toInt();
         if (stackId == null) continue;
         final title = (stack['title'] ?? stack['name'] ?? '').toString();
+        final order = orderMap[stackId];
         final cardsRaw = (stack['cards'] is List)
             ? (stack['cards'] as List)
                 .whereType<Map>()
@@ -805,20 +832,34 @@ class AppState extends ChangeNotifier {
             : const <Map<String, dynamic>>[];
         final parsedCards = cardsRaw.map(CardItem.fromJson).toList();
         if (parsedCards.isNotEmpty) {
-          cols.add(deck.Column(id: stackId, title: title, cards: parsedCards));
+          cols.add(deck.Column(id: stackId, title: title, cards: parsedCards, order: order));
           continue;
         }
         final fallback = cardsByStack[stackId];
         if (fallback != null && fallback.isNotEmpty) {
-          cols.add(deck.Column(id: stackId, title: title, cards: fallback));
+          cols.add(deck.Column(id: stackId, title: title, cards: fallback, order: order));
           continue;
         }
         final prev = previous.firstWhere(
           (element) => element.id == stackId,
-          orElse: () => deck.Column(id: stackId, title: title, cards: const []),
+          orElse: () => deck.Column(id: stackId, title: title, cards: const [], order: order),
         );
-        cols.add(deck.Column(id: stackId, title: title, cards: prev.cards));
+        cols.add(deck.Column(id: stackId, title: title, cards: prev.cards, order: order));
       }
+
+      // Sort columns by order field (ascending)
+      cols.sort((a, b) {
+        final oa = a.order ?? 999999;
+        final ob = b.order ?? 999999;
+        return oa.compareTo(ob);
+      });
+
+      final boardId = board['id'];
+      print('[STATE _buildColumns] Board $boardId - After sorting:');
+      for (int i = 0; i < cols.length; i++) {
+        print('  [$i] ${cols[i].title} (id=${cols[i].id}, order=${cols[i].order})');
+      }
+
       return cols;
     }
 
@@ -839,32 +880,14 @@ class AppState extends ChangeNotifier {
         cache.put('board_lastmod_$id', lastMod);
       }
       final previous = _columnsByBoard[id] ?? const <deck.Column>[];
+      print('[STATE sync] Building columns for board $id...');
       final columns = _buildColumns(map, previous);
+      print('[STATE sync] Board $id - Columns after _buildColumns:');
+      for (int i = 0; i < columns.length; i++) {
+        print('  [$i] ${columns[i].title} (id=${columns[i].id}, order=${columns[i].order})');
+      }
       updatedColumns[id] = columns;
-      cache.put(
-          'columns_$id',
-          columns
-              .map((c) => {
-                    'id': c.id,
-                    'title': c.title,
-                    'cards': c.cards
-                        .map((k) => {
-                              'id': k.id,
-                              'title': k.title,
-                              'description': k.description,
-                              'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                              'order': k.order, // Save order to cache
-                              'labels': k.labels
-                                  .map((l) => {
-                                        'id': l.id,
-                                        'title': l.title,
-                                        'color': l.color
-                                      })
-                                  .toList(),
-                            })
-                        .toList(),
-                  })
-              .toList());
+      cache.put('columns_$id', _serializeColumnsForCache(columns));
     }
 
     final previousBoardIds = _boards.map((b) => b.id).toSet();
@@ -1030,34 +1053,30 @@ class AppState extends ChangeNotifier {
     if (res.notModified) return false;
 
     final merged = List<deck.Column>.from(res.columns);
+    print('[STATE refreshColumnsFor] Board ${board.id} - Columns from API before caching:');
+    for (int i = 0; i < merged.length; i++) {
+      print('  [$i] ${merged[i].title} (id=${merged[i].id}, order=${merged[i].order})');
+    }
     _columnsByBoard[board.id] = merged;
     for (final c in merged) {
       _stackLoaded.add(c.id);
     }
-    cache.put(
-        'columns_${board.id}',
-        merged
-            .map((c) => {
-                  'id': c.id,
-                  'title': c.title,
-                  'cards': c.cards
-                      .map((k) => {
-                            'id': k.id,
-                            'title': k.title,
-                            'description': k.description,
-                            'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                            'order': k.order, // Save order to cache
-                            'labels': k.labels
-                                .map((l) => {
-                                      'id': l.id,
-                                      'title': l.title,
-                                      'color': l.color
-                                    })
-                                .toList(),
-                          })
-                      .toList(),
-                })
-            .toList());
+    final serialized = _serializeColumnsForCache(merged);
+    print('[STATE refreshColumnsFor] Board ${board.id} - Serialized to cache:');
+    for (final s in serialized) {
+      print('  ${s['title']} - order=${s['order']}');
+    }
+    cache.put('columns_${board.id}', serialized);
+    // Verify cache was written correctly
+    final verifyCache = cache.get('columns_${board.id}');
+    if (verifyCache is List && verifyCache.isNotEmpty) {
+      print('[STATE refreshColumnsFor] Board ${board.id} - Cache verification after write:');
+      for (final s in verifyCache.take(3)) {
+        if (s is Map) print('  ${s['title']} - order=${s['order']}');
+      }
+    } else {
+      print('[STATE refreshColumnsFor] Board ${board.id} - ERROR: Cache write failed or returned null!');
+    }
     if (res.etag != null) cache.put(etagKey, res.etag);
     for (final c in merged) {
       _stackLoaded.add(c.id);
@@ -1077,11 +1096,7 @@ class AppState extends ChangeNotifier {
       ];
       _columnsByBoard[boardId] = updated;
       cache.put('local_next_stack_id', nextId);
-      cache.put(
-          'columns_$boardId',
-          updated
-              .map((c) => {'id': c.id, 'title': c.title, 'cards': const []})
-              .toList());
+      cache.put('columns_$boardId', _serializeColumnsForCache(updated));
       notifyListeners();
       return true;
     }
@@ -1567,9 +1582,49 @@ class AppState extends ChangeNotifier {
   void toggleBoardHidden(int boardId) =>
       setBoardHidden(boardId, !isBoardHidden(boardId));
 
+  // Helper to serialize columns to cache with proper order
+  List<Map<String, dynamic>> _serializeColumnsForCache(List<deck.Column> columns) {
+    return columns
+        .map((col) => {
+              'id': col.id,
+              'title': col.title,
+              'order': col.order, // Save real order value from server
+              'cards': col.cards
+                  .map((k) => {
+                        'id': k.id,
+                        'title': k.title,
+                        'description': k.description,
+                        'duedate': k.due?.toUtc().millisecondsSinceEpoch,
+                        'order': k.order, // Save card order to cache
+                        'labels': k.labels
+                            .map((l) => {
+                                  'id': l.id,
+                                  'title': l.title,
+                                  'color': l.color
+                                })
+                            .toList(),
+                      })
+                  .toList(),
+            })
+        .toList();
+  }
+
   List<deck.Column> _parseCachedColumns(List colsRaw) {
     final parsed = <deck.Column>[];
-    for (final c in colsRaw.whereType<Map>()) {
+
+    for (int idx = 0; idx < colsRaw.length; idx++) {
+      final c = colsRaw[idx];
+      if (c is! Map) continue;
+      final colId = (c['id'] as num).toInt();
+      final colOrder = c['order'];
+      int? order;
+      if (colOrder is num) {
+        order = colOrder.toInt();
+      } else {
+        // Legacy cache without order - use index as fallback
+        order = idx;
+      }
+
       final cards = <CardItem>[];
       final list = c['cards'];
       if (list is List) {
@@ -1599,10 +1654,19 @@ class AppState extends ChangeNotifier {
       // Normalize card order when loading from cache
       final normalizedCards = _normalizeCardsOrder(cards);
       parsed.add(deck.Column(
-          id: (c['id'] as num).toInt(),
+          id: colId,
           title: (c['title'] ?? '').toString(),
-          cards: normalizedCards));
+          cards: normalizedCards,
+          order: order));
     }
+
+    // Sort columns by cached order
+    parsed.sort((a, b) {
+      final oa = a.order ?? 999999;
+      final ob = b.order ?? 999999;
+      return oa.compareTo(ob);
+    });
+
     return parsed;
   }
 
@@ -1634,30 +1698,7 @@ class AppState extends ChangeNotifier {
       ];
       _columnsByBoard[boardId] = updated;
       cache.put('local_next_card_id', nextId + 1);
-      cache.put(
-          'columns_$boardId',
-          updated
-              .map((c) => {
-                    'id': c.id,
-                    'title': c.title,
-                    'cards': c.cards
-                        .map((k) => {
-                              'id': k.id,
-                              'title': k.title,
-                              'description': k.description,
-                              'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                              'order': k.order, // Save order to cache
-                              'labels': k.labels
-                                  .map((l) => {
-                                        'id': l.id,
-                                        'title': l.title,
-                                        'color': l.color
-                                      })
-                                  .toList(),
-                            })
-                        .toList(),
-                  })
-              .toList());
+      cache.put('columns_$boardId', _serializeColumnsForCache(updated));
       notifyListeners();
       return;
     }
@@ -1681,31 +1722,7 @@ class AppState extends ChangeNotifier {
               c
         ];
         _columnsByBoard[boardId] = updated;
-        cache.put(
-            'columns_$boardId',
-            updated
-                .map((c) => {
-                      'id': c.id,
-                      'title': c.title,
-                      'cards': c.cards
-                          .map((k) => {
-                                'id': k.id,
-                                'title': k.title,
-                                'description': k.description,
-                                'duedate':
-                                    k.due?.toUtc().millisecondsSinceEpoch,
-                                'order': k.order, // Save order to cache
-                                'labels': k.labels
-                                    .map((l) => {
-                                          'id': l.id,
-                                          'title': l.title,
-                                          'color': l.color
-                                        })
-                                    .toList(),
-                              })
-                          .toList(),
-                    })
-                .toList());
+        cache.put('columns_$boardId', _serializeColumnsForCache(updated));
         // Rebuild Upcoming view after creating card
         _rebuildUpcomingCacheFromMemory();
         notifyListeners();
@@ -1732,30 +1749,7 @@ class AppState extends ChangeNotifier {
       ];
       // persist simplified columns cache
       final updated = _columnsByBoard[boardId]!;
-      cache.put(
-          'columns_$boardId',
-          updated
-              .map((c) => {
-                    'id': c.id,
-                    'title': c.title,
-                    'cards': c.cards
-                        .map((k) => {
-                              'id': k.id,
-                              'title': k.title,
-                              'description': k.description,
-                              'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                              'order': k.order, // Save order to cache
-                              'labels': k.labels
-                                  .map((l) => {
-                                        'id': l.id,
-                                        'title': l.title,
-                                        'color': l.color
-                                      })
-                                  .toList(),
-                            })
-                        .toList(),
-                  })
-              .toList());
+      cache.put('columns_$boardId', _serializeColumnsForCache(updated));
       // Rebuild Upcoming view after deleting card
       _rebuildUpcomingCacheFromMemory();
       notifyListeners();
@@ -1850,34 +1844,11 @@ class AppState extends ChangeNotifier {
             c
       ];
     }
-    
+
     // Save updated columns to cache to persist local changes
     final updatedColumns = _columnsByBoard[boardId]!;
-    cache.put(
-        'columns_$boardId',
-        updatedColumns
-            .map((c) => {
-                  'id': c.id,
-                  'title': c.title,
-                  'cards': c.cards
-                      .map((k) => {
-                            'id': k.id,
-                            'title': k.title,
-                            'description': k.description,
-                            'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                            'order': k.order, // Save order to cache
-                            'labels': k.labels
-                                .map((l) => {
-                                      'id': l.id,
-                                      'title': l.title,
-                                      'color': l.color
-                                    })
-                                .toList(),
-                          })
-                      .toList(),
-                })
-            .toList());
-            
+    cache.put('columns_$boardId', _serializeColumnsForCache(updatedColumns));
+
     // Rebuild Upcoming view after local card changes
     _rebuildUpcomingCacheFromMemory();
     notifyListeners();
@@ -1921,34 +1892,11 @@ class AppState extends ChangeNotifier {
         else
           cols[i]
     ];
-    
+
     // Save updated columns to cache to persist reordering
     final updatedColumns = _columnsByBoard[boardId]!;
-    cache.put(
-        'columns_$boardId',
-        updatedColumns
-            .map((c) => {
-                  'id': c.id,
-                  'title': c.title,
-                  'cards': c.cards
-                      .map((k) => {
-                            'id': k.id,
-                            'title': k.title,
-                            'description': k.description,
-                            'duedate': k.due?.toUtc().millisecondsSinceEpoch,
-                            'order': k.order, // Save order to cache
-                            'labels': k.labels
-                                .map((l) => {
-                                      'id': l.id,
-                                      'title': l.title,
-                                      'color': l.color
-                                    })
-                                .toList(),
-                          })
-                      .toList(),
-                })
-            .toList());
-    
+    cache.put('columns_$boardId', _serializeColumnsForCache(updatedColumns));
+
     // Rebuild Upcoming view after card reordering
     _rebuildUpcomingCacheFromMemory();
     notifyListeners();

@@ -135,6 +135,7 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
     final app = context.watch<AppState>();
     final board = app.activeBoard;
     final columns = app.columnsForActiveBoard();
+
     final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
     // Reset to first column when board changes
     if (board?.id != _lastBoardId) {
@@ -695,7 +696,7 @@ class _ColumnViewState extends State<_ColumnView> {
                 child: (isLoading && col.cards.isNotEmpty)
                     ? const Center(child: CupertinoActivityIndicator())
                     : CupertinoScrollbar(
-                        controller: _listCtrl,
+                        controller: _listCtrl.hasClients ? _listCtrl : null,
                         child: ListView.builder(
                           controller: _listCtrl,
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
@@ -1112,7 +1113,7 @@ class _ColumnViewState extends State<_ColumnView> {
               child: (isLoading && col.cards.isNotEmpty)
                   ? const Center(child: CupertinoActivityIndicator())
                   : CupertinoScrollbar(
-                      controller: _listCtrl,
+                      controller: _listCtrl.hasClients ? _listCtrl : null,
                       child: ReorderableListView.builder(
                         buildDefaultDragHandles: false,
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
@@ -2055,7 +2056,7 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                 ),
                                 Expanded(
                                   child: CupertinoScrollbar(
-                                    controller: _ctrlFor(c.id),
+                                    controller: _ctrlFor(c.id).hasClients ? _ctrlFor(c.id) : null,
                                     child: ReorderableListView.builder(
                                       key: ValueKey('reorder_${c.id}'),
                                       buildDefaultDragHandles: false,

@@ -635,6 +635,12 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 20),
             const _Divider(),
+            const SizedBox(height: 20),
+            Text(l10n.helpContact,
+                style: const TextStyle(
+                    color: CupertinoColors.systemBlue, fontSize: 13)),
+            const SizedBox(height: 20),
+            const _Divider(),
             const SizedBox(height: 12),
             Text(L10n.of(context).clearLocalDataHelp,
                 style: const TextStyle(

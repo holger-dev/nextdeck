@@ -819,6 +819,11 @@ class L10n {
       : _isEs
           ? 'Borrar'
           : 'Clear';
+  String get helpContact => _isDe
+      ? 'Bei Fragen, Problemen oder eigenen Projektideen jederzeit Mail an holger@heidkamp.dev'
+      : _isEs
+          ? 'Para preguntas, problemas o ideas de tus propios proyectos, envía un correo a holger@heidkamp.dev'
+          : 'For questions, problems or your own project ideas, feel free to email holger@heidkamp.dev';
   String get upcomingSingleColumnLabel => _isDe
       ? 'Anstehend einspaltig anzeigen'
       : _isEs

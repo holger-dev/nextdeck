@@ -101,19 +101,21 @@ class SyncServiceImpl implements SyncService {
           for (final stackData in stacksData.cast<Map<String, dynamic>>()) {
             final stackId = stackData['id'] as int;
             final stackTitle = stackData['title'] as String;
-            
+            final stackOrder = stackData['order'] as int?;
+
             stacks.add({'id': stackId, 'title': stackTitle});
-            
+
             // Cards are already included in the boards response!
             final cardsData = stackData['cards'] as List? ?? [];
             final cards = <Map<String, dynamic>>[];
-            
+
             for (final cardData in cardsData.cast<Map<String, dynamic>>()) {
               cards.add({
                 'id': cardData['id'] as int,
                 'title': cardData['title'] as String,
                 'description': cardData['description'] ?? '',
                 'duedate': _parseDueDate(cardData['duedate']),
+                'order': cardData['order'] as int?,
                 'labels': (cardData['labels'] as List? ?? [])
                     .cast<Map<String, dynamic>>()
                     .map((l) => {
@@ -124,36 +126,39 @@ class SyncServiceImpl implements SyncService {
                     .toList(),
               });
             }
-            
+
             columns.add({
               'id': stackId,
               'title': stackTitle,
+              'order': stackOrder,
               'cards': cards,
             });
           }
         } else {
           // Fallback: Use separate GET /boards/{boardId}/stacks call
           final stacksResponse = await _get('/boards/$boardId/stacks');
-          
+
           if (stacksResponse.statusCode == 200) {
             final stacksWithCards = jsonDecode(stacksResponse.body) as List;
-            
+
             for (final stackData in stacksWithCards.cast<Map<String, dynamic>>()) {
               final stackId = stackData['id'] as int;
               final stackTitle = stackData['title'] as String;
-              
+              final stackOrder = stackData['order'] as int?;
+
               stacks.add({'id': stackId, 'title': stackTitle});
-              
+
               // Cards are already included in the stacks response!
               final cardsData = stackData['cards'] as List? ?? [];
               final cards = <Map<String, dynamic>>[];
-              
+
               for (final cardData in cardsData.cast<Map<String, dynamic>>()) {
                 cards.add({
                   'id': cardData['id'] as int,
                   'title': cardData['title'] as String,
                   'description': cardData['description'] ?? '',
                   'duedate': _parseDueDate(cardData['duedate']),
+                  'order': cardData['order'] as int?,
                   'labels': (cardData['labels'] as List? ?? [])
                       .cast<Map<String, dynamic>>()
                       .map((l) => {
@@ -164,10 +169,11 @@ class SyncServiceImpl implements SyncService {
                       .toList(),
                 });
               }
-              
+
               columns.add({
                 'id': stackId,
                 'title': stackTitle,
+                'order': stackOrder,
                 'cards': cards,
               });
             }
@@ -176,10 +182,12 @@ class SyncServiceImpl implements SyncService {
             for (final stackData in stacksData.cast<Map<String, dynamic>>()) {
               final stackId = stackData['id'] as int;
               final stackTitle = stackData['title'] as String;
+              final stackOrder = stackData['order'] as int?;
               stacks.add({'id': stackId, 'title': stackTitle});
               columns.add({
                 'id': stackId,
                 'title': stackTitle,
+                'order': stackOrder,
                 'cards': <Map<String, dynamic>>[],
               });
             }
@@ -216,19 +224,21 @@ class SyncServiceImpl implements SyncService {
       for (final stackData in stacksWithCards.cast<Map<String, dynamic>>()) {
         final stackId = stackData['id'] as int;
         final stackTitle = stackData['title'] as String;
-        
+        final stackOrder = stackData['order'] as int?;
+
         stacks.add({'id': stackId, 'title': stackTitle});
-        
+
         // Cards are already included in the stacks response!
         final cardsData = stackData['cards'] as List? ?? [];
         final cards = <Map<String, dynamic>>[];
-        
+
         for (final cardData in cardsData.cast<Map<String, dynamic>>()) {
           cards.add({
             'id': cardData['id'] as int,
             'title': cardData['title'] as String,
             'description': cardData['description'] ?? '',
             'duedate': _parseDueDate(cardData['duedate']),
+            'order': cardData['order'] as int?,
             'labels': (cardData['labels'] as List? ?? [])
                 .cast<Map<String, dynamic>>()
                 .map((l) => {
@@ -239,10 +249,11 @@ class SyncServiceImpl implements SyncService {
                 .toList(),
           });
         }
-        
+
         columns.add({
           'id': stackId,
           'title': stackTitle,
+          'order': stackOrder,
           'cards': cards,
         });
       }
