@@ -265,7 +265,7 @@ class NextcloudDeckApi {
     }
   }
 
-  // Fetch a single board with details=true and optional ETag. Parses into columns with cards.
+  // Fetch a single board's stacks with cards using /boards/{id}/stacks endpoint
   Future<FetchStacksResult> fetchBoardDetailsWithEtag(
       String baseUrl, String user, String pass, int boardId,
       {String? ifNoneMatch, bool priority = false}) async {
@@ -283,11 +283,11 @@ class NextcloudDeckApi {
       dynamic data;
       for (final withIndex in [false, true]) {
         try {
+          // Use /boards/{id}/stacks instead of /boards/{id}?details=true
+          // This endpoint returns stacks WITH cards included
           final base = _buildUri(
-              baseUrl, '/apps/deck/api/v1.0/boards/$boardId', withIndex);
-          final uri = base.replace(
-              queryParameters: {...base.queryParameters, 'details': 'true'});
-          final r = await _send('GET', uri, headers, priority: priority);
+              baseUrl, '/apps/deck/api/v1.0/boards/$boardId/stacks', withIndex);
+          final r = await _send('GET', base, headers, priority: priority);
           if (r.statusCode == 304) {
             return const FetchStacksResult(
                 columns: [], etag: null, notModified: true);
@@ -300,24 +300,15 @@ class NextcloudDeckApi {
         } catch (_) {}
       }
       if (res == null) {
-        _ensureOk(res, 'Board laden (details) fehlgeschlagen');
+        _ensureOk(res, 'Board Stacks laden fehlgeschlagen');
         return const FetchStacksResult(
             columns: [], etag: null, notModified: false);
       }
       final etag =
           res!.headers['etag'] ?? res.headers['ETag'] ?? res.headers['Etag'];
-      // Normalize possible envelope shapes
-      Map<String, dynamic>? m;
-      if (data is Map) {
-        m = data.cast<String, dynamic>();
-        if (m['ocs'] is Map && (m['ocs'] as Map)['data'] is Map) {
-          m = ((m['ocs'] as Map)['data'] as Map).cast<String, dynamic>();
-        }
-        if (m['board'] is Map) {
-          m = (m['board'] as Map).cast<String, dynamic>();
-        }
-      }
-      final stacks = (m?['stacks'] is List) ? (m!['stacks'] as List) : const [];
+
+      // The /boards/{id}/stacks endpoint returns an array of stacks directly
+      final stacks = (data is List) ? data : const [];
 
       final columns = <deck.Column>[];
       for (final s in stacks) {

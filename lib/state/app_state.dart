@@ -1454,11 +1454,12 @@ class AppState extends ChangeNotifier {
         final shouldForce = forceFull || (changedBoards[b.id] ?? false);
         bool boardUpdated = false;
         try {
+          // Force network request if board was detected as changed to get fresh data
           boardUpdated = await refreshColumnsFor(
             b,
             bypassCooldown: true,
             full: shouldForce,
-            forceNetwork: false,
+            forceNetwork: shouldForce, // Use network if board changed
           );
         } catch (_) {}
         if (boardUpdated) {
