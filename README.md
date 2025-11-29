@@ -1,4 +1,8 @@
-# Next Deck
+# Next Deck iOS app
+
+[<img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
+alt="Demo of the Next Deck iOS app"
+height="40">]([https://apps.apple.com/de/app/next-deck/id6752478755)
 
 A clean, fast and privacy-friendly Nextcloud Deck client with native Cupertino UI. Built with Flutter, optimized for iPhone and iPad - also runs on macOS, Android, Windows, Linux and on the web.
 
