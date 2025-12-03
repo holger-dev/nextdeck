@@ -29,8 +29,11 @@ class NextDeckApp extends StatelessWidget {
       child: Consumer<AppState>(
         builder: (context, app, _) {
           final l10n = L10n.of(context);
+          final platformBrightness = MediaQuery.platformBrightnessOf(context);
+          app.updatePlatformBrightness(platformBrightness);
+          final isDark = app.isDarkMode;
           final theme = CupertinoThemeData(
-            brightness: app.isDarkMode ? Brightness.dark : Brightness.light,
+            brightness: isDark ? Brightness.dark : Brightness.light,
           );
           return CupertinoApp(
             debugShowCheckedModeBanner: false,

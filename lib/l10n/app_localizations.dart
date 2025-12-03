@@ -78,6 +78,11 @@ class L10n {
       : _isEs
           ? 'Etiquetas'
           : 'Labels';
+  String get labelsCaption => _isDe
+      ? 'Schlagworte'
+      : _isEs
+          ? 'Etiquetas'
+          : 'Tags';
   String get newLabel => _isDe
       ? 'Neues Label'
       : _isEs
@@ -430,6 +435,11 @@ class L10n {
       : _isEs
           ? 'Tus tableros'
           : 'Your boards';
+  String get status => _isDe
+      ? 'Status'
+      : _isEs
+          ? 'Estado'
+          : 'Status';
   String get hiddenBoards => _isDe
       ? 'Ausgeblendete Boards'
       : _isEs
@@ -693,11 +703,31 @@ class L10n {
       : _isEs
           ? 'Apariencia'
           : 'Appearance';
-  String get darkMode => _isDe
-      ? 'Dark Mode'
+  String get themeMode => _isDe
+      ? 'Theme'
       : _isEs
-          ? 'Modo oscuro'
-          : 'Dark mode';
+          ? 'Tema'
+          : 'Theme';
+  String get themeModeHelp => _isDe
+      ? 'Hell/Dunkel sind fest. „System“ folgt automatisch dem System-Theme.'
+      : _isEs
+          ? 'Claro/Oscuro son fijos. “Sistema” sigue el tema del sistema.'
+          : 'Light/Dark are fixed. “System” follows the system theme.';
+  String get themeLight => _isDe
+      ? 'Hell'
+      : _isEs
+          ? 'Claro'
+          : 'Light';
+  String get themeDark => _isDe
+      ? 'Dunkel'
+      : _isEs
+          ? 'Oscuro'
+          : 'Dark';
+  String get themeSystem => _isDe
+      ? 'System'
+      : _isEs
+          ? 'Sistema'
+          : 'System';
   String get smartColors => _isDe
       ? 'Intelligente Farben'
       : _isEs
@@ -708,6 +738,11 @@ class L10n {
       : _isEs
           ? 'Si está activado, los fondos de las columnas se ajustan automáticamente al nombre de la columna (p. ej., "Done" → verde). Si está desactivado, los fondos son neutros. Los colores de las tarjetas se mantienen.'
           : 'If enabled, column backgrounds adapt to status keywords (e.g., "Done" → green). If disabled, backgrounds are neutral. Card colors remain.';
+  String get descriptionLabel => _isDe
+      ? 'Beschreibung'
+      : _isEs
+          ? 'Descripción'
+          : 'Description';
   String get showDescriptionAlways => _isDe
       ? 'Beschreibungstext immer anzeigen'
       : _isEs
@@ -723,6 +758,11 @@ class L10n {
       : _isEs
           ? 'Si está activado, el texto de descripción se muestra en las tarjetas (máx. 200 caracteres). Si está desactivado, aparece un pequeño icono de texto si hay descripción.'
           : 'If enabled, the description text is shown on cards (max 200 chars). If disabled, a small text icon appears when a description exists.';
+  String get removeDate => _isDe
+      ? 'Datum entfernen'
+      : _isEs
+          ? 'Eliminar fecha'
+          : 'Remove date';
   String get overviewShowBoardInfo => _isDe
       ? 'Informationen der Boards in Übersicht anzeigen'
       : _isEs

@@ -9,6 +9,7 @@ class MarkdownEditor extends StatefulWidget {
   final ValueChanged<String>? onSubmitted;
   final FocusNode? focusNode;
   final bool initialPreview;
+  final Future<void> Function()? onSave;
   const MarkdownEditor({
     super.key,
     required this.controller,
@@ -16,6 +17,7 @@ class MarkdownEditor extends StatefulWidget {
     this.onSubmitted,
     this.focusNode,
     this.initialPreview = true,
+    this.onSave,
   });
 
   @override
@@ -42,7 +44,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
           onShowTemplates: _showTemplates,
           onShowHelp: _showHelp,
           preview: _preview,
-          onTogglePreview: () => setState(() => _preview = !_preview),
+          onEnterEdit: _enterEdit,
+          onSave: _saveAndExit,
         ),
         const SizedBox(height: 8),
         if (!_preview)
@@ -58,17 +61,21 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
             onSubmitted: widget.onSubmitted,
           )
         else
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 160),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: theme.scaffoldBackgroundColor.withOpacity(0.6),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: _PreviewWithTasks(
-                text: widget.controller.text,
-                onToggleTask: (lineIndex) => _toggleTaskAt(lineIndex),
+          GestureDetector(
+            onTap: _enterEdit,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 160),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.scaffoldBackgroundColor.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: CupertinoColors.separator.resolveFrom(context)),
+                ),
+                child: _PreviewWithTasks(
+                  text: widget.controller.text,
+                  onToggleTask: (lineIndex) => _toggleTaskAt(lineIndex),
+                ),
               ),
             ),
           ),
@@ -232,6 +239,22 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     );
     if (mounted) setState(() {});
   }
+
+  void _enterEdit() {
+    setState(() => _preview = false);
+    widget.focusNode?.requestFocus();
+  }
+
+  Future<void> _saveAndExit() async {
+    if (widget.onSave != null) {
+      await widget.onSave!.call();
+    } else {
+      widget.onSubmitted?.call(widget.controller.text);
+    }
+    if (mounted) {
+      setState(() => _preview = true);
+    }
+  }
 }
 
 class _PreviewWithTasks extends StatelessWidget {
@@ -349,8 +372,9 @@ class _Toolbar extends StatelessWidget {
   final VoidCallback onShowTemplates;
   final VoidCallback? onShowHelp;
   final bool preview;
-  final VoidCallback onTogglePreview;
-  const _Toolbar({required this.onAction, required this.onShowTemplates, this.onShowHelp, required this.preview, required this.onTogglePreview});
+  final VoidCallback onEnterEdit;
+  final VoidCallback onSave;
+  const _Toolbar({required this.onAction, required this.onShowTemplates, this.onShowHelp, required this.preview, required this.onEnterEdit, required this.onSave});
 
   @override
   Widget build(BuildContext context) {
@@ -377,8 +401,11 @@ class _Toolbar extends StatelessWidget {
           ),
           CupertinoButton(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-            onPressed: onTogglePreview,
-            child: Icon(preview ? CupertinoIcons.pencil_circle_fill : CupertinoIcons.eye),
+            onPressed: preview ? onEnterEdit : onSave,
+            child: Icon(
+              preview ? CupertinoIcons.pencil_circle_fill : CupertinoIcons.check_mark_circled_solid,
+              size: 24,
+            ),
           ),
         ],
       ),
@@ -400,9 +427,9 @@ class _Toolbar extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: CupertinoButton(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         onPressed: onPressed,
-        child: Icon(icon, size: 18),
+        child: Icon(icon, size: 20),
       ),
     );
   }

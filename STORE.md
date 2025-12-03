@@ -205,8 +205,10 @@ Nextcloud, Deck, Kanban, Tareas, Proyectos, Gestión de Proyectos, Tableros, Tar
 - Möglichkeit zur Ein-Spalten-Ansicht unter Anstehend
 - Div. Bug-Fixes in der Anstehend-Ansicht
 - Löschbutton zum löschen der lokalen Daten eingebaut
+- Besseres Verhalten der App auch bei sehr vielen Boards
+- Hinweis zur Anmeldung mit App-Passwort, wenn 2-Faktor-Authentifizierung aktiviert ist
 
-Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (werden nur lokal gelöscht, nicht auf dem Server) und anschließend eine neue Anmeldung durchführen. Das ist aber optional!
+Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (werden nur lokal gelöscht, nicht auf dem Server) und anschließend eine neue Anmeldung durchführen.
 
 # EN – Version 1.5
 
@@ -215,3 +217,29 @@ Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (wer
 # ES – Versión 1.5
 
 
+# DE – Version 1.6
+
+- Karte als erledigt in den Details: Done/Unerledigt direkt im Detail umschalten (zieht Karte in die passende Liste).
+- Bessere Lesbarkeit (Dark Mode): neutrale Kartenpanels, klarere Labels/Trenner und gut sichtbare Aktionen.
+- Fälligkeitsdatum entfernen: Datum per X löschen – sofort auch in Board- und Anstehend-Ansicht weg.
+- Beschreibung bearbeiten: Größerer Stift/Haken-Toggle und Klick auf die Vorschau startet den Editiermodus.
+- Schlagworte: Beschriftung lokalisiert (Schlagworte/Tags/Etiquetas).
+- Theme: Light/Dark/System wählbar; „System“ folgt automatisch dem Geräte-Theme.
+
+# EN – Version 1.6
+
+- Mark done from details: Toggle done/undone inside card details (moves the card to the right list).
+- Better readability (dark mode): neutral detail panels, clearer labels/dividers, and more visible actions.
+- Remove due date: clear via X; instantly gone in board and Upcoming views.
+- Description editing: larger pencil/check toggle and tap-to-edit on the preview.
+- Tags: labels caption localized (Tags/Schlagworte/Etiquetas).
+- Theme: choose Light/Dark/System; “System” follows the device theme.
+
+# ES – Versión 1.6
+
+- Marcar hecho desde detalles: alterna hecho/pendiente en los detalles (mueve la tarjeta a la lista correcta).
+- Mejor legibilidad (modo oscuro): paneles neutros en detalles, etiquetas/divisores más claros y acciones más visibles.
+- Eliminar fecha de vencimiento: borrar con la X; desaparece al instante en tablero y Próximas.
+- Edición de descripción: botón de lápiz/check más grande y toque para editar en la vista previa.
+- Etiquetas: título localizado (Etiquetas/Tags/Schlagworte).
+- Tema: elige Claro/Oscuro/Sistema; “Sistema” sigue el tema del dispositivo.

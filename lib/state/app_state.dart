@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'dart:async';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:hive/hive.dart';
 
 import '../models/board.dart';
@@ -20,6 +21,7 @@ class AppState extends ChangeNotifier {
 
   bool _initialized = false;
   bool _isDarkMode = false;
+  String _themeMode = 'light'; // light | dark | system
   int _themeIndex = 0;
   bool _smartColors = true;
   bool _showDescriptionText = true;
@@ -57,6 +59,7 @@ class AppState extends ChangeNotifier {
   bool _initialWarmDone = false;
 
   bool get isDarkMode => _isDarkMode;
+  String get themeMode => _themeMode;
   int get themeIndex => _themeIndex;
   bool get smartColors => _smartColors;
   bool get showDescriptionText => _showDescriptionText;
@@ -107,7 +110,16 @@ class AppState extends ChangeNotifier {
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
-    _isDarkMode = (await storage.read(key: 'dark')) == '1';
+    final String? storedThemeMode = await storage.read(key: 'themeMode');
+    if (storedThemeMode == 'light' ||
+        storedThemeMode == 'dark' ||
+        storedThemeMode == 'system') {
+      _themeMode = storedThemeMode!;
+    } else {
+      _themeMode = (await storage.read(key: 'dark')) == '1' ? 'dark' : 'light';
+    }
+    _isDarkMode =
+        _resolveDarkMode(SchedulerBinding.instance.platformDispatcher.platformBrightness);
     _themeIndex =
         int.tryParse(await storage.read(key: 'themeIndex') ?? '') ?? 0;
     _smartColors = (await storage.read(key: 'smartColors')) != '0';
@@ -535,15 +547,45 @@ class AppState extends ChangeNotifier {
   }
 
   void setDarkMode(bool value) {
-    _isDarkMode = value;
-    storage.write(key: 'dark', value: value ? '1' : '0');
-    notifyListeners();
+    setThemeMode(value ? 'dark' : 'light');
+  }
+
+  void setThemeMode(String mode, {Brightness? platformBrightness}) {
+    if (mode != 'light' && mode != 'dark' && mode != 'system') return;
+    _themeMode = mode;
+    storage.write(key: 'themeMode', value: mode);
+    // keep legacy flag in sync for older installs
+    storage.write(key: 'dark', value: mode == 'dark' ? '1' : '0');
+    final b = platformBrightness ??
+        SchedulerBinding.instance.platformDispatcher.platformBrightness;
+    final next = _resolveDarkMode(b);
+    if (next != _isDarkMode) {
+      _isDarkMode = next;
+      notifyListeners();
+    } else {
+      notifyListeners();
+    }
   }
 
   void setThemeIndex(int index) {
     _themeIndex = index.clamp(0, 4);
     storage.write(key: 'themeIndex', value: _themeIndex.toString());
     notifyListeners();
+  }
+
+  void updatePlatformBrightness(Brightness brightness) {
+    if (_themeMode != 'system') return;
+    final next = _resolveDarkMode(brightness);
+    if (next != _isDarkMode) {
+      _isDarkMode = next;
+      notifyListeners();
+    }
+  }
+
+  bool _resolveDarkMode(Brightness brightness) {
+    if (_themeMode == 'dark') return true;
+    if (_themeMode == 'light') return false;
+    return brightness == Brightness.dark;
   }
 
   void setSmartColors(bool value) {
@@ -1554,6 +1596,7 @@ class AppState extends ChangeNotifier {
         title: patch['title'] as String?,
         description: patch['description'] as String?,
         due: patch['duedate'] != null ? DateTime.parse(patch['duedate'] as String) : null,
+        clearDue: patch.containsKey('duedate') && patch['duedate'] == null,
       );
     } catch (e) {
       // API call failed, but keep local optimistic update
@@ -1832,6 +1875,7 @@ class AppState extends ChangeNotifier {
     String? title,
     String? description,
     DateTime? due,
+    bool clearDue = false,
     int? moveToStackId,
     int? insertIndex,
     List<Label>? setLabels,
@@ -1861,7 +1905,7 @@ class AppState extends ChangeNotifier {
       id: current.id,
       title: title ?? current.title,
       description: description ?? current.description,
-      due: due ?? current.due,
+      due: clearDue ? null : (due ?? current.due),
       labels: setLabels ?? current.labels,
       assignees: setAssignees ?? current.assignees,
       order: current.order, // Preserve card order

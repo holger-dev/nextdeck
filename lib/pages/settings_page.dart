@@ -237,7 +237,6 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
-    final isDark = app.isDarkMode;
     final l10n = L10n.of(context);
     return CupertinoPageScaffold(
       backgroundColor: AppTheme.appBackground(app),
@@ -501,13 +500,36 @@ class _SettingsPageState extends State<SettingsPage> {
                 style:
                     const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(child: Text(l10n.darkMode)),
-                CupertinoSwitch(
-                    value: isDark, onChanged: (v) => app.setDarkMode(v)),
-              ],
+            Text(l10n.themeMode,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            CupertinoSlidingSegmentedControl<String>(
+              groupValue: app.themeMode,
+              children: {
+                'light': Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(l10n.themeLight),
+                ),
+                'dark': Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(l10n.themeDark),
+                ),
+                'system': Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(l10n.themeSystem),
+                ),
+              },
+              onValueChanged: (mode) {
+                if (mode != null) {
+                  app.setThemeMode(mode);
+                }
+              },
             ),
+            const SizedBox(height: 6),
+            Text(l10n.themeModeHelp,
+                style: const TextStyle(
+                    color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,

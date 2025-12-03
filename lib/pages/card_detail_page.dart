@@ -24,6 +24,76 @@ import '../models/comment.dart';
 import '../l10n/app_localizations.dart';
 // import 'labels_manage_page.dart';
 
+bool _isDoneTitleLocal(String title) {
+  final t = title.toLowerCase();
+  const doneTokens = [
+    'done',
+    'erledigt',
+    'hecho',
+    'abgeschlossen',
+    'fertig',
+    'finished',
+    'completed',
+    'completado',
+    'geschlossen'
+  ];
+  for (final tok in doneTokens) {
+    if (t.contains(tok)) return true;
+  }
+  return false;
+}
+
+int? _findDoneColumnIdLocal(List<deck.Column> cols) {
+  const preferred = [
+    'done',
+    'erledigt',
+    'abgeschlossen',
+    'fertig',
+    'finished',
+    'completed',
+    'hecho',
+    'completado',
+    'geschlossen'
+  ];
+  for (final p in preferred) {
+    for (final c in cols) {
+      if (c.title.toLowerCase().contains(p)) return c.id;
+    }
+  }
+  for (final c in cols) {
+    if (_isDoneTitleLocal(c.title)) return c.id;
+  }
+  if (cols.isNotEmpty) return cols.last.id;
+  return null;
+}
+
+int? _findUndoneColumnIdLocal(List<deck.Column> cols) {
+  const preferred = [
+    'to do',
+    'to-do',
+    'todo',
+    'offen',
+    'open',
+    'backlog',
+    'inbox',
+    'pendiente',
+    'por hacer',
+    'por-hacer',
+    'aufgaben'
+  ];
+  for (final p in preferred) {
+    for (final c in cols) {
+      final t = c.title.toLowerCase();
+      if (!_isDoneTitleLocal(t) && t.contains(p)) return c.id;
+    }
+  }
+  for (final c in cols) {
+    if (!_isDoneTitleLocal(c.title)) return c.id;
+  }
+  if (cols.isNotEmpty) return cols.first.id;
+  return null;
+}
+
 class CardDetailPage extends StatefulWidget {
   final int cardId;
   final int? boardId;
@@ -66,6 +136,12 @@ class _CardDetailPageState extends State<CardDetailPage> {
   final Set<String> _assigneesHide = <String>{};
   bool _assigneesLoading = true;
   bool _initialFetchDone = false;
+
+  bool get _isDoneStack {
+    if (_currentStackId == null) return false;
+    final col = _columns.firstWhere((c) => c.id == _currentStackId, orElse: () => deck.Column(id: -1, title: '', cards: const []));
+    return col.id != -1 && _isDoneTitleLocal(col.title);
+  }
 
   @override
   void initState() {
@@ -263,6 +339,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
     };
     setState(() { _saving = true; });
     // Optimistic local update if requested
+    final clearDue = merged.containsKey('duedate') && merged['duedate'] == null;
     if (optimistic) {
       app.updateLocalCard(
         boardId: boardId,
@@ -271,6 +348,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
         title: merged.containsKey('title') ? (_titleCtrl.text) : null,
         description: merged.containsKey('description') ? (_descCtrl.text) : null,
         due: merged.containsKey('duedate') ? _due : null,
+        clearDue: clearDue,
       );
     }
     // Local Mode: keine Netz-Calls, nur lokale Aktualisierung
@@ -284,6 +362,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
         title: merged.containsKey('title') ? (_titleCtrl.text) : null,
         description: merged.containsKey('description') ? (_descCtrl.text) : null,
         due: merged.containsKey('duedate') ? _due : null,
+        clearDue: clearDue,
       );
       if (merged.containsKey('title')) _titleDirty = false;
       if (merged.containsKey('description')) _descDirty = false;
@@ -301,8 +380,45 @@ class _CardDetailPageState extends State<CardDetailPage> {
     }
   }
 
+  Color _panelColor(BuildContext context, AppState app) {
+    final base = CupertinoColors.systemBackground.resolveFrom(context);
+    return base.withOpacity(app.isDarkMode ? 0.9 : 0.96);
+  }
+
+  Future<void> _toggleDone(bool done) async {
+    if (_columns.isEmpty) return;
+    final targetId =
+        done ? _findDoneColumnIdLocal(_columns) : _findUndoneColumnIdLocal(_columns);
+    if (targetId == null || targetId == _currentStackId) return;
+    final prevStack = _currentStackId;
+    setState(() => _currentStackId = targetId);
+    final app = context.read<AppState>();
+    final boardId = widget.boardId ?? app.activeBoard?.id;
+    if (boardId != null && prevStack != null) {
+      app.updateLocalCard(
+          boardId: boardId,
+          stackId: prevStack,
+          cardId: widget.cardId,
+          moveToStackId: targetId);
+    }
+    await _savePatch({'stackId': targetId}, useStackId: prevStack);
+  }
+
+  Future<void> _clearDueDate() async {
+    setState(() {
+      _due = null;
+      _dueDirty = true;
+    });
+    await _savePatch({'duedate': null}, optimistic: true);
+  }
+
+  Future<void> _saveDescriptionNow() async {
+    await _savePatch({'description': _descCtrl.text}, optimistic: true);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
     return CupertinoPageScaffold(
       backgroundColor: widget.bgColor,
       navigationBar: CupertinoNavigationBar(
@@ -327,88 +443,130 @@ class _CardDetailPageState extends State<CardDetailPage> {
               child: LayoutBuilder(
                 builder: (context, cns) {
                   final isWide = cns.maxWidth >= 900;
+                  final panelColor = _panelColor(context, app);
+                  final panelDecoration = BoxDecoration(
+                    color: panelColor,
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: CupertinoColors.black.withOpacity(app.isDarkMode ? 0.25 : 0.08),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  );
+                  const panelPadding = EdgeInsets.all(12);
                   if (!isWide) {
                     return ListView(
                       padding: const EdgeInsets.all(16),
                       children: [
-                        CupertinoTextField(
-                          controller: _titleCtrl,
-                          placeholder: L10n.of(context).title,
-                          onSubmitted: (v) => _savePatch({'title': v}, optimistic: true),
-                        ),
-                        const SizedBox(height: 12),
-                        MarkdownEditor(
-                          controller: _descCtrl,
-                          focusNode: _descFocus,
-                          initialPreview: true,
-                          placeholder: L10n.of(context).descriptionPlaceholder,
-                          onSubmitted: (v) => _savePatch({'description': v}, optimistic: true),
-                        ),
-                        const SizedBox(height: 12),
-                        _FieldRow(
-                          label: L10n.of(context).dueDate,
-                          value: _due == null ? '—' : _due!.toLocal().toString().substring(0, 16),
-                          onTap: () => _pickDueDate(context),
-                        ),
-                        const SizedBox(height: 12),
-                        _FieldRow(
-                          label: L10n.of(context).column,
-                          value: _columns.firstWhere((c) => c.id == _currentStackId, orElse: () => deck.Column(id: -1, title: '—', cards: const [])).title,
-                          onTap: () => _pickStack(context),
-                        ),
-                        const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(child: Text(L10n.of(context).labels, style: const TextStyle(fontWeight: FontWeight.w600))),
-                      CupertinoButton(
-                        padding: EdgeInsets.zero,
-                        onPressed: () => _editLabels(context),
-                        child: const Icon(CupertinoIcons.pencil_circle_fill, size: 20),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: (_card?.labels ?? const <Label>[]) 
-                              .map<Widget>((l) => _LabelPill(label: l, onRemove: () => _toggleLabel(l, remove: true)))
-                              .toList(),
-                        ),
-                        const SizedBox(height: 12),
-                        Container(height: 1, color: CupertinoColors.separator),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(child: Text(L10n.of(context).assigned, style: const TextStyle(fontWeight: FontWeight.w600))),
-                            CupertinoButton(
-                              padding: EdgeInsets.zero,
-                              onPressed: () => _assignUser(context),
-                              child: const Icon(CupertinoIcons.pencil_circle_fill, size: 20),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        _assigneesLoading
-                            ? const CupertinoActivityIndicator()
-                            : Wrap(
+                        Container(
+                          decoration: panelDecoration,
+                          padding: panelPadding,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              CupertinoTextField(
+                                controller: _titleCtrl,
+                                placeholder: L10n.of(context).title,
+                                onSubmitted: (v) => _savePatch({'title': v}, optimistic: true),
+                              ),
+                              const SizedBox(height: 10),
+                              _StatusRow(
+                                label: L10n.of(context).status,
+                                isDone: _isDoneStack,
+                                onChanged: (v) => _toggleDone(v),
+                                markDoneLabel: L10n.of(context).markDone,
+                                markUndoneLabel: L10n.of(context).markUndone,
+                              ),
+                              const SizedBox(height: 12),
+                              _SectionHeader(
+                                title: L10n.of(context).descriptionLabel,
+                                trailing: _SavingIndicator(visible: _saving),
+                              ),
+                              const SizedBox(height: 8),
+                              MarkdownEditor(
+                                controller: _descCtrl,
+                                focusNode: _descFocus,
+                                initialPreview: true,
+                                placeholder: L10n.of(context).descriptionPlaceholder,
+                                onSubmitted: (v) => _savePatch({'description': v}, optimistic: true),
+                                onSave: _saveDescriptionNow,
+                              ),
+                              const SizedBox(height: 12),
+                              _FieldRow(
+                                label: L10n.of(context).dueDate,
+                                value: _due == null ? '—' : _due!.toLocal().toString().substring(0, 16),
+                                onTap: () => _pickDueDate(context),
+                                trailing: _due == null
+                                    ? null
+                                    : CupertinoButton(
+                                        padding: EdgeInsets.zero,
+                                        onPressed: _clearDueDate,
+                                        child: Semantics(
+                                          label: L10n.of(context).removeDate,
+                                          child: const Icon(CupertinoIcons.clear_circled, size: 20),
+                                        ),
+                                      ),
+                              ),
+                              _FieldRow(
+                                label: L10n.of(context).column,
+                                value: _columns.firstWhere((c) => c.id == _currentStackId, orElse: () => deck.Column(id: -1, title: '—', cards: const [])).title,
+                                onTap: () => _pickStack(context),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(child: Text(L10n.of(context).labelsCaption, style: const TextStyle(fontWeight: FontWeight.w600))),
+                                  CupertinoButton(
+                                    padding: EdgeInsets.zero,
+                                    onPressed: () => _editLabels(context),
+                                    child: const Icon(CupertinoIcons.pencil_circle_fill, size: 22),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
                                 spacing: 6,
                                 runSpacing: 6,
-                                children: ((_card?.assignees ?? const <UserRef>[]) 
-                                        .where((u) => !_assigneesHide.contains(u.id.toLowerCase()))
-                                        .toList())
-                                    .map<Widget>((u) => _AssigneePill(user: u, onRemove: () => _toggleAssignee(u, remove: true)))
+                                children: (_card?.labels ?? const <Label>[]) 
+                                    .map<Widget>((l) => _LabelPill(label: l, onRemove: () => _toggleLabel(l, remove: true)))
                                     .toList(),
                               ),
-                  const SizedBox(height: 8),
-                  Container(height: 1, color: CupertinoColors.separator),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(child: Text(L10n.of(context).attachments, style: const TextStyle(fontWeight: FontWeight.w600))),
-                      CupertinoButton(
-                        padding: EdgeInsets.zero,
-                        onPressed: _uploadingAttachment ? null : () async {
+                              const SizedBox(height: 12),
+                              Container(height: 1, color: CupertinoColors.separator),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(child: Text(L10n.of(context).assigned, style: const TextStyle(fontWeight: FontWeight.w600))),
+                                  CupertinoButton(
+                                    padding: EdgeInsets.zero,
+                                    onPressed: () => _assignUser(context),
+                                    child: const Icon(CupertinoIcons.pencil_circle_fill, size: 22),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              _assigneesLoading
+                                  ? const CupertinoActivityIndicator()
+                                  : Wrap(
+                                      spacing: 6,
+                                      runSpacing: 6,
+                                      children: ((_card?.assignees ?? const <UserRef>[]) 
+                                              .where((u) => !_assigneesHide.contains(u.id.toLowerCase()))
+                                              .toList())
+                                          .map<Widget>((u) => _AssigneePill(user: u, onRemove: () => _toggleAssignee(u, remove: true)))
+                                          .toList(),
+                                    ),
+                              const SizedBox(height: 10),
+                              Container(height: 1, color: CupertinoColors.separator),
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(child: Text(L10n.of(context).attachments, style: const TextStyle(fontWeight: FontWeight.w600))),
+                                  CupertinoButton(
+                                    padding: EdgeInsets.zero,
+                                    onPressed: _uploadingAttachment ? null : () async {
                           try {
                             final app = context.read<AppState>();
                             final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
@@ -693,288 +851,321 @@ class _CardDetailPageState extends State<CardDetailPage> {
                       ),
                     ],
                   ),
-                      ],
-                    );
-                  }
+                ],
+              ),
+            ),
+          ],
+        );
+      }
                   // Wide layout: left = description; right = all other fields stacked
                   return Padding(
                     padding: const EdgeInsets.all(16),
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Left: Title + Description (dominant area)
+                        // Left: Title + Status + Description
                         Expanded(
                           flex: 2,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              CupertinoTextField(
-                                controller: _titleCtrl,
-                              placeholder: L10n.of(context).title,
-                                onSubmitted: (v) => _savePatch({'title': v}, optimistic: true),
-                              ),
-                              const SizedBox(height: 12),
-                              Expanded(
-                                child: CupertinoScrollbar(
-                                  child: SingleChildScrollView(
-                                    primary: false,
-                                    child: MarkdownEditor(
-                                      controller: _descCtrl,
-                                      focusNode: _descFocus,
-                                      initialPreview: true,
-                                      placeholder: L10n.of(context).descriptionPlaceholder,
-                                      onSubmitted: (v) => _savePatch({'description': v}, optimistic: true),
+                          child: Container(
+                            decoration: panelDecoration,
+                            padding: panelPadding,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                CupertinoTextField(
+                                  controller: _titleCtrl,
+                                  placeholder: L10n.of(context).title,
+                                  onSubmitted: (v) => _savePatch({'title': v}, optimistic: true),
+                                ),
+                                const SizedBox(height: 10),
+                                _StatusRow(
+                                  label: L10n.of(context).status,
+                                  isDone: _isDoneStack,
+                                  onChanged: (v) => _toggleDone(v),
+                                  markDoneLabel: L10n.of(context).markDone,
+                                  markUndoneLabel: L10n.of(context).markUndone,
+                                ),
+                                const SizedBox(height: 12),
+                                _SectionHeader(
+                                  title: L10n.of(context).descriptionLabel,
+                                  trailing: _SavingIndicator(visible: _saving),
+                                ),
+                                const SizedBox(height: 6),
+                                Expanded(
+                                  child: CupertinoScrollbar(
+                                    child: SingleChildScrollView(
+                                      primary: false,
+                                      child: MarkdownEditor(
+                                        controller: _descCtrl,
+                                        focusNode: _descFocus,
+                                        initialPreview: true,
+                                        placeholder: L10n.of(context).descriptionPlaceholder,
+                                        onSubmitted: (v) => _savePatch({'description': v}, optimistic: true),
+                                        onSave: _saveDescriptionNow,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                         const SizedBox(width: 20),
                         // Right: other fields stacked
                         Expanded(
                           flex: 1,
-                          child: SingleChildScrollView(
-                            primary: false,
-                            child: Column(
-                              children: [
-                                _FieldRow(
-                                  label: L10n.of(context).dueDate,
-                                  value: _due == null ? '—' : _due!.toLocal().toString().substring(0, 16),
-                                  onTap: () => _pickDueDate(context),
-                                ),
-                                const SizedBox(height: 12),
-                                _FieldRow(
-                                  label: L10n.of(context).column,
-                                  value: _columns.firstWhere((c) => c.id == _currentStackId, orElse: () => deck.Column(id: -1, title: '—', cards: const [])).title,
-                                  onTap: () => _pickStack(context),
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(child: Text(L10n.of(context).labels, style: const TextStyle(fontWeight: FontWeight.w600))),
-                                    CupertinoButton(
-                                      padding: EdgeInsets.zero,
-                                      onPressed: () => _editLabels(context),
-                                      child: const Icon(CupertinoIcons.pencil_circle_fill, size: 20),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 6,
-                                  children: (_card?.labels ?? const <Label>[]) 
-                                      .map<Widget>((l) => _LabelPill(label: l, onRemove: () => _toggleLabel(l, remove: true)))
-                                      .toList(),
-                                ),
-                                const SizedBox(height: 12),
-                                Container(height: 1, color: CupertinoColors.separator),
-                                const SizedBox(height: 16),
-                                Row(
-                                  children: [
-                                    Expanded(child: Text(L10n.of(context).assigned, style: const TextStyle(fontWeight: FontWeight.w600))),
-                                    CupertinoButton(
-                                      padding: EdgeInsets.zero,
-                                      onPressed: () => _assignUser(context),
-                                      child: const Icon(CupertinoIcons.pencil_circle_fill, size: 20),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                _assigneesLoading
-                                    ? const CupertinoActivityIndicator()
-                                    : Wrap(
-                                        spacing: 6,
-                                        runSpacing: 6,
-                                        children: ((_card?.assignees ?? const <UserRef>[]) 
-                                                .where((u) => !_assigneesHide.contains(u.id.toLowerCase()))
-                                                .toList())
-                                            .map<Widget>((u) => _AssigneePill(user: u, onRemove: () => _toggleAssignee(u, remove: true)))
-                                            .toList(),
+                          child: Container(
+                            decoration: panelDecoration,
+                            padding: panelPadding,
+                            child: SingleChildScrollView(
+                              primary: false,
+                              child: Column(
+                                children: [
+                                  _FieldRow(
+                                    label: L10n.of(context).dueDate,
+                                    value: _due == null ? '—' : _due!.toLocal().toString().substring(0, 16),
+                                    onTap: () => _pickDueDate(context),
+                                    trailing: _due == null
+                                        ? null
+                                        : CupertinoButton(
+                                            padding: EdgeInsets.zero,
+                                            onPressed: _clearDueDate,
+                                            child: Semantics(
+                                              label: L10n.of(context).removeDate,
+                                              child: const Icon(CupertinoIcons.clear_circled, size: 20),
+                                            ),
+                                          ),
+                                  ),
+                                  _FieldRow(
+                                    label: L10n.of(context).column,
+                                    value: _columns.firstWhere((c) => c.id == _currentStackId, orElse: () => deck.Column(id: -1, title: '—', cards: const [])).title,
+                                    onTap: () => _pickStack(context),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      Expanded(child: Text(L10n.of(context).labelsCaption, style: const TextStyle(fontWeight: FontWeight.w600))),
+                                      CupertinoButton(
+                                        padding: EdgeInsets.zero,
+                                        onPressed: () => _editLabels(context),
+                                        child: const Icon(CupertinoIcons.pencil_circle_fill, size: 22),
                                       ),
-                                const SizedBox(height: 8),
-                                Container(height: 1, color: CupertinoColors.separator),
-                                const SizedBox(height: 16),
-                                // Attachments (wide layout)
-                                Row(
-                                  children: [
-                                    Expanded(child: Text(L10n.of(context).attachments, style: const TextStyle(fontWeight: FontWeight.w600))),
-                                    CupertinoButton(
-                                      padding: EdgeInsets.zero,
-                                      onPressed: _uploadingAttachment ? null : () async {
-                                        try {
-                                          final app = context.read<AppState>();
-                                          final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
-                                          if (base == null || user == null || pass == null) return;
-                                          setState(() { _uploadingAttachment = true; });
-                                          final picker = await Future.sync(() async => await _pickFile());
-                                          if (picker == null) { if (mounted) setState(() { _uploadingAttachment = false; }); return; }
-                                          final fileName = picker.name;
-                                          final bytes = picker.bytes;
-                                          if (bytes == null) {
-                                            if (mounted) {
-                                              setState(() { _uploadingAttachment = false; });
-                                              await showCupertinoDialog(
-                                                context: context,
-                                                builder: (ctx) => CupertinoAlertDialog(
-                                                  title: Text(L10n.of(context).uploadFailed),
-                                                  content: const Text('Datei konnte nicht gelesen werden.'),
-                                                  actions: [
-                                                    CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK')),
-                                                  ],
-                                                ),
-                                              );
-                                            }
-                                            return;
-                                          }
-                                          final boardId = widget.boardId ?? app.activeBoard?.id;
-                                          final stackId = _currentStackId ?? widget.stackId;
-                                          if (boardId == null || stackId == null) { if (mounted) setState(() { _uploadingAttachment = false; }); return; }
-                                          // Deck multipart upload only (no WebDAV fallback)
-                                          final okUp = await app.api.uploadCardAttachment(base, user, pass, boardId: boardId, stackId: stackId, cardId: widget.cardId, bytes: bytes, filename: fileName);
-                                          if (okUp) {
-                                            await _loadAttachments();
-                                          } else {
-                                            if (mounted) {
-                                              await showCupertinoDialog(
-                                                context: context,
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Wrap(
+                                    spacing: 6,
+                                    runSpacing: 6,
+                                    children: (_card?.labels ?? const <Label>[]) 
+                                        .map<Widget>((l) => _LabelPill(label: l, onRemove: () => _toggleLabel(l, remove: true)))
+                                        .toList(),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Container(height: 1, color: CupertinoColors.separator),
+                                  const SizedBox(height: 16),
+                                  Row(
+                                    children: [
+                                      Expanded(child: Text(L10n.of(context).assigned, style: const TextStyle(fontWeight: FontWeight.w600))),
+                                      CupertinoButton(
+                                        padding: EdgeInsets.zero,
+                                        onPressed: () => _assignUser(context),
+                                        child: const Icon(CupertinoIcons.pencil_circle_fill, size: 22),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  _assigneesLoading
+                                      ? const CupertinoActivityIndicator()
+                                      : Wrap(
+                                          spacing: 6,
+                                          runSpacing: 6,
+                                          children: ((_card?.assignees ?? const <UserRef>[]) 
+                                                  .where((u) => !_assigneesHide.contains(u.id.toLowerCase()))
+                                                  .toList())
+                                              .map<Widget>((u) => _AssigneePill(user: u, onRemove: () => _toggleAssignee(u, remove: true)))
+                                              .toList(),
+                                        ),
+                                  const SizedBox(height: 8),
+                                  Container(height: 1, color: CupertinoColors.separator),
+                                  const SizedBox(height: 16),
+                                  // Attachments (wide layout)
+                                  Row(
+                                    children: [
+                                      Expanded(child: Text(L10n.of(context).attachments, style: const TextStyle(fontWeight: FontWeight.w600))),
+                                      CupertinoButton(
+                                        padding: EdgeInsets.zero,
+                                        onPressed: _uploadingAttachment ? null : () async {
+                                          try {
+                                            final app = context.read<AppState>();
+                                            final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
+                                            if (base == null || user == null || pass == null) return;
+                                            setState(() { _uploadingAttachment = true; });
+                                            final picker = await Future.sync(() async => await _pickFile());
+                                            if (picker == null) { if (mounted) setState(() { _uploadingAttachment = false; }); return; }
+                                            final fileName = picker.name;
+                                            final bytes = picker.bytes;
+                                            if (bytes == null) {
+                                              if (mounted) {
+                                                setState(() { _uploadingAttachment = false; });
+                                                await showCupertinoDialog(
+                                                  context: context,
                                                   builder: (ctx) => CupertinoAlertDialog(
                                                     title: Text(L10n.of(context).uploadFailed),
-                                                    content: Text(L10n.of(context).fileAttachFailed),
-                                                    actions: [CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: Text(L10n.of(context).ok))],
+                                                    content: const Text('Datei konnte nicht gelesen werden.'),
+                                                    actions: [
+                                                      CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK')),
+                                                    ],
                                                   ),
-                                              );
+                                                );
+                                              }
+                                              return;
                                             }
+                                            final boardId = widget.boardId ?? app.activeBoard?.id;
+                                            final stackId = _currentStackId ?? widget.stackId;
+                                            if (boardId == null || stackId == null) { if (mounted) setState(() { _uploadingAttachment = false; }); return; }
+                                            // Deck multipart upload only (no WebDAV fallback)
+                                            final okUp = await app.api.uploadCardAttachment(base, user, pass, boardId: boardId, stackId: stackId, cardId: widget.cardId, bytes: bytes, filename: fileName);
+                                            if (okUp) {
+                                              await _loadAttachments();
+                                            } else {
+                                              if (mounted) {
+                                                await showCupertinoDialog(
+                                                  context: context,
+                                                    builder: (ctx) => CupertinoAlertDialog(
+                                                      title: Text(L10n.of(context).uploadFailed),
+                                                      content: Text(L10n.of(context).fileAttachFailed),
+                                                      actions: [CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: Text(L10n.of(context).ok))],
+                                                    ),
+                                                );
+                                              }
+                                            }
+                                            // done
+                                          } catch (_) {
+                                            // swallow
+                                          } finally {
+                                            if (mounted) setState(() { _uploadingAttachment = false; });
                                           }
-                                          // done
-                                        } catch (_) {
-                                          // swallow
-                                        } finally {
-                                          if (mounted) setState(() { _uploadingAttachment = false; });
+                                        },
+                                        child: _uploadingAttachment
+                                            ? const CupertinoActivityIndicator()
+                                            : const Icon(CupertinoIcons.plus_circle, size: 20),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  if (_attachmentsLoading)
+                                    const Center(child: CupertinoActivityIndicator())
+                                  else if (_attachments.isEmpty)
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(L10n.of(context).noAttachments, style: const TextStyle(color: CupertinoColors.systemGrey)),
+                                    )
+                                  else
+                                    Column(
+                                      children: _attachments.map((a) {
+                                        final ext = (a['extendedData'] as Map?)?.cast<String, dynamic>();
+                                        final info = (ext?['info'] as Map?)?.cast<String, dynamic>();
+                                        final filenameOnly = (info?['filename'])?.toString();
+                                        final extensionOnly = (info?['extension'])?.toString();
+                                        final basename = (info?['basename'])?.toString();
+                                        String name = (a['title'] ?? a['fileName'] ?? a['data'] ?? L10n.of(context).attachmentFallback).toString();
+                                        if (basename != null && basename.isNotEmpty) {
+                                          name = basename;
+                                        } else if (filenameOnly != null && filenameOnly.isNotEmpty) {
+                                          name = extensionOnly != null && extensionOnly.isNotEmpty ? '$filenameOnly.$extensionOnly' : filenameOnly;
                                         }
-                                      },
-                                      child: _uploadingAttachment
-                                          ? const CupertinoActivityIndicator()
-                                          : const Icon(CupertinoIcons.plus_circle, size: 20),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                if (_attachmentsLoading)
-                                  const Center(child: CupertinoActivityIndicator())
-                                else if (_attachments.isEmpty)
-                                  Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: Text(L10n.of(context).noAttachments, style: const TextStyle(color: CupertinoColors.systemGrey)),
-                                  )
-                                else
-                                  Column(
-                                    children: _attachments.map((a) {
-                                      final ext = (a['extendedData'] as Map?)?.cast<String, dynamic>();
-                                      final info = (ext?['info'] as Map?)?.cast<String, dynamic>();
-                                      final filenameOnly = (info?['filename'])?.toString();
-                                      final extensionOnly = (info?['extension'])?.toString();
-                                      final basename = (info?['basename'])?.toString();
-                                      String name = (a['title'] ?? a['fileName'] ?? a['data'] ?? L10n.of(context).attachmentFallback).toString();
-                                      if (basename != null && basename.isNotEmpty) {
-                                        name = basename;
-                                      } else if (filenameOnly != null && filenameOnly.isNotEmpty) {
-                                        name = extensionOnly != null && extensionOnly.isNotEmpty ? '$filenameOnly.$extensionOnly' : filenameOnly;
-                                      }
-                        // Robust: ID aus mehreren Feldern und auch Strings akzeptieren
-                        int? id;
-                        final rawId = a['id'] ?? a['attachmentId'] ?? a['attachment_id'];
-                        if (rawId is num) {
-                          id = rawId.toInt();
-                        } else if (rawId is String) {
-                          id = int.tryParse(rawId);
-                        }
-                                      final size = ((ext?['filesize'] ?? a['size']) as num?)?.toInt();
-                                      return Row(
-                                        children: [
-                                          // Open attachment on tap (wide layout)
-                                          Expanded(
-                                            child: CupertinoButton(
-                                              padding: EdgeInsets.zero,
-                                              onPressed: () async {
-                                                final app = context.read<AppState>();
-                                                final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
-                                                if (base == null || user == null || pass == null) return;
+                                        // Robust: ID aus mehreren Feldern und auch Strings akzeptieren
+                                        int? id;
+                                        final rawId = a['id'] ?? a['attachmentId'] ?? a['attachment_id'];
+                                        if (rawId is num) {
+                                          id = rawId.toInt();
+                                        } else if (rawId is String) {
+                                          id = int.tryParse(rawId);
+                                        }
+                                        final size = ((ext?['filesize'] ?? a['size']) as num?)?.toInt();
+                                        return Row(
+                                          children: [
+                                            // Open attachment on tap (wide layout)
+                                            Expanded(
+                                              child: CupertinoButton(
+                                                padding: EdgeInsets.zero,
+                                                onPressed: () async {
+                                                  final app = context.read<AppState>();
+                                                  final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
+                                                  if (base == null || user == null || pass == null) return;
 
-                                                // Open web links directly
-                                                final dataStr = (a['data'] ?? '').toString();
-                                                if (dataStr.startsWith('http://') || dataStr.startsWith('https://') || dataStr.startsWith('/')) {
-                                                  try {
-                                                    final String b = (base ?? '').trim();
-                                                    final Uri uri = dataStr.startsWith('/')
-                                                        ? ((b.isEmpty || b == '/') ? Uri.parse(dataStr) : Uri.parse(b + dataStr))
-                                                        : Uri.parse(dataStr);
-                                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                                  } catch (_) {}
-                                                  return;
-                                                }
+                                                  // Open web links directly
+                                                  final dataStr = (a['data'] ?? '').toString();
+                                                  if (dataStr.startsWith('http://') || dataStr.startsWith('https://') || dataStr.startsWith('/')) {
+                                                    try {
+                                                      final String b = (base ?? '').trim();
+                                                      final Uri uri = dataStr.startsWith('/')
+                                                          ? ((b.isEmpty || b == '/') ? Uri.parse(dataStr) : Uri.parse(b + dataStr))
+                                                          : Uri.parse(dataStr);
+                                                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                                    } catch (_) {}
+                                                    return;
+                                                  }
 
-                                                // Prefer WebDAV path
-                                                final ext = (a['extendedData'] as Map?)?.cast<String, dynamic>();
-                                                final info = (ext?['info'] as Map?)?.cast<String, dynamic>();
-                                                String? remotePath = (ext?['path'] ?? info?['path'] ?? info?['pathRelative'] ?? a['relativePath'] ?? a['path'] ?? a['data'])?.toString();
-                                                if (remotePath != null && remotePath.isNotEmpty && !remotePath.startsWith('/')) {
-                                                  remotePath = '/$remotePath';
-                                                }
-                                                if (remotePath != null) {
-                                                  remotePath = remotePath.replaceAll(RegExp(r'/{2,}'), '/');
-                                                }
+                                                  // Prefer WebDAV path
+                                                  final ext = (a['extendedData'] as Map?)?.cast<String, dynamic>();
+                                                  final info = (ext?['info'] as Map?)?.cast<String, dynamic>();
+                                                  String? remotePath = (ext?['path'] ?? info?['path'] ?? info?['pathRelative'] ?? a['relativePath'] ?? a['path'] ?? a['data'])?.toString();
+                                                  if (remotePath != null && remotePath.isNotEmpty && !remotePath.startsWith('/')) {
+                                                    remotePath = '/$remotePath';
+                                                  }
+                                                  if (remotePath != null) {
+                                                    remotePath = remotePath.replaceAll(RegExp(r'/{2,}'), '/');
+                                                  }
 
-                                                http.Response? res;
-                                                if (remotePath != null && remotePath.isNotEmpty && user != null) {
-                                                  res = await app.api.webdavDownload(base, user, pass, user, remotePath);
-                                                }
-                                                // Fallback to Deck endpoint
-                                                if (res == null) {
-                                                  final boardId = widget.boardId ?? app.activeBoard?.id;
-                                                  final stackId = _currentStackId ?? widget.stackId;
-                                                  if (boardId == null || stackId == null || id == null) return;
-                                                  res = await app.api.fetchAttachmentContent(base, user!, pass, boardId: boardId, stackId: stackId, cardId: widget.cardId, attachmentId: id);
-                                                  if (res == null) return;
-                                                }
-                                                final mime = res.headers['content-type'];
-                                                final bytes = res.bodyBytes;
-                                                final isImage = (mime ?? '').startsWith('image/');
-                                                if (isImage) {
-                                                  if (!mounted) return;
-                                                  Navigator.of(context).push(CupertinoPageRoute(builder: (_) => AttachmentPreviewPage(name: name, bytes: bytes, mime: mime)));
-                                                } else {
-                                                  // Save to temp and open with system; fallback share
-                                                  final tempDir = (await getTemporaryDirectory()).path;
-                                                  final path = '$tempDir/$name';
-                                                  final file = File(path);
-                                                  await file.writeAsBytes(bytes);
-                                                  try {
-                                                    final uri = Uri.file(path);
-                                                    final ok = await launchUrl(uri, mode: LaunchMode.platformDefault);
-                                                    if (!ok) {
+                                                  http.Response? res;
+                                                  if (remotePath != null && remotePath.isNotEmpty && user != null) {
+                                                    res = await app.api.webdavDownload(base, user, pass, user, remotePath);
+                                                  }
+                                                  // Fallback to Deck endpoint
+                                                  if (res == null) {
+                                                    final boardId = widget.boardId ?? app.activeBoard?.id;
+                                                    final stackId = _currentStackId ?? widget.stackId;
+                                                    if (boardId == null || stackId == null || id == null) return;
+                                                    res = await app.api.fetchAttachmentContent(base, user!, pass, boardId: boardId, stackId: stackId, cardId: widget.cardId, attachmentId: id);
+                                                    if (res == null) return;
+                                                  }
+                                                  final mime = res.headers['content-type'];
+                                                  final bytes = res.bodyBytes;
+                                                  final isImage = (mime ?? '').startsWith('image/');
+                                                  if (isImage) {
+                                                    if (!mounted) return;
+                                                    Navigator.of(context).push(CupertinoPageRoute(builder: (_) => AttachmentPreviewPage(name: name, bytes: bytes, mime: mime)));
+                                                  } else {
+                                                    // Save to temp and open with system; fallback share
+                                                    final tempDir = (await getTemporaryDirectory()).path;
+                                                    final path = '$tempDir/$name';
+                                                    final file = File(path);
+                                                    await file.writeAsBytes(bytes);
+                                                    try {
+                                                      final uri = Uri.file(path);
+                                                      final ok = await launchUrl(uri, mode: LaunchMode.platformDefault);
+                                                      if (!ok) {
+                                                        await Share.shareXFiles([XFile(path)], subject: name);
+                                                      }
+                                                    } catch (_) {
                                                       await Share.shareXFiles([XFile(path)], subject: name);
                                                     }
-                                                  } catch (_) {
-                                                    await Share.shareXFiles([XFile(path)], subject: name);
                                                   }
-                                                }
-                                              },
-                                              child: Align(
-                                                alignment: Alignment.centerLeft,
-                                                child: Row(
-                                                  children: [
-                                                    const Icon(CupertinoIcons.paperclip),
-                                                    const SizedBox(width: 8),
-                                                    Expanded(child: Text(size == null ? name : '$name (${(size/1024).toStringAsFixed(1)} KB)')),
-                                                  ],
+                                                },
+                                                child: Align(
+                                                  alignment: Alignment.centerLeft,
+                                                  child: Row(
+                                                    children: [
+                                                      const Icon(CupertinoIcons.paperclip),
+                                                      const SizedBox(width: 8),
+                                                      Expanded(child: Text(size == null ? name : '$name (${(size/1024).toStringAsFixed(1)} KB)')),
+                                                    ],
+                                                  ),
                                                 ),
                                               ),
                                             ),
-                                          ),
-                            if (id != null)
+                                            if (id != null)
                                               CupertinoButton(
                                                 padding: EdgeInsets.zero,
                                                 onPressed: () async {
@@ -984,104 +1175,105 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                   final boardId2 = widget.boardId ?? app.activeBoard?.id;
                                                   final stackId2 = _currentStackId ?? widget.stackId;
                                                   if (boardId2 == null || stackId2 == null) return;
-                                                final dataStr = (a['data'] ?? '').toString();
-                                                final isUrl = dataStr.startsWith('http://') || dataStr.startsWith('https://') || dataStr.startsWith('/');
-                                                final delType = isUrl ? 'link' : 'file';
-                                                final ok = await app.api.deleteCardAttachmentEnsureStack(base, user, pass, boardId: boardId2, stackId: stackId2, cardId: widget.cardId, attachmentId: id!, type: delType);
-                                                if (ok) setState(() {
-                                                  _attachments = _attachments.where((e) {
-                                                    final raw = e['id'] ?? e['attachmentId'] ?? e['attachment_id'];
-                                                    int? eId;
-                                                    if (raw is num) eId = raw.toInt();
-                                                    if (raw is String) eId = int.tryParse(raw);
-                                                    return eId != id;
-                                                  }).toList();
-                                                });
-                                                else {
-                                                  if (!mounted) return;
-                                                  await showCupertinoDialog(
-                                                    context: context,
-                                                    builder: (ctx) => CupertinoAlertDialog(
-                                                      title: Text(L10n.of(context).deleteFailed),
-                                                      content: Text(L10n.of(context).serverDeniedDeleteAttachment),
-                                                      actions: [
-                                                        CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK')),
-                                                      ],
-                                                    ),
-                                                  );
-                                                }
-                                              },
-                                              child: const Icon(CupertinoIcons.delete_simple, color: CupertinoColors.destructiveRed, size: 18),
-                                            ),
-                                        ],
-                                      );
-                                    }).toList(),
-                                  ),
-                                const SizedBox(height: 12),
-                                Container(height: 1, color: CupertinoColors.separator),
-                                const SizedBox(height: 16),
-                                // Comments (wide layout)
-                                Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(L10n.of(context).comments, style: const TextStyle(fontWeight: FontWeight.w600)),
-                                ),
-                                const SizedBox(height: 8),
-                                if (_commentsLoading)
-                                  const Center(child: CupertinoActivityIndicator())
-                                else if (_comments.isEmpty)
+                                                  final dataStr = (a['data'] ?? '').toString();
+                                                  final isUrl = dataStr.startsWith('http://') || dataStr.startsWith('https://') || dataStr.startsWith('/');
+                                                  final delType = isUrl ? 'link' : 'file';
+                                                  final ok = await app.api.deleteCardAttachmentEnsureStack(base, user, pass, boardId: boardId2, stackId: stackId2, cardId: widget.cardId, attachmentId: id!, type: delType);
+                                                  if (ok) setState(() {
+                                                    _attachments = _attachments.where((e) {
+                                                      final raw = e['id'] ?? e['attachmentId'] ?? e['attachment_id'];
+                                                      int? eId;
+                                                      if (raw is num) eId = raw.toInt();
+                                                      if (raw is String) eId = int.tryParse(raw);
+                                                      return eId != id;
+                                                    }).toList();
+                                                  });
+                                                  else {
+                                                    if (!mounted) return;
+                                                    await showCupertinoDialog(
+                                                      context: context,
+                                                      builder: (ctx) => CupertinoAlertDialog(
+                                                        title: Text(L10n.of(context).deleteFailed),
+                                                        content: Text(L10n.of(context).serverDeniedDeleteAttachment),
+                                                        actions: [
+                                                          CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK')),
+                                                        ],
+                                                      ),
+                                                    );
+                                                  }
+                                                },
+                                                child: const Icon(CupertinoIcons.delete_simple, color: CupertinoColors.destructiveRed, size: 18),
+                                              ),
+                                          ],
+                                        );
+                                      }).toList(),
+                                    ),
+                                  const SizedBox(height: 12),
+                                  Container(height: 1, color: CupertinoColors.separator),
+                                  const SizedBox(height: 16),
+                                  // Comments (wide layout)
                                   Align(
                                     alignment: Alignment.centerLeft,
-                                    child: Text(L10n.of(context).noComments, style: const TextStyle(color: CupertinoColors.systemGrey)),
-                                  )
-                                else
-                                  Column(
-                                    children: _comments
-                                        .map<Widget>((c) => _CommentTileInline(
-                                              comment: c,
-                                              isMine: (context.read<AppState>().username ?? '') == c.actorId,
-                                              onReply: (id) => setState(() => _replyTo = id),
-                                              onDelete: (id) async {
-                                                final app = context.read<AppState>();
-                                                final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
-                                                if (base == null || user == null || pass == null) return;
-                                                final ok = await app.api.deleteComment(base, user, pass, widget.cardId, id);
-                                                if (ok) setState(() { _comments = _comments.where((x) => x.id != id).toList(); });
-                                              },
-                                            ))
-                                        .toList(),
+                                    child: Text(L10n.of(context).comments, style: const TextStyle(fontWeight: FontWeight.w600)),
                                   ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    if (_replyTo != null) ...[
-                                      GestureDetector(
-                                        onTap: () => setState(() => _replyTo = null),
-                                        child: const Icon(CupertinoIcons.xmark_circle_fill, size: 18, color: CupertinoColors.systemGrey),
+                                  const SizedBox(height: 8),
+                                  if (_commentsLoading)
+                                    const Center(child: CupertinoActivityIndicator())
+                                  else if (_comments.isEmpty)
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(L10n.of(context).noComments, style: const TextStyle(color: CupertinoColors.systemGrey)),
+                                    )
+                                  else
+                                    Column(
+                                      children: _comments
+                                          .map<Widget>((c) => _CommentTileInline(
+                                                comment: c,
+                                                isMine: (context.read<AppState>().username ?? '') == c.actorId,
+                                                onReply: (id) => setState(() => _replyTo = id),
+                                                onDelete: (id) async {
+                                                  final app = context.read<AppState>();
+                                                  final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
+                                                  if (base == null || user == null || pass == null) return;
+                                                  final ok = await app.api.deleteComment(base, user, pass, widget.cardId, id);
+                                                  if (ok) setState(() { _comments = _comments.where((x) => x.id != id).toList(); });
+                                                },
+                                              ))
+                                          .toList(),
+                                    ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      if (_replyTo != null) ...[
+                                        GestureDetector(
+                                          onTap: () => setState(() => _replyTo = null),
+                                          child: const Icon(CupertinoIcons.xmark_circle_fill, size: 18, color: CupertinoColors.systemGrey),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Text(L10n.of(context).reply, style: const TextStyle(color: CupertinoColors.systemGrey)),
+                                        const SizedBox(width: 8),
+                                      ],
+                                      Expanded(
+                                        child: CupertinoTextField(
+                                          controller: _commentCtrl,
+                                          placeholder: L10n.of(context).writeComment,
+                                          maxLines: 3,
+                                          minLines: 1,
+                                          onSubmitted: (_) => _sendComment(),
+                                        ),
                                       ),
-                                      const SizedBox(width: 6),
-                                      const Text('Antworten …', style: TextStyle(color: CupertinoColors.systemGrey)),
                                       const SizedBox(width: 8),
-                                    ],
-                                    Expanded(
-                                      child: CupertinoTextField(
-                                        controller: _commentCtrl,
-                                        placeholder: L10n.of(context).writeComment,
-                                        maxLines: 3,
-                                        minLines: 1,
-                                        onSubmitted: (_) => _sendComment(),
+                                      CupertinoButton.filled(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        onPressed: _sendingComment ? null : _sendComment,
+                                        child: _sendingComment ? const CupertinoActivityIndicator() : const Icon(CupertinoIcons.paperplane),
                                       ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    CupertinoButton.filled(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      onPressed: _sendingComment ? null : _sendComment,
-                                      child: _sendingComment ? const CupertinoActivityIndicator() : const Icon(CupertinoIcons.paperplane),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                Container(height: 1, color: CupertinoColors.separator),
-                              ],
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Container(height: 1, color: CupertinoColors.separator),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -1847,7 +2039,8 @@ class _FieldRow extends StatelessWidget {
   final String label;
   final String value;
   final VoidCallback? onTap;
-  const _FieldRow({required this.label, required this.value, this.onTap});
+  final Widget? trailing;
+  const _FieldRow({required this.label, required this.value, this.onTap, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -1859,17 +2052,83 @@ class _FieldRow extends StatelessWidget {
           border: Border(bottom: BorderSide(color: CupertinoColors.separator)),
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Text(label, style: const TextStyle(color: CupertinoColors.systemGrey)),
-            // Auf iPad (Tablet) immer linksbündig ausrichten
-            Builder(builder: (context) {
-              final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
-              return Flexible(child: Text(value, textAlign: isTablet ? TextAlign.left : TextAlign.right));
-            }),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(color: CupertinoColors.secondaryLabel.resolveFrom(context)),
+              ),
+            ),
+            if (trailing != null) ...[
+              const SizedBox(width: 6),
+              trailing!,
+            ],
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.right,
+                style: TextStyle(color: CupertinoColors.label.resolveFrom(context)),
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  final String title;
+  final Widget? trailing;
+  const _SectionHeader({required this.title, this.trailing});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600))),
+        if (trailing != null) trailing!,
+      ],
+    );
+  }
+}
+
+class _SavingIndicator extends StatelessWidget {
+  final bool visible;
+  const _SavingIndicator({required this.visible});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!visible) return const SizedBox.shrink();
+    return const CupertinoActivityIndicator(radius: 8);
+  }
+}
+
+class _StatusRow extends StatelessWidget {
+  final String label;
+  final bool isDone;
+  final ValueChanged<bool> onChanged;
+  final String markDoneLabel;
+  final String markUndoneLabel;
+  const _StatusRow({
+    required this.label,
+    required this.isDone,
+    required this.onChanged,
+    required this.markDoneLabel,
+    required this.markUndoneLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final textColor = CupertinoColors.label.resolveFrom(context);
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: const TextStyle(fontWeight: FontWeight.w600))),
+        Text(isDone ? markUndoneLabel : markDoneLabel, style: TextStyle(color: textColor)),
+        const SizedBox(width: 8),
+        CupertinoSwitch(value: isDone, onChanged: onChanged),
+      ],
     );
   }
 }
