@@ -192,6 +192,10 @@ class AppState extends ChangeNotifier {
             notifyListeners();
             // Hydrate from cache after sync instead of refreshBoards which may override
             _hydrateFromCache();
+            // Fetch boards once to drop deleted boards from cache/UI
+            try {
+              await refreshBoards(forceNetwork: true);
+            } catch (_) {}
           } finally {
             _bootSyncing = false;
             _bootMessage = null;
@@ -332,6 +336,10 @@ class AppState extends ChangeNotifier {
       
       // Hydrate from cache after sync
       _hydrateFromCache();
+      // Fetch boards once to drop deleted boards from cache/UI
+      try {
+        await refreshBoards(forceNetwork: true);
+      } catch (_) {}
     } catch (_) {
     } finally {
       _bootSyncing = false;
@@ -771,7 +779,7 @@ class AppState extends ChangeNotifier {
     return api.testLogin(_baseUrl!, _username!, _password!);
   }
 
-  Future<void> refreshBoards() async {
+  Future<void> refreshBoards({bool forceNetwork = false}) async {
     if (_localMode) return;
     if (_baseUrl == null || _username == null || _password == null) return;
 
@@ -779,7 +787,8 @@ class AppState extends ChangeNotifier {
 
     FetchBoardsDetailsResult res;
     try {
-      final prevDetailsEtag = cache.get(detailsEtagKey) as String?;
+      final prevDetailsEtag =
+          forceNetwork ? null : cache.get(detailsEtagKey) as String?;
       res = await api.fetchBoardsWithDetailsEtag(
           _baseUrl!, _username!, _password!,
           ifNoneMatch: prevDetailsEtag);
@@ -932,6 +941,31 @@ class AppState extends ChangeNotifier {
       final map = raw.cast<String, dynamic>();
       final id = (map['id'] as num?)?.toInt();
       if (id == null) continue;
+      // Skip boards marked as deleted by server (Nextcloud sets deletedAt timestamp)
+      final deletedAt = map['deletedAt'] ?? map['deleted_at'] ?? map['deleted_at_utc'];
+      if (deletedAt is num && deletedAt.toInt() != 0) {
+        // Purge caches for this board
+        cache.delete('columns_$id');
+        cache.delete('board_members_$id');
+        cache.delete('board_lastmod_$id');
+        cache.delete('board_lastmod_prev_$id');
+        cache.delete('stacks_$id');
+        continue;
+      }
+      // Debug: log possible deletion/archive flags from server payload
+      final dbg = <String, dynamic>{};
+      for (final entry in map.entries) {
+        final k = entry.key.toLowerCase();
+        if (k == 'id' || k == 'title' || k == 'archived') {
+          dbg[entry.key] = entry.value;
+        }
+        if (k.contains('delete') || k.contains('archive') || k.contains('trash')) {
+          dbg[entry.key] = entry.value;
+        }
+      }
+      if (dbg.length > 3) {
+        print('[refreshBoards] board raw flags: $dbg');
+      }
       updatedBoards.add(Board.fromJson(map));
       final lastMod = _parseLastModified(
         map['lastModified'] ??
@@ -949,6 +983,10 @@ class AppState extends ChangeNotifier {
       updatedColumns[id] = columns;
       cache.put('columns_$id', _serializeColumnsForCache(columns));
     }
+
+    // Log server boards for manual diagnostics
+    final boardLog = updatedBoards.map((b) => '${b.id}:${b.title}').join(', ');
+    print('[refreshBoards] server returned boards (${updatedBoards.length}): $boardLog');
 
     final previousBoardIds = _boards.map((b) => b.id).toSet();
     _boards = updatedBoards;

@@ -179,7 +179,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
     var boards = app.boards.where((x) => !x.archived).toList();
     if (boards.isEmpty && !app.localMode) {
       try {
-        await app.refreshBoards();
+        await app.refreshBoards(forceNetwork: true);
         if (mySeq != _seq) return;
         boards = app.boards.where((x) => !x.archived).toList();
       } catch (_) {}

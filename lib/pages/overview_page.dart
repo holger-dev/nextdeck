@@ -44,9 +44,12 @@ class _OverviewPageState extends State<OverviewPage> {
               padding: EdgeInsets.zero,
               onPressed: () async {
                 // Use new sync system instead of old refreshBoards/refreshColumnsFor
-                if (app.activeBoard != null) {
-                  await app.refreshSingleBoard(app.activeBoard!.id);
-                }
+                await app.runWithSyncing(() async {
+                  await app.refreshBoards(forceNetwork: true);
+                  if (app.activeBoard != null) {
+                    await app.refreshSingleBoard(app.activeBoard!.id);
+                  }
+                });
               },
               child: const Icon(CupertinoIcons.refresh),
             ),

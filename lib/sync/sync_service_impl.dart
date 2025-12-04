@@ -71,10 +71,20 @@ class SyncServiceImpl implements SyncService {
       
       final boardsData = jsonDecode(boardsResponse.body) as List;
       final boards = <Map<String, dynamic>>[];
-      
+
       // Step 2: Process each board and its stacks from the boards response
       for (final boardData in boardsData.cast<Map<String, dynamic>>()) {
         final boardId = boardData['id'] as int;
+        // Skip boards marked as deleted (Nextcloud sets deletedAt timestamp)
+        final deletedAt = boardData['deletedAt'] ?? boardData['deleted_at'] ?? boardData['deleted_at_utc'];
+        if (deletedAt is num && deletedAt.toInt() != 0) {
+          cache.delete('columns_$boardId');
+          cache.delete('stacks_$boardId');
+          cache.delete('board_members_$boardId');
+          cache.delete('board_lastmod_$boardId');
+          cache.delete('board_lastmod_prev_$boardId');
+          continue;
+        }
         final boardTitle = boardData['title'] as String;
         
         boards.add({
@@ -199,8 +209,25 @@ class SyncServiceImpl implements SyncService {
         cache.put('columns_$boardId', columns);
       }
       
+      // Remove caches for boards that no longer exist (compare previous IDs)
+      final previousRaw = cache.get('boards');
+      final previousIds = <int>{};
+      if (previousRaw is List) {
+        for (final b in previousRaw.whereType<Map>()) {
+          final id = b['id'];
+          if (id is num) previousIds.add(id.toInt());
+        }
+      }
+      final currentIds = boards.map((b) => (b['id'] as num).toInt()).toSet();
       // Save boards to cache
       cache.put('boards', boards);
+      for (final rid in previousIds.difference(currentIds)) {
+        cache.delete('columns_$rid');
+        cache.delete('stacks_$rid');
+        cache.delete('board_members_$rid');
+        cache.delete('board_lastmod_$rid');
+        cache.delete('board_lastmod_prev_$rid');
+      }
       
     } catch (e) {
       // Error in initial sync

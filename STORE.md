@@ -225,6 +225,7 @@ Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (wer
 - Beschreibung bearbeiten: Größerer Stift/Haken-Toggle und Klick auf die Vorschau startet den Editiermodus.
 - Schlagworte: Beschriftung lokalisiert (Schlagworte/Tags/Etiquetas).
 - Theme: Light/Dark/System wählbar; „System“ folgt automatisch dem Geräte-Theme.
+- Gelöschte Boards: verschwinden nach einem Refresh sofort aus der App.
 
 # EN – Version 1.6
 
@@ -234,6 +235,7 @@ Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (wer
 - Description editing: larger pencil/check toggle and tap-to-edit on the preview.
 - Tags: labels caption localized (Tags/Schlagworte/Etiquetas).
 - Theme: choose Light/Dark/System; “System” follows the device theme.
+- Deleted boards: disappear from the app right after a refresh.
 
 # ES – Versión 1.6
 
@@ -243,3 +245,4 @@ Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (wer
 - Edición de descripción: botón de lápiz/check más grande y toque para editar en la vista previa.
 - Etiquetas: título localizado (Etiquetas/Tags/Schlagworte).
 - Tema: elige Claro/Oscuro/Sistema; “Sistema” sigue el tema del dispositivo.
+- Tableros eliminados: desaparecen de la app justo después de un refresh.
