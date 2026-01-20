@@ -253,7 +253,7 @@ Tests/Checks
 Blocker/Unklar
 - Welches Feld ist die Web-UI-Entsprechung (owner vs assignedUsers).
 
-## Task J — Archiv-Filter
+## Task J — Archiv-Filter (Done)
 Zuordnung
 - Issue #4
 

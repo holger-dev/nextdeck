@@ -350,6 +350,76 @@ class NextcloudDeckApi {
     }
   }
 
+  Future<List<deck.Column>> fetchArchivedStacks(
+      String baseUrl, String user, String pass, int boardId) async {
+    Map<String, String> headers = {
+      ..._restHeader,
+      'authorization': _basicAuth(user, pass)
+    };
+    final candidates = [
+      '/apps/deck/api/v1.1/boards/$boardId/stacks/archived',
+      '/apps/deck/api/v1.0/boards/$boardId/stacks/archived',
+      '/ocs/v2.php/apps/deck/api/v1.0/boards/$boardId/stacks/archived',
+      '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId/stacks/archived',
+      '/apps/deck/stacks/$boardId/archived',
+    ];
+    http.Response? res;
+    dynamic data;
+    for (final withIndex in [false, true]) {
+      for (final path in candidates) {
+        try {
+          final url = _buildUri(baseUrl, path, withIndex);
+          final r = await _send('GET', url, headers);
+          if (_isOk(r)) {
+            res = r;
+            data = _parseBodyOk(r);
+            break;
+          }
+        } catch (_) {}
+      }
+      if (res != null) break;
+    }
+    if (res == null) {
+      _ensureOk(res, 'Archivierte Stacks laden fehlgeschlagen');
+      return const [];
+    }
+    List stacks;
+    if (data is List) {
+      stacks = data;
+    } else if (data is Map && data['stacks'] is List) {
+      stacks = data['stacks'] as List;
+    } else if (data is Map && data['data'] is List) {
+      stacks = data['data'] as List;
+    } else {
+      stacks = const [];
+    }
+    final columns = <deck.Column>[];
+    for (final s in stacks) {
+      if (s is! Map) continue;
+      try {
+        final sm = s.cast<String, dynamic>();
+        final sid = (sm['id'] as num?)?.toInt();
+        if (sid == null) continue;
+        final title = (sm['title'] ?? sm['name'] ?? '').toString();
+        final ord = (sm['order'] as num?)?.toInt();
+        final cardsRaw = (sm['cards'] is List)
+            ? (sm['cards'] as List)
+                .whereType<Map>()
+                .map((e) => e.cast<String, dynamic>())
+                .toList()
+            : const <Map<String, dynamic>>[];
+        final cards = cardsRaw.map(CardItem.fromJson).toList();
+        columns.add(deck.Column(id: sid, title: title, cards: cards, order: ord));
+      } catch (_) {}
+    }
+    columns.sort((a, b) {
+      final oa = a.order ?? 999999;
+      final ob = b.order ?? 999999;
+      return oa.compareTo(ob);
+    });
+    return columns;
+  }
+
   Future<Board?> createBoard(String baseUrl, String user, String pass,
       {required String title, String? color}) async {
     final body =

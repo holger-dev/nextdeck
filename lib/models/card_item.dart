@@ -7,11 +7,12 @@ class CardItem {
   final String? description;
   final DateTime? due;
   final DateTime? done;
+  final bool archived;
   final List<Label> labels;
   final List<UserRef> assignees;
   final int? order;
 
-  const CardItem({required this.id, required this.title, this.description, this.due, this.done, this.labels = const [], this.assignees = const [], this.order});
+  const CardItem({required this.id, required this.title, this.description, this.due, this.done, this.archived = false, this.labels = const [], this.assignees = const [], this.order});
 
   factory CardItem.fromJson(Map<String, dynamic> json) {
     DateTime? due;
@@ -61,6 +62,18 @@ class CardItem {
         }
       }
     }
+    final archivedRaw = json['archived'] ?? json['isArchived'] ?? json['archivedAt'] ?? json['archived_at'];
+    final archived = archivedRaw is bool
+        ? archivedRaw
+            : (archivedRaw is num
+                ? archivedRaw != 0
+                : (archivedRaw is String
+                    ? (() {
+                    final s = (archivedRaw as String).trim().toLowerCase();
+                    if (s.isEmpty || s == 'false' || s == '0') return false;
+                    return true;
+                  })()
+                : false));
 
     List<Label> labels = const [];
     final rawLabels = json['labels'] ?? json['label'];
@@ -103,6 +116,7 @@ class CardItem {
       description: json['description']?.toString(),
       due: due,
       done: done,
+      archived: archived,
       labels: labels,
       assignees: assignees,
       order: (json['order'] is num) ? (json['order'] as num).toInt() : (json['position'] is num ? (json['position'] as num).toInt() : null),

@@ -423,8 +423,11 @@ class _CardDetailPageState extends State<CardDetailPage> {
                   title: _titleDirty ? (_card?.title ?? fetched.title) : fetched.title,
                   description: _descDirty ? (_card?.description ?? fetched.description) : fetched.description,
                   due: _dueDirty ? (_card?.due ?? fetched.due) : fetched.due,
+                  done: fetched.done,
+                  archived: fetched.archived,
                   labels: _labelsDirty ? (_card?.labels ?? fetched.labels) : fetched.labels,
                   assignees: _assigneesDirty ? (_card?.assignees ?? fetched.assignees) : fetched.assignees,
+                  order: fetched.order,
                 );
                 _card = next;
                 if (!_titleDirty) _titleCtrl.text = next.title;
@@ -547,6 +550,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
         description: _card!.description,
         due: _card!.due,
         done: doneAt,
+        archived: _card!.archived,
         labels: _card!.labels,
         assignees: _card!.assignees,
         order: _card!.order,
@@ -1573,8 +1577,11 @@ class _CardDetailPageState extends State<CardDetailPage> {
         title: _card!.title,
         description: _card!.description,
         due: _card!.due,
+        done: _card!.done,
+        archived: _card!.archived,
         labels: next,
         assignees: _card!.assignees,
+        order: _card!.order,
       );
     });
     // push to app state immediately for board list consistency
@@ -1616,8 +1623,11 @@ class _CardDetailPageState extends State<CardDetailPage> {
           title: _card!.title,
           description: _card!.description,
           due: _card!.due,
+          done: _card!.done,
+          archived: _card!.archived,
           labels: current,
           assignees: _card!.assignees,
+          order: _card!.order,
         );
         _labelsDirty = false;
       });
@@ -1870,8 +1880,11 @@ class _CardDetailPageState extends State<CardDetailPage> {
         title: _card!.title,
         description: _card!.description,
         due: _card!.due,
+        done: _card!.done,
+        archived: _card!.archived,
         labels: _card!.labels,
         assignees: next,
+        order: _card!.order,
       );
     });
     final bId2 = app.activeBoard?.id ?? widget.boardId;
@@ -1940,8 +1953,11 @@ class _CardDetailPageState extends State<CardDetailPage> {
             title: _card!.title,
             description: _card!.description,
             due: _card!.due,
+            done: _card!.done,
+            archived: _card!.archived,
             labels: _card!.labels,
             assignees: current,
+            order: _card!.order,
           );
         });
         if (bId2 != null && sId2 != null) {

@@ -62,6 +62,12 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
     final app = context.watch<AppState>();
     final board = app.activeBoard;
     final columns = app.columnsForActiveBoard();
+    if (board != null && app.boardArchivedOnly) {
+      final archived = app.archivedCardsForBoard(board.id);
+      if (archived.isEmpty && !app.isArchivedCardsLoading(board.id)) {
+        app.refreshArchivedCardsForBoard(board.id);
+      }
+    }
 
     final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
     // Reset to first column when board changes
@@ -130,24 +136,31 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                   }
                   return t;
                 }();
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 16,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: topColor,
-                        borderRadius: BorderRadius.circular(8),
+                return SizedBox(
+                  width: double.infinity,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.max,
+                    children: [
+                      Container(
+                        width: 16,
+                        height: 6,
+                        decoration: BoxDecoration(
+                          color: topColor,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      displayTitle,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700, color: txtColor),
-                    ),
-                  ],
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          displayTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, color: txtColor),
+                        ),
+                      ),
+                    ],
+                  ),
                 );
               }),
         trailing: (board == null)
@@ -218,6 +231,23 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                           app.upcomingAssignedOnly
                               ? CupertinoIcons.person_fill
                               : CupertinoIcons.person,
+                          size: 22,
+                          color: txtColor),
+                    ),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () {
+                        final next = !app.boardArchivedOnly;
+                        app.setBoardArchivedOnly(next);
+                        final boardId = app.activeBoard?.id;
+                        if (next && boardId != null) {
+                          app.refreshArchivedCardsForBoard(boardId);
+                        }
+                      },
+                      child: Icon(
+                          app.boardArchivedOnly
+                              ? CupertinoIcons.archivebox_fill
+                              : CupertinoIcons.archivebox,
                           size: 22,
                           color: txtColor),
                     ),
@@ -343,15 +373,17 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                             }
                           },
                           onTapCard: (cardId) {
+                            final app = context.read<AppState>();
                             final stack = columns[index];
-                            if (stack.cards.isEmpty) return;
-                            final card = stack.cards.firstWhere(
+                            final archived = app.archivedCardsForBoard(board.id)[stack.id] ?? const <CardItem>[];
+                            final list = app.boardArchivedOnly ? archived : stack.cards;
+                            if (list.isEmpty) return;
+                            final card = list.firstWhere(
                               (c) => c.id == cardId,
-                              orElse: () => stack.cards.first,
+                              orElse: () => list.first,
                             );
                             final colIdx = index;
-                            final cardIdx = stack.cards.indexOf(card);
-                            final app = context.read<AppState>();
+                            final cardIdx = list.indexOf(card);
                             final bg = AppTheme.cardBg(
                                 app, card.labels, colIdx, cardIdx);
                             Navigator.of(context).push(
@@ -543,6 +575,14 @@ class _ColumnViewState extends State<_ColumnView> {
         (c) => c.id == widget.column.id,
         orElse: () => widget.column);
     final isLoading = app.isStackLoading(widget.column.id);
+    final boardId = app.activeBoard?.id;
+    final showArchivedOnly = app.boardArchivedOnly;
+    final archivedByStack = boardId == null
+        ? const <int, List<CardItem>>{}
+        : app.archivedCardsForBoard(boardId);
+    final archivedCards = archivedByStack[col.id] ?? const <CardItem>[];
+    final isArchivedLoading =
+        boardId != null && app.isArchivedCardsLoading(boardId);
     final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
     final Color containerBg = () {
       if (!app.smartColors) {
@@ -562,9 +602,14 @@ class _ColumnViewState extends State<_ColumnView> {
             ? CupertinoColors.systemGrey5
             : CupertinoColors.systemGrey6);
     final filterAssigned = app.upcomingAssignedOnly;
-    final cards = filterAssigned
-        ? col.cards.where(app.shouldIncludeAssignedCard).toList()
-        : col.cards;
+    final sourceCards = showArchivedOnly ? archivedCards : col.cards;
+    final cards = sourceCards
+        .where((c) => showArchivedOnly ? true : !c.archived)
+        .where((c) => !filterAssigned || app.shouldIncludeAssignedCard(c))
+        .toList();
+    final showArchivedLoading = showArchivedOnly &&
+        isArchivedLoading &&
+        archivedByStack.isEmpty;
 
     Future<void> _handleAccept(_DragCard d) async {
       final app = context.read<AppState>();
@@ -626,41 +671,44 @@ class _ColumnViewState extends State<_ColumnView> {
               Expanded(
                 child: (isLoading && cards.isNotEmpty)
                     ? const Center(child: CupertinoActivityIndicator())
-                    : CupertinoScrollbar(
-                        controller: _listCtrl.hasClients ? _listCtrl : null,
-                        child: ListView.builder(
-                          controller: _listCtrl,
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-                          itemCount: cards.length,
-                          itemBuilder: (context, idx) {
-                            final card = cards[idx];
-                            final bg = AppTheme.cardBgFromBase(
-                                app, card.labels, baseForCards, idx);
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              child: _CardTile(
-                                title: card.title,
-                                subtitle:
-                                    _markdownPreviewLine(card.description ?? ''),
-                                labels: card.labels,
-                                assignees: card.assignees,
-                                onTap: widget.onTapCard == null
-                                    ? null
-                                    : () => widget.onTapCard!(card.id),
-                                background: bg,
-                                due: card.due,
-                                done: card.done,
-                                footer: _CardMetaRow(
-                                    boardId: app.activeBoard?.id,
-                                    stackId: widget.column.id,
-                                    cardId: card.id,
-                                    textColor: AppTheme.textOn(bg),
-                                    description: card.description),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
+                    : (showArchivedLoading && cards.isEmpty)
+                        ? const Center(child: CupertinoActivityIndicator())
+                        : CupertinoScrollbar(
+                            controller: _listCtrl.hasClients ? _listCtrl : null,
+                            child: ListView.builder(
+                              controller: _listCtrl,
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                              itemCount: cards.length,
+                              itemBuilder: (context, idx) {
+                                final card = cards[idx];
+                                final bg = AppTheme.cardBgFromBase(
+                                    app, card.labels, baseForCards, idx);
+                                return Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 6),
+                                  child: _CardTile(
+                                    title: card.title,
+                                    subtitle: _markdownPreviewLine(
+                                        card.description ?? ''),
+                                    labels: card.labels,
+                                    assignees: card.assignees,
+                                    onTap: widget.onTapCard == null
+                                        ? null
+                                        : () => widget.onTapCard!(card.id),
+                                    background: bg,
+                                    due: card.due,
+                                    done: card.done,
+                                    footer: _CardMetaRow(
+                                        boardId: app.activeBoard?.id,
+                                        stackId: widget.column.id,
+                                        cardId: card.id,
+                                        textColor: AppTheme.textOn(bg),
+                                        description: card.description),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
               ),
             ],
           ),
@@ -1051,43 +1099,47 @@ class _ColumnViewState extends State<_ColumnView> {
           children: [
             header,
             Expanded(
-              child: (isLoading && cards.isNotEmpty)
-                  ? const Center(child: CupertinoActivityIndicator())
-                  : CupertinoScrollbar(
-                      controller: _listCtrl.hasClients ? _listCtrl : null,
-                      child: ListView.builder(
-                        controller: _listCtrl,
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-                        itemCount: cards.length,
-                        itemBuilder: (context, idx) {
-                          final card = cards[idx];
-                          final bg = AppTheme.cardBgFromBase(
-                              app, card.labels, baseForCards, idx);
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            child: _CardTile(
-                              title: card.title,
-                              subtitle:
-                                  _markdownPreviewLine(card.description ?? ''),
-                              labels: card.labels,
-                              assignees: card.assignees,
-                              onTap: widget.onTapCard == null
-                                  ? null
-                                  : () => widget.onTapCard!(card.id),
-                              background: bg,
-                              due: card.due,
-                              done: card.done,
-                              footer: _CardMetaRow(
-                                  boardId: app.activeBoard?.id,
-                                  stackId: widget.column.id,
-                                  cardId: card.id,
-                                  textColor: AppTheme.textOn(bg),
-                                  description: card.description),
+                child: (isLoading && cards.isNotEmpty)
+                    ? const Center(child: CupertinoActivityIndicator())
+                    : (showArchivedLoading && cards.isEmpty)
+                        ? const Center(child: CupertinoActivityIndicator())
+                        : CupertinoScrollbar(
+                            controller: _listCtrl.hasClients ? _listCtrl : null,
+                            child: ListView.builder(
+                              controller: _listCtrl,
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                              itemCount: cards.length,
+                              itemBuilder: (context, idx) {
+                                final card = cards[idx];
+                                final bg = AppTheme.cardBgFromBase(
+                                    app, card.labels, baseForCards, idx);
+                                return Padding(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 6),
+                                  child: _CardTile(
+                                    title: card.title,
+                                    subtitle: _markdownPreviewLine(
+                                        card.description ?? ''),
+                                    labels: card.labels,
+                                    assignees: card.assignees,
+                                    onTap: widget.onTapCard == null
+                                        ? null
+                                        : () => widget.onTapCard!(card.id),
+                                    background: bg,
+                                    due: card.due,
+                                    done: card.done,
+                                    footer: _CardMetaRow(
+                                        boardId: app.activeBoard?.id,
+                                        stackId: widget.column.id,
+                                        cardId: card.id,
+                                        textColor: AppTheme.textOn(bg),
+                                        description: card.description),
+                                  ),
+                                );
+                              },
                             ),
-                          );
-                        },
-                      ),
-                    ),
+                          ),
             ),
           ],
         ),
@@ -1117,103 +1169,110 @@ class _ColumnViewState extends State<_ColumnView> {
             Expanded(
               child: (isLoading && cards.isNotEmpty)
                   ? const Center(child: CupertinoActivityIndicator())
-                  : CupertinoScrollbar(
-                      controller: _listCtrl.hasClients ? _listCtrl : null,
-                      child: ReorderableListView.builder(
-                        buildDefaultDragHandles: false,
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-                        itemCount: cards.length,
-                        onReorder: (oldIndex, newIndex) async {
-                          final app = context.read<AppState>();
-                          final boardId = app.activeBoard?.id;
-                          if (boardId == null) return;
-                          if (newIndex > oldIndex) newIndex -= 1;
-                          final movedCard = cards[oldIndex];
-                          final cardId = movedCard.id;
-                          app.reorderCardLocal(
-                              boardId: boardId,
-                              stackId: widget.column.id,
-                              cardId: cardId,
-                              newIndex: newIndex);
-                          await app.syncStackOrder(
-                              boardId: boardId, stackId: widget.column.id);
-                        },
-                        itemBuilder: (context, idx) {
-                          final card = cards[idx];
-                          final bg = AppTheme.cardBgFromBase(
-                              app, card.labels, baseForCards, idx);
-                          final key = ValueKey('card_${card.id}');
-                          Widget buildInsertTarget(int insertIndex) {
-                            return DragTarget<_DragCard>(
-                              onWillAccept: (d) =>
-                                  d != null &&
-                                  d.fromStackId != widget.column.id,
-                              onAccept: (d) async {
-                                final app = context.read<AppState>();
-                                final boardId = app.activeBoard?.id;
-                                if (boardId == null) return;
-                                app.updateLocalCard(
-                                    boardId: boardId,
-                                    stackId: d.fromStackId,
-                                    cardId: d.cardId,
-                                    moveToStackId: widget.column.id,
-                                    insertIndex: insertIndex);
-                                CardItem? cur;
-                                for (final x in app.columnsForActiveBoard()) {
-                                  final hit = x.cards
-                                      .where((c) => c.id == d.cardId)
-                                      .toList();
-                                  if (hit.isNotEmpty) {
-                                    cur = hit.first;
-                                    break;
-                                  }
-                                }
-                                final patch = <String, dynamic>{
-                                  'stackId': widget.column.id,
-                                  'order': insertIndex + 1,
-                                  'title': cur?.title ?? d.title,
-                                  if (cur?.description != null)
-                                    'description': cur!.description,
-                                  if (cur?.due != null)
-                                    'duedate':
-                                        cur!.due!.toUtc().toIso8601String(),
-                                  if (cur != null && cur!.labels.isNotEmpty)
-                                    'labels':
-                                        cur!.labels.map((l) => l.id).toList(),
-                                  if (cur != null && cur!.assignees.isNotEmpty)
-                                    'assignedUsers': cur!.assignees
-                                        .map((u) => u.id)
-                                        .toList(),
-                                };
-                                try {
-                                  await app.updateCardAndRefresh(
-                                      boardId: boardId,
-                                      stackId: d.fromStackId,
-                                      cardId: d.cardId,
-                                      patch: patch);
-                                  await app.syncStackOrder(
-                                      boardId: boardId,
-                                      stackId: widget.column.id);
-                                  if (d.fromStackId != widget.column.id) {
-                                    await app.syncStackOrder(
+                  : (showArchivedLoading && cards.isEmpty)
+                      ? const Center(child: CupertinoActivityIndicator())
+                      : CupertinoScrollbar(
+                          controller: _listCtrl.hasClients ? _listCtrl : null,
+                          child: ReorderableListView.builder(
+                            buildDefaultDragHandles: false,
+                            padding:
+                                const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                            itemCount: cards.length,
+                            onReorder: (oldIndex, newIndex) async {
+                              if (showArchivedOnly) return;
+                              final app = context.read<AppState>();
+                              final boardId = app.activeBoard?.id;
+                              if (boardId == null) return;
+                              if (newIndex > oldIndex) newIndex -= 1;
+                              final movedCard = cards[oldIndex];
+                              final cardId = movedCard.id;
+                              app.reorderCardLocal(
+                                  boardId: boardId,
+                                  stackId: widget.column.id,
+                                  cardId: cardId,
+                                  newIndex: newIndex);
+                              await app.syncStackOrder(
+                                  boardId: boardId, stackId: widget.column.id);
+                            },
+                            itemBuilder: (context, idx) {
+                              final card = cards[idx];
+                              final bg = AppTheme.cardBgFromBase(
+                                  app, card.labels, baseForCards, idx);
+                              final key = ValueKey('card_${card.id}');
+                              Widget buildInsertTarget(int insertIndex) {
+                                return DragTarget<_DragCard>(
+                                  onWillAccept: (d) =>
+                                      d != null &&
+                                      d.fromStackId != widget.column.id,
+                                  onAccept: (d) async {
+                                    final app = context.read<AppState>();
+                                    final boardId = app.activeBoard?.id;
+                                    if (boardId == null) return;
+                                    app.updateLocalCard(
                                         boardId: boardId,
-                                        stackId: d.fromStackId);
-                                  }
-                                } catch (_) {}
-                              },
-                              builder: (ctx, cand, rej) => Container(
-                                height: 10,
-                                margin: const EdgeInsets.only(bottom: 6),
-                                decoration: BoxDecoration(
-                                  color: cand.isNotEmpty
-                                      ? CupertinoColors.activeBlue
-                                          .withOpacity(0.25)
-                                      : CupertinoColors.transparent,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                              ),
-                            );
-                          }
+                                        stackId: d.fromStackId,
+                                        cardId: d.cardId,
+                                        moveToStackId: widget.column.id,
+                                        insertIndex: insertIndex);
+                                    CardItem? cur;
+                                    for (final x in app.columnsForActiveBoard()) {
+                                      final hit = x.cards
+                                          .where((c) => c.id == d.cardId)
+                                          .toList();
+                                      if (hit.isNotEmpty) {
+                                        cur = hit.first;
+                                        break;
+                                      }
+                                    }
+                                    final patch = <String, dynamic>{
+                                      'stackId': widget.column.id,
+                                      'order': insertIndex + 1,
+                                      'title': cur?.title ?? d.title,
+                                      if (cur?.description != null)
+                                        'description': cur!.description,
+                                      if (cur?.due != null)
+                                        'duedate': cur!.due!
+                                            .toUtc()
+                                            .toIso8601String(),
+                                      if (cur != null && cur!.labels.isNotEmpty)
+                                        'labels': cur!.labels
+                                            .map((l) => l.id)
+                                            .toList(),
+                                      if (cur != null &&
+                                          cur!.assignees.isNotEmpty)
+                                        'assignedUsers': cur!.assignees
+                                            .map((u) => u.id)
+                                            .toList(),
+                                    };
+                                    try {
+                                      await app.updateCardAndRefresh(
+                                          boardId: boardId,
+                                          stackId: d.fromStackId,
+                                          cardId: d.cardId,
+                                          patch: patch);
+                                      await app.syncStackOrder(
+                                          boardId: boardId,
+                                          stackId: widget.column.id);
+                                      if (d.fromStackId != widget.column.id) {
+                                        await app.syncStackOrder(
+                                            boardId: boardId,
+                                            stackId: d.fromStackId);
+                                      }
+                                    } catch (_) {}
+                                  },
+                                  builder: (ctx, cand, rej) => Container(
+                                    height: 10,
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    decoration: BoxDecoration(
+                                      color: cand.isNotEmpty
+                                          ? CupertinoColors.activeBlue
+                                              .withOpacity(0.25)
+                                          : CupertinoColors.transparent,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  ),
+                                );
+                              }
 
                           return Padding(
                             key: key,
@@ -1987,6 +2046,13 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     const colWidth = 360.0; // slightly narrower columns for better fit
+    final showArchivedOnly = app.boardArchivedOnly;
+    final archivedByStack = showArchivedOnly
+        ? app.archivedCardsForBoard(widget.boardId)
+        : const <int, List<CardItem>>{};
+    final showArchivedLoading = showArchivedOnly &&
+        app.isArchivedCardsLoading(widget.boardId) &&
+        archivedByStack.isEmpty;
     return Stack(
       children: [
         SingleChildScrollView(
@@ -1997,9 +2063,13 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
             children: [
               const SizedBox(width: 12),
               for (final c in widget.columns) ...[
-                SizedBox(
-                  width: colWidth,
-                  child: DragTarget<_DragCard>(
+                Builder(builder: (context) {
+                  final visibleCards = showArchivedOnly
+                      ? (archivedByStack[c.id] ?? const <CardItem>[])
+                      : c.cards.where((card) => !card.archived).toList();
+                  return SizedBox(
+                    width: colWidth,
+                    child: DragTarget<_DragCard>(
                       onWillAccept: (d) {
                         final ok = d != null && d.fromStackId != c.id;
                         if (ok) setState(() => _hoverCol[c.id] = true);
@@ -2053,418 +2123,251 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                         }
                       },
                       builder: (ctx, cand, rej) => Container(
-                            color: () {
-                              if (!app.smartColors) {
-                                return CupertinoTheme.of(context).brightness ==
-                                        Brightness.dark
-                                    ? CupertinoColors.black
-                                    : CupertinoColors.systemGrey6;
-                              }
-                              final base = AppTheme.preferredColumnColor(
-                                  app, c.title, widget.columns.indexOf(c));
-                              return app.isDarkMode
-                                  ? AppTheme.blend(
-                                      base, const Color(0xFF000000), 0.75)
-                                  : AppTheme.blend(
-                                      base, const Color(0xFFFFFFFF), 0.55);
-                            }(),
-                            foregroundDecoration: (_hoverCol[c.id] ?? false)
-                                ? BoxDecoration(
-                                    border: Border.all(
-                                        color: CupertinoColors.activeBlue,
-                                        width: 2))
-                                : null,
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(16, 16, 8, 8),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Text(c.title,
-                                            style: const TextStyle(
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.w600)),
-                                      ),
-                                      CupertinoButton(
-                                        padding: EdgeInsets.zero,
-                                        onPressed: () =>
-                                            widget.onCreateCard(c.id),
-                                        child: const Icon(
-                                            CupertinoIcons.add_circled,
-                                            size: 24),
-                                      ),
-                                    ],
+                        color: () {
+                          if (!app.smartColors) {
+                            return CupertinoTheme.of(context).brightness ==
+                                    Brightness.dark
+                                ? CupertinoColors.black
+                                : CupertinoColors.systemGrey6;
+                          }
+                          final base = AppTheme.preferredColumnColor(
+                              app, c.title, widget.columns.indexOf(c));
+                          return app.isDarkMode
+                              ? AppTheme.blend(
+                                  base, const Color(0xFF000000), 0.75)
+                              : AppTheme.blend(
+                                  base, const Color(0xFFFFFFFF), 0.55);
+                        }(),
+                        foregroundDecoration: (_hoverCol[c.id] ?? false)
+                            ? BoxDecoration(
+                                border: Border.all(
+                                    color: CupertinoColors.activeBlue,
+                                    width: 2))
+                            : null,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 16, 8, 8),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(c.title,
+                                        style: const TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.w600)),
                                   ),
-                                ),
-                                Expanded(
-                                  child: CupertinoScrollbar(
-                                    controller: _ctrlFor(c.id).hasClients ? _ctrlFor(c.id) : null,
-                                    child: ReorderableListView.builder(
-                                      key: ValueKey('reorder_${c.id}'),
-                                      buildDefaultDragHandles: false,
-                                      padding: const EdgeInsets.fromLTRB(
-                                          16, 8, 16, 32),
-                                      itemCount: c.cards.length,
-                                      onReorder: (oldIndex, newIndex) async {
-                                        final app = context.read<AppState>();
-                                        final boardId = widget.boardId;
-                                        if (newIndex > oldIndex) newIndex -= 1;
-                                        // Karte vor Reorder sichern
-                                        final movedCard = c.cards[oldIndex];
-                                        final cardId = movedCard.id;
-                                        app.reorderCardLocal(
-                                            boardId: boardId,
-                                            stackId: c.id,
-                                            cardId: cardId,
-                                            newIndex: newIndex);
-                                        await app.syncStackOrder(
-                                            boardId: boardId, stackId: c.id);
-                                      },
-                                      itemBuilder: (context, idx) {
-                                        final card = c.cards[idx];
-                                        final base = app.smartColors
-                                            ? AppTheme.preferredColumnColor(
-                                                app,
-                                                c.title,
-                                                widget.columns.indexOf(c))
-                                            : (CupertinoTheme.of(context)
-                                                        .brightness ==
-                                                    Brightness.dark
-                                                ? CupertinoColors.systemGrey5
-                                                : CupertinoColors.systemGrey6);
-                                        final tileBg = AppTheme.cardBgFromBase(
-                                            app, card.labels, base, idx);
-                                        final textOn = AppTheme.textOn(tileBg);
-                                        Widget buildInsertTarget(
-                                            int insertIndex) {
-                                          return DragTarget<_DragCard>(
-                                            onWillAccept: (d) =>
-                                                d != null &&
-                                                d.fromStackId != c.id,
-                                            onAccept: (d) async {
-                                              final app =
-                                                  context.read<AppState>();
-                                              final boardId = widget.boardId;
-                                              app.updateLocalCard(
-                                                  boardId: boardId,
-                                                  stackId: d.fromStackId,
-                                                  cardId: d.cardId,
-                                                  moveToStackId: c.id,
-                                                  insertIndex: insertIndex);
-                                              CardItem? current;
-                                              for (final col in app
-                                                  .columnsForActiveBoard()) {
-                                                final hit = col.cards
-                                                    .where((cc) =>
-                                                        cc.id == d.cardId)
-                                                    .toList();
-                                                if (hit.isNotEmpty) {
-                                                  current = hit.first;
-                                                  break;
-                                                }
-                                              }
-                                              final patch = <String, dynamic>{
-                                                'stackId': c.id,
-                                                'order': insertIndex + 1,
-                                                'title':
-                                                    current?.title ?? d.title,
-                                                if (current?.description !=
-                                                    null)
-                                                  'description':
-                                                      current!.description,
-                                                if (current?.due != null)
-                                                  'duedate': current!.due!
-                                                      .toUtc()
-                                                      .toIso8601String(),
-                                                if (current != null &&
-                                                    current!.labels.isNotEmpty)
-                                                  'labels': current!.labels
-                                                      .map((l) => l.id)
-                                                      .toList(),
-                                                if (current != null &&
-                                                    current!
-                                                        .assignees.isNotEmpty)
-                                                  'assignedUsers': current!
-                                                      .assignees
-                                                      .map((u) => u.id)
-                                                      .toList(),
-                                              };
-                                              try {
-                                                await app.updateCardAndRefresh(
+                                  CupertinoButton(
+                                    padding: EdgeInsets.zero,
+                                    onPressed: () => widget.onCreateCard(c.id),
+                                    child: const Icon(
+                                        CupertinoIcons.add_circled, size: 24),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Expanded(
+                              child: showArchivedLoading
+                                  ? const Center(
+                                      child: CupertinoActivityIndicator())
+                                  : CupertinoScrollbar(
+                                      controller: _ctrlFor(c.id).hasClients
+                                          ? _ctrlFor(c.id)
+                                          : null,
+                                      child: ReorderableListView.builder(
+                                        key: ValueKey('reorder_${c.id}'),
+                                        buildDefaultDragHandles: false,
+                                        padding: const EdgeInsets.fromLTRB(
+                                            16, 8, 16, 32),
+                                        itemCount: visibleCards.length,
+                                        onReorder: (oldIndex, newIndex) async {
+                                          if (showArchivedOnly) return;
+                                          final app = context.read<AppState>();
+                                          final boardId = widget.boardId;
+                                          if (newIndex > oldIndex)
+                                            newIndex -= 1;
+                                          final movedCard =
+                                              visibleCards[oldIndex];
+                                          final cardId = movedCard.id;
+                                          app.reorderCardLocal(
+                                              boardId: boardId,
+                                              stackId: c.id,
+                                              cardId: cardId,
+                                              newIndex: newIndex);
+                                          await app.syncStackOrder(
+                                              boardId: boardId, stackId: c.id);
+                                        },
+                                        itemBuilder: (context, idx) {
+                                          final card = visibleCards[idx];
+                                          final base = app.smartColors
+                                              ? AppTheme.preferredColumnColor(
+                                                  app,
+                                                  c.title,
+                                                  widget.columns.indexOf(c))
+                                              : (CupertinoTheme.of(context)
+                                                          .brightness ==
+                                                      Brightness.dark
+                                                  ? CupertinoColors.systemGrey5
+                                                  : CupertinoColors
+                                                      .systemGrey6);
+                                          final tileBg = AppTheme.cardBgFromBase(
+                                              app, card.labels, base, idx);
+                                          final textOn =
+                                              AppTheme.textOn(tileBg);
+                                          Widget buildInsertTarget(
+                                              int insertIndex) {
+                                            return DragTarget<_DragCard>(
+                                              onWillAccept: (d) =>
+                                                  d != null &&
+                                                  d.fromStackId != c.id,
+                                              onAccept: (d) async {
+                                                final app =
+                                                    context.read<AppState>();
+                                                final boardId = widget.boardId;
+                                                app.updateLocalCard(
                                                     boardId: boardId,
                                                     stackId: d.fromStackId,
                                                     cardId: d.cardId,
-                                                    patch: patch);
-                                                await app.syncStackOrder(
-                                                    boardId: boardId,
-                                                    stackId: c.id);
-                                                if (d.fromStackId != c.id) {
+                                                    moveToStackId: c.id,
+                                                    insertIndex: insertIndex);
+                                                CardItem? current;
+                                                for (final col in app
+                                                    .columnsForActiveBoard()) {
+                                                  final hit = col.cards
+                                                      .where((cc) =>
+                                                          cc.id == d.cardId)
+                                                      .toList();
+                                                  if (hit.isNotEmpty) {
+                                                    current = hit.first;
+                                                    break;
+                                                  }
+                                                }
+                                                final patch = <String, dynamic>{
+                                                  'stackId': c.id,
+                                                  'order': insertIndex + 1,
+                                                  'title':
+                                                      current?.title ?? d.title,
+                                                  if (current?.description !=
+                                                      null)
+                                                    'description':
+                                                        current!.description,
+                                                  if (current?.due != null)
+                                                    'duedate': current!.due!
+                                                        .toUtc()
+                                                        .toIso8601String(),
+                                                  if (current != null &&
+                                                      current!.labels
+                                                          .isNotEmpty)
+                                                    'labels': current!.labels
+                                                        .map((l) => l.id)
+                                                        .toList(),
+                                                  if (current != null &&
+                                                      current!
+                                                          .assignees.isNotEmpty)
+                                                    'assignedUsers': current!
+                                                        .assignees
+                                                        .map((u) => u.id)
+                                                        .toList(),
+                                                };
+                                                try {
+                                                  await app.updateCardAndRefresh(
+                                                      boardId: boardId,
+                                                      stackId: d.fromStackId,
+                                                      cardId: d.cardId,
+                                                      patch: patch);
                                                   await app.syncStackOrder(
                                                       boardId: boardId,
-                                                      stackId: d.fromStackId);
-                                                }
-                                              } catch (_) {}
-                                            },
-                                            builder: (ctx, cand, rej) =>
-                                                Container(
-                                              height: 10,
-                                              margin: const EdgeInsets.only(
-                                                  bottom: 6),
-                                              decoration: BoxDecoration(
-                                                color: cand.isNotEmpty
-                                                    ? CupertinoColors.activeBlue
-                                                        .withOpacity(0.25)
-                                                    : CupertinoColors
-                                                        .transparent,
-                                                borderRadius:
-                                                    BorderRadius.circular(4),
+                                                      stackId: c.id);
+                                                  if (d.fromStackId != c.id) {
+                                                    await app.syncStackOrder(
+                                                        boardId: boardId,
+                                                        stackId: d.fromStackId);
+                                                  }
+                                                } catch (_) {}
+                                              },
+                                              builder: (ctx, cand, rej) =>
+                                                  Container(
+                                                height: 10,
+                                                margin: const EdgeInsets.only(
+                                                    bottom: 6),
+                                                decoration: BoxDecoration(
+                                                  color: cand.isNotEmpty
+                                                      ? CupertinoColors
+                                                          .activeBlue
+                                                          .withOpacity(0.25)
+                                                      : CupertinoColors
+                                                          .transparent,
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                ),
                                               ),
-                                            ),
-                                          );
-                                        }
+                                            );
+                                          }
 
-                                        return Padding(
-                                          key: ValueKey(card.id),
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 6),
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.stretch,
-                                            children: [
-                                              buildInsertTarget(idx),
-                                              Stack(
-                                                children: [
-                                                  _CardDragWrapper(
-                                                    data: _DragCard(
-                                                        cardId: card.id,
-                                                        fromStackId: c.id,
-                                                        title: card.title),
-                                                    feedback: ConstrainedBox(
-                                                      constraints:
-                                                          const BoxConstraints(
-                                                              maxWidth: 300),
-                                                      child: Opacity(
-                                                        opacity: 0.95,
-                                                        child: Container(
-                                                          decoration:
-                                                              BoxDecoration(
-                                                            color: tileBg,
-                                                            borderRadius:
-                                                                BorderRadius
-                                                                    .circular(
-                                                                        14),
-                                                            boxShadow: [
-                                                              BoxShadow(
+                                          return Padding(
+                                            key: ValueKey(card.id),
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 6),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.stretch,
+                                              children: [
+                                                buildInsertTarget(idx),
+                                                Stack(
+                                                  children: [
+                                                    _CardDragWrapper(
+                                                      data: _DragCard(
+                                                          cardId: card.id,
+                                                          fromStackId: c.id,
+                                                          title: card.title),
+                                                      feedback: ConstrainedBox(
+                                                        constraints:
+                                                            const BoxConstraints(
+                                                                maxWidth: 300),
+                                                        child: Opacity(
+                                                          opacity: 0.95,
+                                                          child: Container(
+                                                            decoration:
+                                                                BoxDecoration(
+                                                              color: tileBg,
+                                                              borderRadius:
+                                                                  BorderRadius
+                                                                      .circular(
+                                                                          14),
+                                                              boxShadow: [
+                                                                BoxShadow(
+                                                                    color: CupertinoColors
+                                                                        .black
+                                                                        .withOpacity(
+                                                                            0.2),
+                                                                    blurRadius:
+                                                                        12,
+                                                                    offset:
+                                                                        const Offset(
+                                                                            0, 6))
+                                                              ],
+                                                              border: Border.all(
                                                                   color: CupertinoColors
-                                                                      .black
+                                                                      .separator
                                                                       .withOpacity(
-                                                                          0.2),
-                                                                  blurRadius:
-                                                                      12,
-                                                                  offset:
-                                                                      const Offset(
-                                                                          0, 6))
-                                                            ],
-                                                            border: Border.all(
-                                                                color: CupertinoColors
-                                                                    .separator
-                                                                    .withOpacity(
-                                                                        0.6)),
+                                                                          0.6)),
+                                                            ),
+                                                            padding:
+                                                                const EdgeInsets
+                                                                    .all(12),
+                                                            child: Text(
+                                                                card.title,
+                                                                style: TextStyle(
+                                                                    fontSize: 16,
+                                                                    fontWeight:
+                                                                        FontWeight
+                                                                            .w700,
+                                                                    color:
+                                                                        textOn)),
                                                           ),
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .all(12),
-                                                          child: Text(
-                                                              card.title,
-                                                              style: TextStyle(
-                                                                  fontSize: 16,
-                                                                  fontWeight:
-                                                                      FontWeight
-                                                                          .w700,
-                                                                  color:
-                                                                      textOn)),
                                                         ),
                                                       ),
-                                                    ),
-                                                    child: GestureDetector(
-                                                      onLongPress: () async {
-                                                        final l10n =
-                                                            L10n.of(context);
-                                                        final rootNav =
-                                                            Navigator.of(
-                                                                context,
-                                                                rootNavigator:
-                                                                    true);
-                                                        await showCupertinoModalPopup(
-                                                          context:
-                                                              rootNav.context,
-                                                          builder: (ctx) =>
-                                                              CupertinoActionSheet(
-                                                            actions: [
-                                                              ...() {
-                                                                final app =
-                                                                    context.read<
-                                                                        AppState>();
-                                                                final isDone =
-                                                                    card.done !=
-                                                                        null;
-                                                                if (!isDone) {
-                                                                  return [
-                                                                    CupertinoActionSheetAction(
-                                                                      onPressed:
-                                                                          () async {
-                                                                        Navigator.of(ctx)
-                                                                            .pop();
-                                                                        final doneAt =
-                                                                            DateTime.now()
-                                                                                .toUtc();
-                                                                        final boardId =
-                                                                            widget.boardId;
-                                                                        app.updateLocalCard(
-                                                                            boardId:
-                                                                                boardId,
-                                                                            stackId:
-                                                                                c.id,
-                                                                            cardId: card.id,
-                                                                            done: doneAt);
-                                                                        final base =
-                                                                            app.baseUrl;
-                                                                        final user =
-                                                                            app.username;
-                                                                        final pass = await app
-                                                                            .storage
-                                                                            .read(key: 'password');
-                                                                        if (base != null &&
-                                                                            user !=
-                                                                                null &&
-                                                                            pass !=
-                                                                                null) {
-                                                                          try {
-                                                                            await app.updateCardAndRefresh(boardId: boardId, stackId: c.id, cardId: card.id, patch: {
-                                                                              'title': card.title,
-                                                                              'done': doneAt,
-                                                                            });
-                                                                          } catch (_) {}
-                                                                        }
-                                                                      },
-                                                                      child: Text(
-                                                                          l10n.markDone),
-                                                                    ),
-                                                                  ];
-                                                                } else {
-                                                                  return [
-                                                                    CupertinoActionSheetAction(
-                                                                      onPressed:
-                                                                          () async {
-                                                                        Navigator.of(ctx)
-                                                                            .pop();
-                                                                        final boardId =
-                                                                            widget.boardId;
-                                                                        app.updateLocalCard(
-                                                                            boardId:
-                                                                                boardId,
-                                                                            stackId:
-                                                                                c.id,
-                                                                            cardId: card.id,
-                                                                            clearDone: true);
-                                                                        final base =
-                                                                            app.baseUrl;
-                                                                        final user =
-                                                                            app.username;
-                                                                        final pass = await app
-                                                                            .storage
-                                                                            .read(key: 'password');
-                                                                        if (base != null &&
-                                                                            user !=
-                                                                                null &&
-                                                                            pass !=
-                                                                                null) {
-                                                                          try {
-                                                                            await app.updateCardAndRefresh(boardId: boardId, stackId: c.id, cardId: card.id, patch: {
-                                                                              'title': card.title,
-                                                                              'done': null,
-                                                                            });
-                                                                          } catch (_) {}
-                                                                        }
-                                                                      },
-                                                                      child: Text(
-                                                                          l10n.markUndone),
-                                                                    ),
-                                                                  ];
-                                                                }
-                                                              }(),
-                                                              CupertinoActionSheetAction(
-                                                                isDestructiveAction:
-                                                                    true,
-                                                                onPressed:
-                                                                    () async {
-                                                                  Navigator.of(
-                                                                          ctx)
-                                                                      .pop();
-                                                                  final confirmed =
-                                                                      await showCupertinoDialog<
-                                                                          bool>(
-                                                                    context: rootNav
-                                                                        .context,
-                                                                    builder:
-                                                                        (dCtx) =>
-                                                                            CupertinoAlertDialog(
-                                                                      title: Text(
-                                                                          l10n.deleteCard),
-                                                                      content:
-                                                                          Text(l10n
-                                                                              .confirmDeleteCard),
-                                                                      actions: [
-                                                                        CupertinoDialogAction(
-                                                                            onPressed: () =>
-                                                                                Navigator.of(dCtx).pop(false),
-                                                                            child: Text(l10n.cancel)),
-                                                                        CupertinoDialogAction(
-                                                                          isDestructiveAction:
-                                                                              true,
-                                                                          onPressed: () =>
-                                                                              Navigator.of(dCtx).pop(true),
-                                                                          child: Text(
-                                                                              l10n.delete,
-                                                                              style: _destructiveActionTextStyle),
-                                                                        ),
-                                                                      ],
-                                                                    ),
-                                                                  );
-                                                                  if (confirmed ==
-                                                                      true) {
-                                                                    await context.read<AppState>().deleteCard(
-                                                                        boardId:
-                                                                            widget
-                                                                                .boardId,
-                                                                        stackId: c
-                                                                            .id,
-                                                                        cardId:
-                                                                            card.id);
-                                                                  }
-                                                                },
-                                                                child: Text(
-                                                                    l10n
-                                                                        .deleteCard,
-                                                                    style:
-                                                                        _destructiveActionTextStyle),
-                                                              ),
-                                                            ],
-                                                            cancelButton: CupertinoActionSheetAction(
-                                                                onPressed: () =>
-                                                                    Navigator.of(
-                                                                            ctx)
-                                                                        .pop(),
-                                                                isDefaultAction:
-                                                                    true,
-                                                                child: Text(l10n
-                                                                    .cancel)),
-                                                          ),
-                                                        );
-                                                      },
                                                       child: _CardTile(
                                                         title: card.title,
                                                         subtitle:
@@ -2482,8 +2385,9 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                               CardDetailPage(
                                                                   cardId:
                                                                       card.id,
-                                                                  boardId: widget
-                                                                      .boardId,
+                                                                  boardId:
+                                                                      widget
+                                                                          .boardId,
                                                                   stackId: c.id,
                                                                   bgColor:
                                                                       tileBg),
@@ -2497,7 +2401,8 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                             stackId: c.id,
                                                             cardId: card.id,
                                                             textColor: textOn,
-                                                            description: card.description),
+                                                            description: card
+                                                                .description),
                                                         onMore: () async {
                                                           final l10n =
                                                               L10n.of(context);
@@ -2560,8 +2465,8 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                         } catch (_) {}
                                                                       }
                                                                     },
-                                                                    child: Text(l10n
-                                                                        .markDone),
+                                                                    child: Text(
+                                                                        l10n.markDone),
                                                                   )
                                                                 else
                                                                   CupertinoActionSheetAction(
@@ -2608,8 +2513,8 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                         } catch (_) {}
                                                                       }
                                                                     },
-                                                                    child: Text(l10n
-                                                                        .markUndone),
+                                                                    child: Text(
+                                                                        l10n.markUndone),
                                                                   ),
                                                                 CupertinoActionSheetAction(
                                                                   isDestructiveAction:
@@ -2678,42 +2583,40 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                         },
                                                       ),
                                                     ),
-                                                  ),
-                                                  Positioned(
-                                                    right: 6,
-                                                    top: 6,
-                                                    child:
-                                                        ReorderableDragStartListener(
-                                                      index: idx,
-                                                      child: const Icon(
-                                                          CupertinoIcons
-                                                              .arrow_up_arrow_down,
-                                                          size: 18,
-                                                          color: CupertinoColors
-                                                              .systemGrey),
+                                                    Positioned(
+                                                      right: 6,
+                                                      top: 6,
+                                                      child:
+                                                          ReorderableDragStartListener(
+                                                        index: idx,
+                                                        child: const Icon(
+                                                            CupertinoIcons
+                                                                .arrow_up_arrow_down,
+                                                            size: 18,
+                                                            color: CupertinoColors
+                                                                .systemGrey),
+                                                      ),
                                                     ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                      },
+                                                  ],
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        },
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              ],
                             ),
-                          )),
-                ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
                 const SizedBox(width: 12),
               ],
             ],
           ),
         ),
-        // Use persistent widgets to avoid element reuse flicker when toggling visibility
-        // Independent anchored indicators (always present, visibility via opacity)
-        // Always-visible indicators on iPad; scrollBy clamps so taps at ends are harmless
         Positioned(
           top: 8,
           left: 8,
@@ -2735,6 +2638,7 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
       ],
     );
   }
+
 }
 
 class _LabelChip extends StatelessWidget {

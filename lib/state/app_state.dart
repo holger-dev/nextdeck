@@ -41,6 +41,7 @@ class AppState extends ChangeNotifier {
   bool _upcomingSingleColumn =
       false; // user setting: show Upcoming as single list
   bool _upcomingAssignedOnly = false; // user setting: show only my assigned cards
+  bool _boardArchivedOnly = false; // user setting: show only archived cards on board
   bool _dueNotificationsEnabled = false; // user setting: due reminders
   bool _dueOverdueEnabled = true; // user setting: overdue reminders
   List<int> _dueReminderMinutes = const [60, 1440];
@@ -53,6 +54,8 @@ class AppState extends ChangeNotifier {
   String? _lastError;
   final Set<int> _hiddenBoards = {};
   final Map<int, int> _boardMemberCount = {};
+  final Map<int, Map<int, List<CardItem>>> _archivedCardsByBoard = {};
+  final Set<int> _archivedCardsLoading = {};
   // Meta Counters per card
   final Map<int, int> _cardCommentsCount = {};
   final Map<int, int> _cardAttachmentsCount = {};
@@ -76,6 +79,7 @@ class AppState extends ChangeNotifier {
   int get startupTabIndex => _startupTabIndex;
   bool get upcomingSingleColumn => _upcomingSingleColumn;
   bool get upcomingAssignedOnly => _upcomingAssignedOnly;
+  bool get boardArchivedOnly => _boardArchivedOnly;
   bool get dueNotificationsEnabled => _dueNotificationsEnabled;
   bool get dueOverdueEnabled => _dueOverdueEnabled;
   bool get dueReminder1hEnabled => _dueReminderMinutes.contains(60);
@@ -94,6 +98,10 @@ class AppState extends ChangeNotifier {
       _columnsByBoard[boardId] ?? [];
   String? get lastError => _lastError;
   bool isBoardHidden(int id) => _hiddenBoards.contains(id);
+  Map<int, List<CardItem>> archivedCardsForBoard(int boardId) =>
+      _archivedCardsByBoard[boardId] ?? <int, List<CardItem>>{};
+  bool isArchivedCardsLoading(int boardId) =>
+      _archivedCardsLoading.contains(boardId);
   int? boardMemberCount(int boardId) => _boardMemberCount[boardId];
   int? commentsCountFor(int cardId) => _cardCommentsCount[cardId];
   int? attachmentsCountFor(int cardId) => _cardAttachmentsCount[cardId];
@@ -140,6 +148,8 @@ class AppState extends ChangeNotifier {
     _upcomingSingleColumn = (await storage.read(key: 'up_single')) == '1';
     _upcomingAssignedOnly =
         (await storage.read(key: 'up_assigned_only')) == '1';
+    _boardArchivedOnly =
+        (await storage.read(key: 'board_archived_only')) == '1';
     _overviewShowBoardInfo =
         (await storage.read(key: 'overview_board_info')) != '0';
     _dueNotificationsEnabled =
@@ -1336,6 +1346,34 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setBoardArchivedOnly(bool value) {
+    _boardArchivedOnly = value;
+    storage.write(key: 'board_archived_only', value: value ? '1' : '0');
+    notifyListeners();
+  }
+
+  Future<void> refreshArchivedCardsForBoard(int boardId) async {
+    if (_localMode) return;
+    if (_baseUrl == null || _username == null || _password == null) return;
+    if (_archivedCardsLoading.contains(boardId)) return;
+    _archivedCardsLoading.add(boardId);
+    notifyListeners();
+    try {
+      final stacks =
+          await api.fetchArchivedStacks(_baseUrl!, _username!, _password!, boardId);
+      final map = <int, List<CardItem>>{};
+      for (final c in stacks) {
+        map[c.id] = c.cards;
+      }
+      _archivedCardsByBoard[boardId] = map;
+      notifyListeners();
+    } catch (_) {
+    } finally {
+      _archivedCardsLoading.remove(boardId);
+      notifyListeners();
+    }
+  }
+
   Future<void> setDueNotificationsEnabled(bool value) async {
     _dueNotificationsEnabled = value;
     await storage.write(key: 'due_notif_enabled', value: value ? '1' : '0');
@@ -1983,6 +2021,7 @@ class AppState extends ChangeNotifier {
                         'description': k.description,
                         'duedate': k.due?.toUtc().millisecondsSinceEpoch,
                         'done': k.done?.toUtc().millisecondsSinceEpoch,
+                        'archived': k.archived,
                         'order': k.order, // Save card order to cache
                         'assignedUsers': k.assignees
                             .map((u) => {
@@ -2037,6 +2076,10 @@ class AppState extends ChangeNotifier {
             done =
                 DateTime.fromMillisecondsSinceEpoch(dn, isUtc: true).toLocal();
           }
+          final archivedRaw = k['archived'];
+          final archived = archivedRaw is bool
+              ? archivedRaw
+              : (archivedRaw is num ? archivedRaw != 0 : false);
           final assignees = <UserRef>[];
           final rawAssignees = k['assignedUsers'];
           if (rawAssignees is List) {
@@ -2055,6 +2098,7 @@ class AppState extends ChangeNotifier {
             description: (k['description'] as String?),
             due: due,
             done: done,
+            archived: archived,
             assignees: assignees,
             labels: ((k['labels'] as List?) ?? const [])
                 .whereType<Map>()
@@ -2221,6 +2265,7 @@ class AppState extends ChangeNotifier {
       description: description ?? current.description,
       due: clearDue ? null : (due ?? current.due),
       done: clearDone ? null : (done ?? current.done),
+      archived: current.archived,
       labels: setLabels ?? current.labels,
       assignees: setAssignees ?? current.assignees,
       order: current.order, // Preserve card order
@@ -2321,6 +2366,7 @@ class AppState extends ChangeNotifier {
         description: card.description,
         due: card.due,
         done: card.done,
+        archived: card.archived,
         labels: card.labels,
         assignees: card.assignees,
         order: i + 1, // Update order to match new position
