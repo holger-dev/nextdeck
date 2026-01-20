@@ -246,3 +246,8 @@ Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (wer
 - Etiquetas: título localizado (Etiquetas/Tags/Schlagworte).
 - Tema: elige Claro/Oscuro/Sistema; “Sistema” sigue el tema del dispositivo.
 - Tableros eliminados: desaparecen de la app justo después de un refresh.
+
+# DE – Version 1.7
+
+- In den Einstellungen kann nur definiert werden, ob die Ansicht Boards und Anstehend nur mir zugewiesene Karten anzeigt oder alle. Die Filter können auch einfach in den jeweiligen Ansichten direkt eingestellt werden.
+- 

@@ -11,6 +11,7 @@ import '../models/column.dart' as deck;
 import 'card_detail_page.dart';
 import '../models/label.dart';
 import '../models/card_item.dart';
+import '../models/user_ref.dart';
 import 'board_search_page.dart';
 import '../theme/app_theme.dart';
 import '../l10n/app_localizations.dart';
@@ -281,6 +282,19 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                         child: Icon(CupertinoIcons.list_bullet,
                             size: 22, color: txtColor),
                       ),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () {
+                        app.setUpcomingAssignedOnly(
+                            !app.upcomingAssignedOnly);
+                      },
+                      child: Icon(
+                          app.upcomingAssignedOnly
+                              ? CupertinoIcons.person_fill
+                              : CupertinoIcons.person,
+                          size: 22,
+                          color: txtColor),
+                    ),
                     CupertinoButton(
                       padding: EdgeInsets.zero,
                       onPressed: app.isSyncing
@@ -621,6 +635,10 @@ class _ColumnViewState extends State<_ColumnView> {
         : (CupertinoTheme.of(context).brightness == Brightness.dark
             ? CupertinoColors.systemGrey5
             : CupertinoColors.systemGrey6);
+    final filterAssigned = app.upcomingAssignedOnly;
+    final cards = filterAssigned
+        ? col.cards.where(app.shouldIncludeAssignedCard).toList()
+        : col.cards;
 
     Future<void> _handleAccept(_DragCard d) async {
       final app = context.read<AppState>();
@@ -672,6 +690,56 @@ class _ColumnViewState extends State<_ColumnView> {
     );
 
     if (isTablet) {
+      if (filterAssigned) {
+        return Container(
+          decoration: BoxDecoration(color: containerBg),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              header,
+              Expanded(
+                child: (isLoading && cards.isNotEmpty)
+                    ? const Center(child: CupertinoActivityIndicator())
+                    : CupertinoScrollbar(
+                        controller: _listCtrl.hasClients ? _listCtrl : null,
+                        child: ListView.builder(
+                          controller: _listCtrl,
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                          itemCount: cards.length,
+                          itemBuilder: (context, idx) {
+                            final card = cards[idx];
+                            final bg = AppTheme.cardBgFromBase(
+                                app, card.labels, baseForCards, idx);
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: _CardTile(
+                                title: card.title,
+                                subtitle:
+                                    _markdownPreviewLine(card.description ?? ''),
+                                labels: card.labels,
+                                assignees: card.assignees,
+                                onTap: widget.onTapCard == null
+                                    ? null
+                                    : () => widget.onTapCard!(card.id),
+                                background: bg,
+                                due: card.due,
+                                footer: _CardMetaRow(
+                                    boardId: app.activeBoard?.id,
+                                    stackId: widget.column.id,
+                                    cardId: card.id,
+                                    textColor: AppTheme.textOn(bg),
+                                    hasDescription:
+                                        (card.description?.isNotEmpty ?? false)),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        );
+      }
       return DragTarget<_DragCard>(
         onWillAccept: (d) {
           final ok = d != null && d.fromStackId != widget.column.id;
@@ -694,7 +762,7 @@ class _ColumnViewState extends State<_ColumnView> {
             children: [
               header,
               Expanded(
-                child: (isLoading && col.cards.isNotEmpty)
+                child: (isLoading && cards.isNotEmpty)
                     ? const Center(child: CupertinoActivityIndicator())
                     : CupertinoScrollbar(
                         controller: _listCtrl.hasClients ? _listCtrl : null,
@@ -702,9 +770,9 @@ class _ColumnViewState extends State<_ColumnView> {
                           controller: _listCtrl,
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
                           primary: false,
-                          itemCount: col.cards.length,
+                          itemCount: cards.length,
                           itemBuilder: (context, idx) {
-                            final card = col.cards[idx];
+                            final card = cards[idx];
                             final bg = AppTheme.cardBgFromBase(
                                 app, card.labels, baseForCards, idx);
                             Widget buildInsertTarget(int insertIndex) {
@@ -828,6 +896,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                         subtitle: _markdownPreviewLine(
                                             card.description ?? ''),
                                         labels: card.labels,
+                                        assignees: card.assignees,
                                         onTap: null,
                                         background: bg,
                                         due: card.due,
@@ -1059,6 +1128,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                         subtitle: _markdownPreviewLine(
                                             card.description ?? ''),
                                         labels: card.labels,
+                                        assignees: card.assignees,
                                         onTap: widget.onTapCard == null
                                             ? null
                                             : () => widget.onTapCard!(card.id),
@@ -1089,6 +1159,56 @@ class _ColumnViewState extends State<_ColumnView> {
     }
 
     // Phone
+    if (filterAssigned) {
+      return Container(
+        decoration: BoxDecoration(color: containerBg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            header,
+            Expanded(
+              child: (isLoading && cards.isNotEmpty)
+                  ? const Center(child: CupertinoActivityIndicator())
+                  : CupertinoScrollbar(
+                      controller: _listCtrl.hasClients ? _listCtrl : null,
+                      child: ListView.builder(
+                        controller: _listCtrl,
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                        itemCount: cards.length,
+                        itemBuilder: (context, idx) {
+                          final card = cards[idx];
+                          final bg = AppTheme.cardBgFromBase(
+                              app, card.labels, baseForCards, idx);
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 6),
+                            child: _CardTile(
+                              title: card.title,
+                              subtitle:
+                                  _markdownPreviewLine(card.description ?? ''),
+                              labels: card.labels,
+                              assignees: card.assignees,
+                              onTap: widget.onTapCard == null
+                                  ? null
+                                  : () => widget.onTapCard!(card.id),
+                              background: bg,
+                              due: card.due,
+                              footer: _CardMetaRow(
+                                  boardId: app.activeBoard?.id,
+                                  stackId: widget.column.id,
+                                  cardId: card.id,
+                                  textColor: AppTheme.textOn(bg),
+                                  hasDescription:
+                                      (card.description?.isNotEmpty ?? false)),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      );
+    }
     return DragTarget<_DragCard>(
       onWillAccept: (d) {
         final ok = d != null && d.fromStackId != widget.column.id;
@@ -1111,20 +1231,20 @@ class _ColumnViewState extends State<_ColumnView> {
           children: [
             header,
             Expanded(
-              child: (isLoading && col.cards.isNotEmpty)
+              child: (isLoading && cards.isNotEmpty)
                   ? const Center(child: CupertinoActivityIndicator())
                   : CupertinoScrollbar(
                       controller: _listCtrl.hasClients ? _listCtrl : null,
                       child: ReorderableListView.builder(
                         buildDefaultDragHandles: false,
                         padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-                        itemCount: col.cards.length,
+                        itemCount: cards.length,
                         onReorder: (oldIndex, newIndex) async {
                           final app = context.read<AppState>();
                           final boardId = app.activeBoard?.id;
                           if (boardId == null) return;
                           if (newIndex > oldIndex) newIndex -= 1;
-                          final movedCard = col.cards[oldIndex];
+                          final movedCard = cards[oldIndex];
                           final cardId = movedCard.id;
                           app.reorderCardLocal(
                               boardId: boardId,
@@ -1135,7 +1255,7 @@ class _ColumnViewState extends State<_ColumnView> {
                               boardId: boardId, stackId: widget.column.id);
                         },
                         itemBuilder: (context, idx) {
-                          final card = col.cards[idx];
+                          final card = cards[idx];
                           final bg = AppTheme.cardBgFromBase(
                               app, card.labels, baseForCards, idx);
                           final key = ValueKey('card_${card.id}');
@@ -1264,6 +1384,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                           subtitle: _markdownPreviewLine(
                                               card.description ?? ''),
                                           labels: card.labels,
+                                          assignees: card.assignees,
                                           onTap: null,
                                           background: bg,
                                           due: card.due,
@@ -1300,6 +1421,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                         subtitle: _markdownPreviewLine(
                                             card.description ?? ''),
                                         labels: card.labels,
+                                        assignees: card.assignees,
                                         onTap: widget.onTapCard == null
                                             ? null
                                             : () => widget.onTapCard!(card.id),
@@ -1587,6 +1709,7 @@ class _CardTile extends StatelessWidget {
   final VoidCallback? onTap;
   final Color background;
   final List<Label> labels;
+  final List<UserRef> assignees;
   final DateTime? due;
   final VoidCallback? onMoveUp;
   final VoidCallback? onMoveDown;
@@ -1598,15 +1721,28 @@ class _CardTile extends StatelessWidget {
       this.onTap,
       required this.background,
       this.labels = const [],
+      this.assignees = const [],
       this.due,
       this.onMoveUp,
       this.onMoveDown,
       this.footer,
       this.onMore});
 
+  String _assigneesText() {
+    final names = assignees
+        .map((u) => u.displayName.isNotEmpty ? u.displayName : u.id)
+        .where((n) => n.isNotEmpty)
+        .toList();
+    if (names.isEmpty) return '';
+    if (names.length <= 2) return names.join(', ');
+    final remaining = names.length - 2;
+    return '${names.take(2).join(', ')} +$remaining';
+  }
+
   @override
   Widget build(BuildContext context) {
     final textColor = AppTheme.textOn(background);
+    final assigneesText = _assigneesText();
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -1682,6 +1818,28 @@ class _CardTile extends StatelessWidget {
                   return const SizedBox.shrink();
                 }
               }),
+            if (assigneesText.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  children: [
+                    Icon(CupertinoIcons.person,
+                        size: 14, color: textColor.withOpacity(0.9)),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        assigneesText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: textColor.withOpacity(0.9)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             if (due != null)
               Builder(builder: (context) {
                 final now = DateTime.now();
@@ -2462,6 +2620,8 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                 card.description ??
                                                                     ''),
                                                         labels: card.labels,
+                                                        assignees:
+                                                            card.assignees,
                                                         onTap: () => Navigator
                                                                 .of(context)
                                                             .push(

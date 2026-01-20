@@ -38,6 +38,7 @@ class AppState extends ChangeNotifier {
   int _startupTabIndex = 1; // 0=Upcoming,1=Board,2=Overview
   bool _upcomingSingleColumn =
       false; // user setting: show Upcoming as single list
+  bool _upcomingAssignedOnly = false; // user setting: show only my assigned cards
   int? _defaultBoardId; // user-selected default board for startup
   String _startupBoardMode = 'default'; // 'default' | 'last'
 
@@ -69,6 +70,7 @@ class AppState extends ChangeNotifier {
   bool get isWarming => _isWarming;
   int get startupTabIndex => _startupTabIndex;
   bool get upcomingSingleColumn => _upcomingSingleColumn;
+  bool get upcomingAssignedOnly => _upcomingAssignedOnly;
   String? get baseUrl => _baseUrl;
   String? get username => _username;
   bool get localMode => _localMode;
@@ -126,6 +128,8 @@ class AppState extends ChangeNotifier {
     _showDescriptionText =
         (await storage.read(key: 'showDescriptionText')) != '0';
     _upcomingSingleColumn = (await storage.read(key: 'up_single')) == '1';
+    _upcomingAssignedOnly =
+        (await storage.read(key: 'up_assigned_only')) == '1';
     _overviewShowBoardInfo =
         (await storage.read(key: 'overview_board_info')) != '0';
     _localMode = (await storage.read(key: 'local_mode')) == '1';
@@ -1300,6 +1304,31 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setUpcomingAssignedOnly(bool value) {
+    _upcomingAssignedOnly = value;
+    storage.write(key: 'up_assigned_only', value: value ? '1' : '0');
+    _rebuildUpcomingCacheFromMemory();
+    notifyListeners();
+  }
+
+  bool shouldIncludeAssignedCard(CardItem card) {
+    if (!_upcomingAssignedOnly) return true;
+    if (card.assignees.isEmpty) return false;
+    return _isAssignedToMe(card);
+  }
+
+  bool _isAssignedToMe(CardItem card) {
+    final me = _username?.toLowerCase();
+    if (me == null || me.isEmpty) return false;
+    for (final u in card.assignees) {
+      final id = u.id.toLowerCase();
+      if (id == me) return true;
+      final alt = u.altId;
+      if (alt != null && alt.toLowerCase() == me) return true;
+    }
+    return false;
+  }
+
   final Set<int> _stackLoading = {};
   final Set<int> _stackLoaded = {};
   // Prevent concurrent/redundant stacks fetches per board across different code paths
@@ -1562,6 +1591,80 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  Future<void> refreshUpcomingAssigneesIfNeeded() async {
+    if (_localMode) return;
+    if (_baseUrl == null || _username == null || _password == null) return;
+    final refs = upcomingCacheRefs();
+    if (refs == null) return;
+    final boardsToRefresh = <int>{};
+    for (final bucket in refs.values) {
+      for (final e in bucket) {
+        final bId = e['b'];
+        final sId = e['s'];
+        final cId = e['c'];
+        if (bId == null || sId == null || cId == null) continue;
+        if (boardsToRefresh.contains(bId)) continue;
+        if (!_cachedCardHasAssignees(bId, sId, cId)) {
+          boardsToRefresh.add(bId);
+        }
+      }
+    }
+    if (boardsToRefresh.isEmpty) return;
+    _upScanActive = true;
+    _upScanTotal = boardsToRefresh.length;
+    _upScanDone = 0;
+    _upScanBoardTitle = null;
+    notifyListeners();
+    try {
+      for (final bId in boardsToRefresh) {
+        final board = _boards.firstWhere(
+          (b) => b.id == bId,
+          orElse: () => Board(id: bId, title: '', color: null, archived: false),
+        );
+        _upScanBoardTitle = board.title;
+        notifyListeners();
+        try {
+          await refreshColumnsFor(
+            board,
+            bypassCooldown: true,
+            full: true,
+            forceNetwork: true,
+          );
+        } catch (_) {}
+        _upScanDone = (_upScanDone + 1).clamp(0, _upScanTotal);
+        notifyListeners();
+      }
+    } finally {
+      _upScanActive = false;
+      _upScanBoardTitle = null;
+      notifyListeners();
+    }
+    _rebuildUpcomingCacheFromMemory();
+    notifyListeners();
+  }
+
+  bool _cachedCardHasAssignees(int boardId, int stackId, int cardId) {
+    final cols = cache.get('columns_$boardId');
+    if (cols is! List) return false;
+    for (final c in cols) {
+      if (c is! Map) continue;
+      final cid = c['id'];
+      if (cid is num && cid.toInt() != stackId) continue;
+      if (cid is int && cid != stackId) continue;
+      final cards = c['cards'];
+      if (cards is! List) return false;
+      for (final k in cards) {
+        if (k is! Map) continue;
+        final kid = k['id'];
+        final idMatch = (kid is num && kid.toInt() == cardId) ||
+            (kid is int && kid == cardId);
+        if (!idMatch) continue;
+        return k.containsKey('assignedUsers');
+      }
+    }
+    return false;
+  }
+
   Future<void> ensureCardMetaCounts(
       {required int boardId,
       required int stackId,
@@ -1739,6 +1842,14 @@ class AppState extends ChangeNotifier {
                         'description': k.description,
                         'duedate': k.due?.toUtc().millisecondsSinceEpoch,
                         'order': k.order, // Save card order to cache
+                        'assignedUsers': k.assignees
+                            .map((u) => {
+                                  'id': u.id,
+                                  'displayName': u.displayName,
+                                  'unique': u.altId,
+                                  'shareType': u.shareType,
+                                })
+                            .toList(),
                         'labels': k.labels
                             .map((l) => {
                                   'id': l.id,
@@ -1778,11 +1889,24 @@ class AppState extends ChangeNotifier {
             due =
                 DateTime.fromMillisecondsSinceEpoch(dd, isUtc: true).toLocal();
           }
+          final assignees = <UserRef>[];
+          final rawAssignees = k['assignedUsers'];
+          if (rawAssignees is List) {
+            for (final item in rawAssignees) {
+              if (item is Map) {
+                assignees.add(
+                    UserRef.fromJson(item.cast<String, dynamic>()));
+              } else if (item is String) {
+                assignees.add(UserRef(id: item, displayName: item));
+              }
+            }
+          }
           cards.add(CardItem(
             id: (k['id'] as num).toInt(),
             title: (k['title'] ?? '').toString(),
             description: (k['description'] as String?),
             due: due,
+            assignees: assignees,
             labels: ((k['labels'] as List?) ?? const [])
                 .whereType<Map>()
                 .map((l) => Label(

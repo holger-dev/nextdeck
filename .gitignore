@@ -59,3 +59,5 @@ windows/flutter/ephemeral/
 .dart_tool/chrome-device/
 .dart_tool/dartpad/
 
+# External repos (local analysis only)
+nextcloud-deck/

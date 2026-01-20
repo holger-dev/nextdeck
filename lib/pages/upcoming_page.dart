@@ -64,16 +64,17 @@ class _UpcomingPageState extends State<UpcomingPage> {
           continue; // skip done columns
         for (final k in c.cards) {
           if (k.due == null) continue;
-          _addHit(b.id, b.title, c.id, c.title, k);
+          _addHit(app, b.id, b.title, c.id, c.title, k);
         }
       }
     }
     if (mounted) setState(() {});
   }
 
-  void _addHit(int boardId, String boardTitle, int stackId, String stackTitle,
-      CardItem card) {
+  void _addHit(AppState app, int boardId, String boardTitle, int stackId,
+      String stackTitle, CardItem card) {
     if (card.due == null) return;
+    if (!app.shouldIncludeAssignedCard(card)) return;
     final st = stackTitle.toLowerCase();
     if (st.contains('done') || st.contains('erledigt')) return; // skip done
     final now = DateTime.now();
@@ -119,11 +120,18 @@ class _UpcomingPageState extends State<UpcomingPage> {
       _tomorrow.clear();
       _next7.clear();
       _later.clear();
-      _resolve(refs['overdue']!, _overdue);
-      _resolve(refs['today']!, _today);
-      _resolve(refs['tomorrow']!, _tomorrow);
-      _resolve(refs['next7']!, _next7);
-      _resolve(refs['later']!, _later);
+      _resolve(app, refs['overdue']!, _overdue);
+      _resolve(app, refs['today']!, _today);
+      _resolve(app, refs['tomorrow']!, _tomorrow);
+      _resolve(app, refs['next7']!, _next7);
+      _resolve(app, refs['later']!, _later);
+      if (_overdue.isEmpty &&
+          _today.isEmpty &&
+          _tomorrow.isEmpty &&
+          _next7.isEmpty &&
+          _later.isEmpty) {
+        _buildFromLoaded();
+      }
     } else {
       _buildFromLoaded();
     }
@@ -136,8 +144,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
     if (mounted) setState(() {});
   }
 
-  void _resolve(List<Map<String, int>> refs, List<_DueHit> into) {
-    final app = context.read<AppState>();
+  void _resolve(AppState app, List<Map<String, int>> refs, List<_DueHit> into) {
     for (final e in refs) {
       final bId = e['b']!;
       final sId = e['s']!;
@@ -156,6 +163,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
         card = stack.cards.first;
       }
       if (card == null) continue;
+      if (!app.shouldIncludeAssignedCard(card)) continue;
       final board = app.boards.firstWhere((b) => b.id == bId,
           orElse: () => Board(id: bId, title: 'Board'));
       into.add(_DueHit(
@@ -197,7 +205,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
         if (ct.contains('done') || ct.contains('erledigt')) continue;
         for (final k in c.cards) {
           if (k.due == null) continue;
-          _addHit(b.id, b.title, c.id, c.title, k);
+          _addHit(app, b.id, b.title, c.id, c.title, k);
         }
       }
       _doneBoards++;
@@ -286,6 +294,20 @@ class _UpcomingPageState extends State<UpcomingPage> {
                 },
                 child: const Icon(CupertinoIcons.list_bullet),
               ),
+            CupertinoButton(
+              padding: EdgeInsets.zero,
+              onPressed: () async {
+                final next = !app.upcomingAssignedOnly;
+                app.setUpcomingAssignedOnly(next);
+                if (next) {
+                  await app.refreshUpcomingAssigneesIfNeeded();
+                }
+                _rebuildFromCacheAndTrackLoading();
+              },
+              child: Icon(app.upcomingAssignedOnly
+                  ? CupertinoIcons.person_fill
+                  : CupertinoIcons.person),
+            ),
             CupertinoButton(
               padding: EdgeInsets.zero,
               onPressed: (app.upcomingScanActive || app.isSyncing)

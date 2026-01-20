@@ -874,6 +874,16 @@ class L10n {
       : _isEs
           ? 'Muestra todas las tarjetas de arriba a abajo por secciones (Vencidas, Hoy, Mañana, Próximos 7 días, Más tarde).'
           : 'Shows all cards top-to-bottom by sections (Overdue, Today, Tomorrow, Next 7 days, Later).';
+  String get showOnlyMyCardsLabel => _isDe
+      ? 'Immer nur meine Karten anzeigen'
+      : _isEs
+          ? 'Mostrar solo mis tarjetas'
+          : 'Always show only my cards';
+  String get showOnlyMyCardsHelp => _isDe
+      ? 'Filtert Anstehend und Boards auf Karten, die dir zugewiesen sind.'
+      : _isEs
+          ? 'Filtra Próximas y tableros a las tarjetas asignadas a ti.'
+          : 'Filters Upcoming and boards to cards assigned to you.';
   String get cacheBoardsLocalLabel => _isDe
       ? 'Boards lokal speichern (schnelles Wiederöffnen, nur geänderte Boards prüfen)'
       : _isEs

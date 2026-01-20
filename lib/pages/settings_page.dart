@@ -368,6 +368,22 @@ class _SettingsPageState extends State<SettingsPage> {
             Text(L10n.of(context).upcomingSingleColumnHelp,
                 style: const TextStyle(
                     color: CupertinoColors.systemGrey, fontSize: 12)),
+            const SizedBox(height: 10),
+            Row(children: [
+              Expanded(child: Text(L10n.of(context).showOnlyMyCardsLabel)),
+              CupertinoSwitch(
+                  value: app.upcomingAssignedOnly,
+                  onChanged: (v) async {
+                    app.setUpcomingAssignedOnly(v);
+                    if (v) {
+                      await app.refreshUpcomingAssigneesIfNeeded();
+                    }
+                  })
+            ]),
+            const SizedBox(height: 6),
+            Text(L10n.of(context).showOnlyMyCardsHelp,
+                style: const TextStyle(
+                    color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 8),
             Text(L10n.of(context).upcomingProgressHelp,
                 style: const TextStyle(
