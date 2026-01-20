@@ -211,7 +211,7 @@ Tests/Checks
 Blocker/Unklar
 - Auswahl des Plugins (image_picker/PHPicker) und Multi-Select.
 
-## Task H — Task-Completion Count auf Karten
+## Task H — Task-Completion Count auf Karten (Done)
 Zuordnung
 - Issue #43
 
@@ -233,7 +233,7 @@ Tests/Checks
 Blocker/Unklar
 - Genaue Parsing-Regeln (nur "- [ ]" oder auch "* [ ]").
 
-## Task I — Owner-Kuerzel in Uebersicht
+## Task I — Owner-Kuerzel in Uebersicht (Done)
 Zuordnung
 - Issue #44
 

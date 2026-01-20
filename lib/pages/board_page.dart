@@ -655,8 +655,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                     stackId: widget.column.id,
                                     cardId: card.id,
                                     textColor: AppTheme.textOn(bg),
-                                    hasDescription:
-                                        (card.description?.isNotEmpty ?? false)),
+                                    description: card.description),
                               ),
                             );
                           },
@@ -833,9 +832,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                             stackId: widget.column.id,
                                             cardId: card.id,
                                             textColor: AppTheme.textOn(bg),
-                                            hasDescription:
-                                                (card.description?.isNotEmpty ??
-                                                    false)),
+                                            description: card.description),
                                       ),
                                     ),
                                     child: GestureDetector(
@@ -1028,9 +1025,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                             stackId: widget.column.id,
                                             cardId: card.id,
                                             textColor: AppTheme.textOn(bg),
-                                            hasDescription:
-                                                (card.description?.isNotEmpty ??
-                                                    false)),
+                                            description: card.description),
                                       ),
                                     ),
                                   ),
@@ -1087,8 +1082,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                   stackId: widget.column.id,
                                   cardId: card.id,
                                   textColor: AppTheme.textOn(bg),
-                                  hasDescription:
-                                      (card.description?.isNotEmpty ?? false)),
+                                  description: card.description),
                             ),
                           );
                         },
@@ -1284,9 +1278,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                               stackId: widget.column.id,
                                               cardId: card.id,
                                               textColor: AppTheme.textOn(bg),
-                                              hasDescription: (card.description
-                                                      ?.isNotEmpty ??
-                                                  false)),
+                                              description: card.description),
                                         ),
                                       ),
                                       onDragUpdate: (details) {
@@ -1324,9 +1316,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                             stackId: widget.column.id,
                                             cardId: card.id,
                                             textColor: AppTheme.textOn(bg),
-                                            hasDescription:
-                                                (card.description?.isNotEmpty ??
-                                                    false)),
+                                            description: card.description),
                                         onMore: () async {
                                           final l10n = L10n.of(context);
                                           final rootNav = Navigator.of(context,
@@ -1812,13 +1802,13 @@ class _CardMetaRow extends StatefulWidget {
   final int stackId;
   final int cardId;
   final Color textColor;
-  final bool hasDescription;
+  final String? description;
   const _CardMetaRow(
       {required this.boardId,
       required this.stackId,
       required this.cardId,
       required this.textColor,
-      required this.hasDescription});
+      this.description});
 
   @override
   State<_CardMetaRow> createState() => _CardMetaRowState();
@@ -1840,36 +1830,78 @@ class _CardMetaRowState extends State<_CardMetaRow> {
     final app = context.watch<AppState>();
     final cc = app.commentsCountFor(widget.cardId);
     final ac = app.attachmentsCountFor(widget.cardId);
-    if (!widget.hasDescription &&
+    final hasDescription = widget.description?.isNotEmpty ?? false;
+    final taskCount = _parseTaskCount(widget.description);
+    if (!hasDescription &&
+        taskCount == null &&
         (cc == null || cc == 0) &&
         (ac == null || ac == 0)) return const SizedBox.shrink();
     final tc = widget.textColor.withOpacity(0.95);
     const iconSize = 18.0;
-    return Row(
-      children: [
-        if (widget.hasDescription) ...[
-          Icon(CupertinoIcons.text_justify, size: iconSize, color: tc),
+    final items = <Widget>[];
+    void addItem(Widget w) {
+      if (items.isNotEmpty) items.add(const SizedBox(width: 8));
+      items.add(w);
+    }
+
+    if (hasDescription) {
+      addItem(Icon(CupertinoIcons.text_justify, size: iconSize, color: tc));
+    }
+    if (taskCount != null) {
+      addItem(Row(
+        children: [
+          Icon(CupertinoIcons.checkmark_square, size: iconSize, color: tc),
+          const SizedBox(width: 4),
+          Text('${taskCount.done}/${taskCount.total}',
+              style: TextStyle(
+                  fontSize: 12, color: tc, fontWeight: FontWeight.w600)),
         ],
-        if (widget.hasDescription && ((cc ?? 0) > 0 || (ac ?? 0) > 0))
-          const SizedBox(width: 8),
-        if (cc != null && cc > 0) ...[
+      ));
+    }
+    if (cc != null && cc > 0) {
+      addItem(Row(
+        children: [
           Icon(CupertinoIcons.text_bubble, size: iconSize, color: tc),
           const SizedBox(width: 4),
           Text('$cc',
               style: TextStyle(
                   fontSize: 12, color: tc, fontWeight: FontWeight.w600)),
         ],
-        if ((cc ?? 0) > 0 && (ac ?? 0) > 0) const SizedBox(width: 8),
-        if (ac != null && ac > 0) ...[
+      ));
+    }
+    if (ac != null && ac > 0) {
+      addItem(Row(
+        children: [
           Icon(CupertinoIcons.paperclip, size: iconSize, color: tc),
           const SizedBox(width: 4),
           Text('$ac',
               style: TextStyle(
                   fontSize: 12, color: tc, fontWeight: FontWeight.w600)),
         ],
-      ],
-    );
+      ));
+    }
+    return Row(children: items);
   }
+}
+
+class _TaskCount {
+  final int done;
+  final int total;
+  const _TaskCount(this.done, this.total);
+}
+
+_TaskCount? _parseTaskCount(String? description) {
+  if (description == null || description.isEmpty) return null;
+  final re = RegExp(r'^\s*[-*+] \[( |x|X)\] ', multiLine: true);
+  var done = 0;
+  var total = 0;
+  for (final m in re.allMatches(description)) {
+    total += 1;
+    final mark = (m.group(1) ?? '').toLowerCase();
+    if (mark == 'x') done += 1;
+  }
+  if (total == 0) return null;
+  return _TaskCount(done, total);
 }
 
 extension<T> on List<T> {
@@ -2465,10 +2497,7 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                             stackId: c.id,
                                                             cardId: card.id,
                                                             textColor: textOn,
-                                                            hasDescription: (card
-                                                                    .description
-                                                                    ?.isNotEmpty ??
-                                                                false)),
+                                                            description: card.description),
                                                         onMore: () async {
                                                           final l10n =
                                                               L10n.of(context);
