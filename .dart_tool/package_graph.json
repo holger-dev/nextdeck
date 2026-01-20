@@ -10,9 +10,11 @@
         "cupertino_icons",
         "file_picker",
         "flutter",
+        "flutter_local_notifications",
         "flutter_localizations",
         "flutter_markdown",
         "flutter_secure_storage",
+        "flutter_timezone",
         "hive",
         "hive_flutter",
         "http",
@@ -20,6 +22,7 @@
         "path_provider",
         "provider",
         "share_plus",
+        "timezone",
         "url_launcher"
       ],
       "devDependencies": [
@@ -64,6 +67,33 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "flutter_timezone",
+      "version": "1.0.8",
+      "dependencies": [
+        "flutter",
+        "flutter_web_plugins",
+        "js"
+      ]
+    },
+    {
+      "name": "timezone",
+      "version": "0.9.4",
+      "dependencies": [
+        "path"
+      ]
+    },
+    {
+      "name": "flutter_local_notifications",
+      "version": "17.2.4",
+      "dependencies": [
+        "clock",
+        "flutter",
+        "flutter_local_notifications_linux",
+        "flutter_local_notifications_platform_interface",
+        "timezone"
       ]
     },
     {
@@ -359,6 +389,40 @@
       ]
     },
     {
+      "name": "js",
+      "version": "0.6.7",
+      "dependencies": [
+        "meta"
+      ]
+    },
+    {
+      "name": "flutter_web_plugins",
+      "version": "0.0.0",
+      "dependencies": [
+        "flutter"
+      ]
+    },
+    {
+      "name": "flutter_local_notifications_platform_interface",
+      "version": "7.2.0",
+      "dependencies": [
+        "flutter",
+        "plugin_platform_interface"
+      ]
+    },
+    {
+      "name": "flutter_local_notifications_linux",
+      "version": "4.0.1",
+      "dependencies": [
+        "dbus",
+        "ffi",
+        "flutter",
+        "flutter_local_notifications_platform_interface",
+        "path",
+        "xdg_directories"
+      ]
+    },
+    {
       "name": "web",
       "version": "1.1.1",
       "dependencies": []
@@ -393,13 +457,6 @@
     {
       "name": "flutter_plugin_android_lifecycle",
       "version": "2.0.30",
-      "dependencies": [
-        "flutter"
-      ]
-    },
-    {
-      "name": "flutter_web_plugins",
-      "version": "0.0.0",
       "dependencies": [
         "flutter"
       ]
@@ -705,6 +762,24 @@
       ]
     },
     {
+      "name": "xdg_directories",
+      "version": "1.1.0",
+      "dependencies": [
+        "meta",
+        "path"
+      ]
+    },
+    {
+      "name": "dbus",
+      "version": "0.7.11",
+      "dependencies": [
+        "args",
+        "ffi",
+        "meta",
+        "xml"
+      ]
+    },
+    {
       "name": "uuid",
       "version": "4.5.1",
       "dependencies": [
@@ -720,25 +795,10 @@
       "dependencies": []
     },
     {
-      "name": "xdg_directories",
-      "version": "1.1.0",
-      "dependencies": [
-        "meta",
-        "path"
-      ]
-    },
-    {
       "name": "typed_data",
       "version": "1.4.0",
       "dependencies": [
         "collection"
-      ]
-    },
-    {
-      "name": "js",
-      "version": "0.6.7",
-      "dependencies": [
-        "meta"
       ]
     },
     {

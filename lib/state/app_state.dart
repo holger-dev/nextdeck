@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:hive/hive.dart';
@@ -10,6 +11,7 @@ import '../models/card_item.dart';
 import '../models/label.dart';
 import '../models/user_ref.dart';
 import '../services/nextcloud_deck_api.dart';
+import '../services/notification_service.dart';
 import '../sync/sync_service.dart';
 import '../sync/sync_service_impl.dart';
 
@@ -39,6 +41,9 @@ class AppState extends ChangeNotifier {
   bool _upcomingSingleColumn =
       false; // user setting: show Upcoming as single list
   bool _upcomingAssignedOnly = false; // user setting: show only my assigned cards
+  bool _dueNotificationsEnabled = false; // user setting: due reminders
+  bool _dueOverdueEnabled = true; // user setting: overdue reminders
+  List<int> _dueReminderMinutes = const [60, 1440];
   int? _defaultBoardId; // user-selected default board for startup
   String _startupBoardMode = 'default'; // 'default' | 'last'
 
@@ -71,6 +76,10 @@ class AppState extends ChangeNotifier {
   int get startupTabIndex => _startupTabIndex;
   bool get upcomingSingleColumn => _upcomingSingleColumn;
   bool get upcomingAssignedOnly => _upcomingAssignedOnly;
+  bool get dueNotificationsEnabled => _dueNotificationsEnabled;
+  bool get dueOverdueEnabled => _dueOverdueEnabled;
+  bool get dueReminder1hEnabled => _dueReminderMinutes.contains(60);
+  bool get dueReminder1dEnabled => _dueReminderMinutes.contains(1440);
   String? get baseUrl => _baseUrl;
   String? get username => _username;
   bool get localMode => _localMode;
@@ -103,6 +112,7 @@ class AppState extends ChangeNotifier {
   }
 
   final api = NextcloudDeckApi();
+  final NotificationService _notifications = NotificationService();
   SyncService? _sync;
   bool _bootSyncing = false;
   String? _bootMessage;
@@ -132,6 +142,13 @@ class AppState extends ChangeNotifier {
         (await storage.read(key: 'up_assigned_only')) == '1';
     _overviewShowBoardInfo =
         (await storage.read(key: 'overview_board_info')) != '0';
+    _dueNotificationsEnabled =
+        (await storage.read(key: 'due_notif_enabled')) == '1';
+    _dueOverdueEnabled =
+        (await storage.read(key: 'due_notif_overdue')) != '0';
+    _dueReminderMinutes =
+        _parseReminderMinutes(await storage.read(key: 'due_notif_offsets')) ??
+            const [60, 1440];
     _localMode = (await storage.read(key: 'local_mode')) == '1';
     _localeCode = await storage.read(key: 'locale');
     _baseUrl = await storage.read(key: 'baseUrl');
@@ -155,6 +172,11 @@ class AppState extends ChangeNotifier {
         int.tryParse(await storage.read(key: 'startup_tab') ?? '')
                 ?.clamp(0, 2) ??
             1;
+    if (_dueNotificationsEnabled && Platform.isIOS) {
+      try {
+        await _notifications.init(requestPermissions: false);
+      } catch (_) {}
+    }
     final activeBoardIdStr = await storage.read(key: 'activeBoardId');
     if (_localMode) {
       _setupLocalBoard();
@@ -1035,6 +1057,9 @@ class AppState extends ChangeNotifier {
     await _ensureActiveBoardValid();
 
     _rebuildUpcomingCacheFromMemory();
+    if (_dueNotificationsEnabled && Platform.isIOS) {
+      unawaited(_rescheduleDueNotificationsFromMemory());
+    }
     notifyListeners();
   }
 
@@ -1311,6 +1336,44 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setDueNotificationsEnabled(bool value) async {
+    _dueNotificationsEnabled = value;
+    await storage.write(key: 'due_notif_enabled', value: value ? '1' : '0');
+    notifyListeners();
+    if (!Platform.isIOS) return;
+    if (value) {
+      await _notifications.init(requestPermissions: true);
+      unawaited(_rescheduleDueNotificationsFromMemory());
+    } else {
+      await _notifications.cancelAll();
+    }
+  }
+
+  void setDueReminderOffsetEnabled(int minutes, bool enabled) {
+    final next = [..._dueReminderMinutes];
+    if (enabled) {
+      if (!next.contains(minutes)) next.add(minutes);
+    } else {
+      next.remove(minutes);
+    }
+    next.sort();
+    _dueReminderMinutes = next;
+    storage.write(key: 'due_notif_offsets', value: _dueReminderMinutes.join(','));
+    notifyListeners();
+    if (_dueNotificationsEnabled && Platform.isIOS) {
+      unawaited(_rescheduleDueNotificationsFromMemory());
+    }
+  }
+
+  void setDueOverdueEnabled(bool value) {
+    _dueOverdueEnabled = value;
+    storage.write(key: 'due_notif_overdue', value: value ? '1' : '0');
+    notifyListeners();
+    if (_dueNotificationsEnabled && Platform.isIOS) {
+      unawaited(_rescheduleDueNotificationsFromMemory());
+    }
+  }
+
   bool shouldIncludeAssignedCard(CardItem card) {
     if (!_upcomingAssignedOnly) return true;
     if (card.assignees.isEmpty) return false;
@@ -1327,6 +1390,45 @@ class AppState extends ChangeNotifier {
       if (alt != null && alt.toLowerCase() == me) return true;
     }
     return false;
+  }
+
+  List<int>? _parseReminderMinutes(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final parts = raw.split(',').map((e) => int.tryParse(e.trim()));
+    final out = <int>[];
+    for (final p in parts) {
+      if (p != null && p > 0) out.add(p);
+    }
+    return out.isEmpty ? null : out;
+  }
+
+  List<Duration> _dueReminderOffsets() {
+    return _dueReminderMinutes.map((m) => Duration(minutes: m)).toList();
+  }
+
+  List<CardItem> _collectDueCards() {
+    final out = <CardItem>[];
+    final seen = <int>{};
+    for (final cols in _columnsByBoard.values) {
+      for (final col in cols) {
+        for (final card in col.cards) {
+          if (card.due == null || card.done != null) continue;
+          if (seen.add(card.id)) out.add(card);
+        }
+      }
+    }
+    return out;
+  }
+
+  Future<void> _rescheduleDueNotificationsFromMemory() async {
+    if (!_dueNotificationsEnabled || !Platform.isIOS) return;
+    final cards = _collectDueCards();
+    await _notifications.rescheduleAll(
+      cards,
+      offsets: _dueReminderOffsets(),
+      includeOverdue: _dueOverdueEnabled,
+      localeCode: _localeCode,
+    );
   }
 
   CardItem? _findCardInBoard(int boardId, int cardId) {
@@ -1849,6 +1951,9 @@ class AppState extends ChangeNotifier {
         _boardMemberCount[b.id] = m;
       }
     }
+    if (_dueNotificationsEnabled && Platform.isIOS) {
+      unawaited(_rescheduleDueNotificationsFromMemory());
+    }
   }
 
   void setBoardHidden(int boardId, bool hidden) {
@@ -2167,6 +2272,14 @@ class AppState extends ChangeNotifier {
     // Rebuild Upcoming view after local card changes
     _rebuildUpcomingCacheFromMemory();
     notifyListeners();
+    if (_dueNotificationsEnabled && Platform.isIOS) {
+      unawaited(_notifications.rescheduleForCard(
+        updated,
+        offsets: _dueReminderOffsets(),
+        includeOverdue: _dueOverdueEnabled,
+        localeCode: _localeCode,
+      ));
+    }
   }
 
   // Reorder card within the same stack (optimistic)

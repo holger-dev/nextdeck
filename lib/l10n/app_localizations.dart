@@ -475,6 +475,56 @@ class L10n {
       : _isEs
           ? 'Miembros'
           : 'Members';
+  String get notifications => _isDe
+      ? 'Benachrichtigungen'
+      : _isEs
+          ? 'Notificaciones'
+          : 'Notifications';
+  String get dueNotificationsEnable => _isDe
+      ? 'Fälligkeits-Erinnerungen'
+      : _isEs
+          ? 'Recordatorios de vencimiento'
+          : 'Due reminders';
+  String get dueNotificationsHelp => _isDe
+      ? 'Erinnert dich vor Fälligkeit und optional bei Überfälligkeit.'
+      : _isEs
+          ? 'Te recuerda antes del vencimiento y opcionalmente cuando está atrasado.'
+          : 'Reminds you before due date and optionally when overdue.';
+  String get reminder1hBefore => _isDe
+      ? '1 Stunde vorher'
+      : _isEs
+          ? '1 hora antes'
+          : '1 hour before';
+  String get reminder1dBefore => _isDe
+      ? '1 Tag vorher'
+      : _isEs
+          ? '1 día antes'
+          : '1 day before';
+  String get overdueReminderToggle => _isDe
+      ? 'Überfällig erinnern'
+      : _isEs
+          ? 'Recordatorio de atraso'
+          : 'Overdue reminder';
+  String get reminderIn1Hour => _isDe
+      ? 'in 1 Stunde'
+      : _isEs
+          ? 'en 1 hora'
+          : 'in 1 hour';
+  String get reminderIn1Day => _isDe
+      ? 'in 1 Tag'
+      : _isEs
+          ? 'en 1 día'
+          : 'in 1 day';
+  String dueReminderTitle(String when) => _isDe
+      ? 'Fällig $when'
+      : _isEs
+          ? 'Vence $when'
+          : 'Due $when';
+  String get overdueReminderTitle => _isDe
+      ? 'Überfällig'
+      : _isEs
+          ? 'Atrasado'
+          : 'Overdue';
 
   // Settings
   String get settingsTitle => _isDe

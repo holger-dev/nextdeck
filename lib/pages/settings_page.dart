@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'dart:io';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
@@ -391,6 +392,52 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 12),
             const _Divider(),
             const SizedBox(height: 20),
+            if (Platform.isIOS) ...[
+              Text(l10n.notifications,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(child: Text(l10n.dueNotificationsEnable)),
+                CupertinoSwitch(
+                  value: app.dueNotificationsEnabled,
+                  onChanged: (v) => app.setDueNotificationsEnabled(v),
+                ),
+              ]),
+              const SizedBox(height: 6),
+              Text(l10n.dueNotificationsHelp,
+                  style: const TextStyle(
+                      color: CupertinoColors.systemGrey, fontSize: 12)),
+              if (app.dueNotificationsEnabled) ...[
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: Text(l10n.reminder1hBefore)),
+                  CupertinoSwitch(
+                    value: app.dueReminder1hEnabled,
+                    onChanged: (v) => app.setDueReminderOffsetEnabled(60, v),
+                  ),
+                ]),
+                const SizedBox(height: 6),
+                Row(children: [
+                  Expanded(child: Text(l10n.reminder1dBefore)),
+                  CupertinoSwitch(
+                    value: app.dueReminder1dEnabled,
+                    onChanged: (v) => app.setDueReminderOffsetEnabled(1440, v),
+                  ),
+                ]),
+                const SizedBox(height: 6),
+                Row(children: [
+                  Expanded(child: Text(l10n.overdueReminderToggle)),
+                  CupertinoSwitch(
+                    value: app.dueOverdueEnabled,
+                    onChanged: (v) => app.setDueOverdueEnabled(v),
+                  ),
+                ]),
+              ],
+              const SizedBox(height: 12),
+              const _Divider(),
+              const SizedBox(height: 20),
+            ],
             // Language selector
             Text(l10n.language,
                 style:

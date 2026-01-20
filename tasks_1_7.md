@@ -164,7 +164,7 @@ Tests/Checks
 Blocker/Unklar
 - Genaues Mention-Format und User-Search API fehlen.
 
-## Task F — Due-Date/Overdue Notifications
+## Task F — Due-Date/Overdue Notifications (Done)
 Zuordnung
 - Issues #39, #9
 
