@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'attachment_preview_page.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../state/app_state.dart';
 import '../models/card_item.dart';
@@ -77,6 +78,71 @@ class _CardDetailPageState extends State<CardDetailPage> {
   bool _initialFetchDone = false;
 
   bool get _isDoneCard => _card?.done != null;
+
+  Future<void> _handleAttachmentUpload() async {
+    try {
+      final app = context.read<AppState>();
+      final base = app.baseUrl;
+      final user = app.username;
+      final pass = await app.storage.read(key: 'password');
+      if (base == null || user == null || pass == null) return;
+      setState(() { _uploadingAttachment = true; });
+      final picker = await _pickAttachment(context);
+      if (picker == null) return;
+      final fileName = picker.name;
+      final bytes = picker.bytes;
+      if (bytes == null) {
+        if (mounted) {
+          await showCupertinoDialog(
+            context: context,
+            builder: (ctx) => CupertinoAlertDialog(
+              title: Text(L10n.of(context).uploadFailed),
+              content: Text(L10n.of(context).fileReadFailed),
+              actions: [
+                CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: Text(L10n.of(context).ok)),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+      final boardId = widget.boardId ?? app.activeBoard?.id;
+      final stackId = _currentStackId ?? widget.stackId;
+      if (boardId == null || stackId == null) {
+        if (mounted) {
+          await showCupertinoDialog(
+            context: context,
+            builder: (ctx) => CupertinoAlertDialog(
+              title: Text(L10n.of(context).uploadNotPossible),
+              content: Text(L10n.of(context).missingIds),
+              actions: [CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: Text(L10n.of(context).ok))],
+            ),
+          );
+        }
+        return;
+      }
+      // Preferred: direct Deck upload (multipart) per API docs
+      final okUp = await app.api.uploadCardAttachment(base, user, pass, boardId: boardId, stackId: stackId, cardId: widget.cardId, bytes: bytes, filename: fileName);
+      if (okUp) {
+        await _loadAttachments();
+      } else {
+        if (mounted) {
+          await showCupertinoDialog(
+            context: context,
+            builder: (ctx) => CupertinoAlertDialog(
+              title: Text(L10n.of(context).uploadFailed),
+              content: Text(L10n.of(context).fileAttachFailed),
+              actions: [CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: Text(L10n.of(context).ok))],
+            ),
+          );
+        }
+      }
+    } catch (_) {
+      // swallow, feedback already shown where possible
+    } finally {
+      if (mounted) setState(() { _uploadingAttachment = false; });
+    }
+  }
 
   @override
   void initState() {
@@ -652,74 +718,11 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                   Expanded(child: Text(L10n.of(context).attachments, style: const TextStyle(fontWeight: FontWeight.w600))),
                                   CupertinoButton(
                                     padding: EdgeInsets.zero,
-                                    onPressed: _uploadingAttachment ? null : () async {
-                          try {
-                            final app = context.read<AppState>();
-                            final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
-                            if (base == null || user == null || pass == null) return;
-                            setState(() { _uploadingAttachment = true; });
-                            final picker = await Future.sync(() async => await _pickFile());
-                            if (picker == null) { if (mounted) setState(() { _uploadingAttachment = false; }); return; }
-                            final fileName = picker.name;
-                            final bytes = picker.bytes;
-                            if (bytes == null) {
-                              if (mounted) {
-                                setState(() { _uploadingAttachment = false; });
-                                await showCupertinoDialog(
-                                  context: context,
-                                  builder: (ctx) => CupertinoAlertDialog(
-                                    title: Text(L10n.of(context).uploadFailed),
-                                    content: Text(L10n.of(context).fileReadFailed),
-                                    actions: [
-                                      CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: Text(L10n.of(context).ok)),
-                                    ],
+                                    onPressed: _uploadingAttachment ? null : () async => _handleAttachmentUpload(),
+                                    child: _uploadingAttachment
+                                        ? const CupertinoActivityIndicator()
+                                        : const Icon(CupertinoIcons.plus_circle, size: 20),
                                   ),
-                                );
-                              }
-                              return;
-                            }
-                            final boardId = widget.boardId ?? app.activeBoard?.id;
-                            final stackId = _currentStackId ?? widget.stackId;
-                            if (boardId == null || stackId == null) {
-                              if (mounted) {
-                                await showCupertinoDialog(
-                                  context: context,
-                                  builder: (ctx) => CupertinoAlertDialog(
-                                    title: Text(L10n.of(context).uploadNotPossible),
-                                    content: Text(L10n.of(context).missingIds),
-                                    actions: [CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: Text(L10n.of(context).ok))],
-                                  ),
-                                );
-                              }
-                              return;
-                            }
-                            // Preferred: direct Deck upload (multipart) per API docs
-                            final okUp = await app.api.uploadCardAttachment(base, user!, pass, boardId: boardId, stackId: stackId, cardId: widget.cardId, bytes: bytes, filename: fileName);
-                            if (okUp) {
-                              await _loadAttachments();
-                            } else {
-                              if (mounted) {
-                                await showCupertinoDialog(
-                                  context: context,
-                                  builder: (ctx) => CupertinoAlertDialog(
-                                    title: Text(L10n.of(context).uploadFailed),
-                                    content: Text(L10n.of(context).fileAttachFailed),
-                                    actions: [CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: Text(L10n.of(context).ok))],
-                                  ),
-                                );
-                              }
-                            }
-                            // done
-                          } catch (_) {
-                            // swallow, feedback already shown where possible
-                          } finally {
-                            if (mounted) setState(() { _uploadingAttachment = false; });
-                          }
-                        },
-                        child: _uploadingAttachment
-                            ? const CupertinoActivityIndicator()
-                            : const Icon(CupertinoIcons.plus_circle, size: 20),
-                      ),
                     ],
                   ),
                   const SizedBox(height: 8),
@@ -1082,58 +1085,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                       Expanded(child: Text(L10n.of(context).attachments, style: const TextStyle(fontWeight: FontWeight.w600))),
                                       CupertinoButton(
                                         padding: EdgeInsets.zero,
-                                        onPressed: _uploadingAttachment ? null : () async {
-                                          try {
-                                            final app = context.read<AppState>();
-                                            final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
-                                            if (base == null || user == null || pass == null) return;
-                                            setState(() { _uploadingAttachment = true; });
-                                            final picker = await Future.sync(() async => await _pickFile());
-                                            if (picker == null) { if (mounted) setState(() { _uploadingAttachment = false; }); return; }
-                                            final fileName = picker.name;
-                                            final bytes = picker.bytes;
-                                            if (bytes == null) {
-                                              if (mounted) {
-                                                setState(() { _uploadingAttachment = false; });
-                                                await showCupertinoDialog(
-                                                  context: context,
-                                                  builder: (ctx) => CupertinoAlertDialog(
-                                                    title: Text(L10n.of(context).uploadFailed),
-                                                    content: const Text('Datei konnte nicht gelesen werden.'),
-                                                    actions: [
-                                                      CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK')),
-                                                    ],
-                                                  ),
-                                                );
-                                              }
-                                              return;
-                                            }
-                                            final boardId = widget.boardId ?? app.activeBoard?.id;
-                                            final stackId = _currentStackId ?? widget.stackId;
-                                            if (boardId == null || stackId == null) { if (mounted) setState(() { _uploadingAttachment = false; }); return; }
-                                            // Deck multipart upload only (no WebDAV fallback)
-                                            final okUp = await app.api.uploadCardAttachment(base, user, pass, boardId: boardId, stackId: stackId, cardId: widget.cardId, bytes: bytes, filename: fileName);
-                                            if (okUp) {
-                                              await _loadAttachments();
-                                            } else {
-                                              if (mounted) {
-                                                await showCupertinoDialog(
-                                                  context: context,
-                                                    builder: (ctx) => CupertinoAlertDialog(
-                                                      title: Text(L10n.of(context).uploadFailed),
-                                                      content: Text(L10n.of(context).fileAttachFailed),
-                                                      actions: [CupertinoDialogAction(onPressed: () => Navigator.of(ctx).pop(), child: Text(L10n.of(context).ok))],
-                                                    ),
-                                                );
-                                              }
-                                            }
-                                            // done
-                                          } catch (_) {
-                                            // swallow
-                                          } finally {
-                                            if (mounted) setState(() { _uploadingAttachment = false; });
-                                          }
-                                        },
+                                        onPressed: _uploadingAttachment ? null : () async => _handleAttachmentUpload(),
                                         child: _uploadingAttachment
                                             ? const CupertinoActivityIndicator()
                                             : const Icon(CupertinoIcons.plus_circle, size: 20),
@@ -2038,6 +1990,71 @@ class _PickedFile {
   final String name;
   final List<int>? bytes;
   _PickedFile({required this.name, required this.bytes});
+}
+
+enum _AttachmentSource { file, photo }
+
+Future<_PickedFile?> _pickAttachment(BuildContext context) async {
+  if (kIsWeb || !(Platform.isIOS || Platform.isAndroid)) {
+    return _pickFile();
+  }
+  final choice = await showCupertinoModalPopup<_AttachmentSource>(
+    context: context,
+    builder: (ctx) => CupertinoActionSheet(
+      title: Text(L10n.of(ctx).addAttachment),
+      actions: [
+        CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(ctx).pop(_AttachmentSource.photo),
+          child: Text(L10n.of(ctx).photoLibrary),
+        ),
+        CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(ctx).pop(_AttachmentSource.file),
+          child: Text(L10n.of(ctx).files),
+        ),
+      ],
+      cancelButton: CupertinoActionSheetAction(
+        onPressed: () => Navigator.of(ctx).pop(),
+        isDefaultAction: true,
+        child: Text(L10n.of(ctx).cancel),
+      ),
+    ),
+  );
+  if (choice == null) return null;
+  if (choice == _AttachmentSource.photo) return _pickPhotoFromLibrary();
+  return _pickFile();
+}
+
+Future<_PickedFile?> _pickPhotoFromLibrary() async {
+  try {
+    final picker = ImagePicker();
+    final file = await picker.pickImage(source: ImageSource.gallery, requestFullMetadata: false);
+    if (file == null) return null;
+    final data = await file.readAsBytes();
+    var name = file.name;
+    if (name.isEmpty || name.startsWith('image_picker')) {
+      name = _fallbackPhotoName(file.path);
+    }
+    return _PickedFile(name: name, bytes: data);
+  } catch (_) {
+    return null;
+  }
+}
+
+String _fallbackPhotoName(String path) {
+  final ext = _fileExtension(path);
+  final ts = _formatTimestamp(DateTime.now().toLocal());
+  return 'photo_$ts$ext';
+}
+
+String _fileExtension(String path) {
+  final idx = path.lastIndexOf('.');
+  if (idx == -1 || idx == path.length - 1) return '.jpg';
+  return path.substring(idx);
+}
+
+String _formatTimestamp(DateTime dt) {
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${dt.year}-${two(dt.month)}-${two(dt.day)}_${two(dt.hour)}-${two(dt.minute)}-${two(dt.second)}';
 }
 
 Future<_PickedFile?> _pickFile() async {

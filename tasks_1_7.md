@@ -189,7 +189,7 @@ Blocker/Unklar
 - Festlegen der Reminder-Intervalle und Plattform-Scope.
 - Entscheidung local-only vs server-driven.
 
-## Task G — Photo Library Upload
+## Task G — Photo Library Upload (Done)
 Zuordnung
 - Issue #38
 

@@ -159,6 +159,21 @@ class L10n {
       : _isEs
           ? 'Adjuntos'
           : 'Attachments';
+  String get addAttachment => _isDe
+      ? 'Anhang hinzufügen'
+      : _isEs
+          ? 'Añadir adjunto'
+          : 'Add attachment';
+  String get photoLibrary => _isDe
+      ? 'Fotomediathek'
+      : _isEs
+          ? 'Fototeca'
+          : 'Photo library';
+  String get files => _isDe
+      ? 'Dateien'
+      : _isEs
+          ? 'Archivos'
+          : 'Files';
   String get attachmentFallback => _isDe
       ? 'Anhang'
       : _isEs
