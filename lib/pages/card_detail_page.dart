@@ -1540,6 +1540,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
     // Persist current user and board owner across StatefulBuilder rebuilds
     UserRef? meRef;
     UserRef? ownerRef;
+    List<UserRef> boardMemberRefs = const [];
     // Restrict to board members when available
     Set<String> members = {};
     final boardId = widget.boardId ?? app.activeBoard?.id;
@@ -1554,6 +1555,42 @@ class _CardDetailPageState extends State<CardDetailPage> {
       try {
         final detail = await app.api.fetchBoardDetail(baseUrl, user, pass, boardId);
         if (detail != null) {
+          final refs = <UserRef>[];
+          void addRef(UserRef ref) {
+            final id = ref.id.trim();
+            if (id.isEmpty) return;
+            final dn = ref.displayName.trim();
+            final normalized = UserRef(
+              id: id,
+              displayName: dn.isEmpty ? id : dn,
+              shareType: ref.shareType,
+              altId: ref.altId,
+            );
+            final idLower = id.toLowerCase();
+            final exists = refs.any((r) => r.id.toLowerCase() == idLower);
+            if (!exists) {
+              refs.add(normalized);
+              members.add(idLower);
+            }
+          }
+          void addFrom(dynamic v) {
+            if (v is List) {
+              for (final e in v) {
+                if (e is Map) {
+                  final map = e.cast<String, dynamic>();
+                  final participant = map['participant'];
+                  if (participant is Map) {
+                    addRef(UserRef.fromJson(participant.cast<String, dynamic>()));
+                  } else {
+                    addRef(UserRef.fromJson(map));
+                  }
+                } else if (e is String || e is num) {
+                  final id = e.toString();
+                  addRef(UserRef(id: id, displayName: id));
+                }
+              }
+            }
+          }
           final owner = detail['owner'];
           if (owner is Map) {
             final uid = (owner['uid'] ?? owner['id'] ?? '').toString();
@@ -1561,8 +1598,13 @@ class _CardDetailPageState extends State<CardDetailPage> {
             if (uid.isNotEmpty) {
               final dn = dnRaw.isEmpty ? uid : dnRaw;
               ownerRef = UserRef(id: uid, displayName: dn, shareType: 0);
+              addRef(ownerRef!);
             }
           }
+          addFrom(detail['users']);
+          addFrom(detail['acl']);
+          addFrom(detail['activeSessions']);
+          boardMemberRefs = refs;
         }
       } catch (_) {}
     }
@@ -1621,6 +1663,20 @@ class _CardDetailPageState extends State<CardDetailPage> {
           final allowed = members.isEmpty || members.contains(oid);
           if (match && !already && allowed) {
             filtered = [ownerRef!, ...filtered];
+          }
+        }
+        // Ensure board members from board detail are visible even if sharees search is incomplete
+        if (boardMemberRefs.isNotEmpty) {
+          for (final r in boardMemberRefs) {
+            final idLower = r.id.toLowerCase();
+            if (idLower.isEmpty) continue;
+            final dnLower = r.displayName.toLowerCase();
+            final match = q.isEmpty || idLower.contains(q) || dnLower.contains(q);
+            final already = filtered.any((u) => u.id.toLowerCase() == idLower);
+            final allowed = members.isEmpty || members.contains(idLower);
+            if (match && !already && allowed) {
+              filtered.add(r);
+            }
           }
         }
         return CupertinoActionSheet(
