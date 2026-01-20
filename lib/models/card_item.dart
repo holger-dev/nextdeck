@@ -49,12 +49,18 @@ class CardItem {
         for (final item in raw) {
           if (item is Map) {
             final map = item.cast<String, dynamic>();
-            if (map['participant'] is Map) {
-              final p = (map['participant'] as Map).cast<String, dynamic>();
-              out.add(UserRef.fromJson(p));
+            final participant = map['participant'];
+            if (participant is Map) {
+              out.add(UserRef.fromJson(participant.cast<String, dynamic>()));
+            } else if (participant is String || participant is num) {
+              final id = participant.toString();
+              out.add(UserRef(id: id, displayName: id));
             } else {
               out.add(UserRef.fromJson(map));
             }
+          } else if (item is String || item is num) {
+            final id = item.toString();
+            out.add(UserRef(id: id, displayName: id));
           }
         }
         return out;
