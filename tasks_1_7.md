@@ -61,7 +61,7 @@ Blocker/Unklar
 - Definition "assigned" (Owner vs Assignee vs Member).
 - Repro-Board und Referenz-Screenshots aus Web-UI.
 
-## Task B — Done-Status konsistent (doneDate)
+## Task B — Done-Status konsistent (doneDate) (Done)
 Zuordnung
 - Issue #24
 
@@ -96,7 +96,7 @@ Tests/Checks
 Blocker/Unklar
 - Bestaetigen, welches done-Format die API erwartet (ISO-String vs bool).
 
-## Task C — iOS Attachment-PDF oeffnen
+## Task C — iOS Attachment-PDF oeffnen (Done)
 Zuordnung
 - Issue #36
 
@@ -118,7 +118,7 @@ Tests/Checks
 Blocker/Unklar
 - Beispiel-PDF und iOS Testgeraet benoetigt.
 
-## Task D — Assignee User-Liste auf iOS korrekt
+## Task D — Assignee User-Liste auf iOS korrekt (Done)
 Zuordnung
 - Issue #37
 
@@ -140,7 +140,7 @@ Blocker/Unklar
 - Konkrete Repro-Daten (Board, Rolle, User-ID) fehlen.
 - API-Response fuer Members/Assignments benoetigt.
 
-## Task E — Mentions in Kommentaren
+## Task E — Mentions in Kommentaren (Done)
 Zuordnung
 - Issues #45, #28
 

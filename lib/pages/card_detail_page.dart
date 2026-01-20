@@ -54,6 +54,15 @@ class _CardDetailPageState extends State<CardDetailPage> {
   List<CommentItem> _comments = const [];
   final TextEditingController _commentCtrl = TextEditingController();
   int? _replyTo;
+  Timer? _mentionDebounce;
+  bool _mentionSearching = false;
+  List<UserRef> _mentionResults = const [];
+  String _mentionQuery = '';
+  int? _mentionAtIndex;
+  int? _mentionCursor;
+  Set<String> _mentionMembers = const {};
+  bool _mentionMembersLoaded = false;
+  bool _mentionBoardScoped = false;
   // Attachments
   bool _attachmentsLoading = true;
   List<Map<String, dynamic>> _attachments = const [];
@@ -124,15 +133,167 @@ class _CardDetailPageState extends State<CardDetailPage> {
       if (created != null) {
         final c = CommentItem.fromJson(created);
         if (!mounted) return;
-        setState(() { _comments = [..._comments, c]; _commentCtrl.clear(); _replyTo = null; });
+        setState(() {
+          _comments = [..._comments, c];
+          _commentCtrl.clear();
+          _replyTo = null;
+          _mentionResults = const [];
+          _mentionQuery = '';
+          _mentionAtIndex = null;
+          _mentionCursor = null;
+        });
         if (mounted) context.read<AppState>().setCardCommentsCount(widget.cardId, _comments.length);
       } else {
         await _loadComments();
         _commentCtrl.clear(); _replyTo = null;
+        if (mounted) {
+          setState(() {
+            _mentionResults = const [];
+            _mentionQuery = '';
+            _mentionAtIndex = null;
+            _mentionCursor = null;
+          });
+        }
       }
     } finally {
       if (mounted) setState(() { _sendingComment = false; });
     }
+  }
+
+  _MentionQuery? _extractMentionQuery(TextEditingController ctrl) {
+    final sel = ctrl.selection;
+    if (!sel.isValid) return null;
+    final cursor = sel.baseOffset;
+    if (cursor < 0 || cursor > ctrl.text.length) return null;
+    final text = ctrl.text;
+    final before = text.substring(0, cursor);
+    final at = before.lastIndexOf('@');
+    if (at < 0) return null;
+    if (at > 0) {
+      final prev = before.substring(at - 1, at);
+      if (RegExp(r'[A-Za-z0-9_]').hasMatch(prev)) return null;
+    }
+    final token = before.substring(at + 1);
+    if (token.isEmpty) return null;
+    if (token.contains(RegExp(r'\s'))) return null;
+    return _MentionQuery(query: token, atIndex: at, cursor: cursor);
+  }
+
+  Future<void> _onCommentChanged() async {
+    final q = _extractMentionQuery(_commentCtrl);
+    if (q == null) {
+      if (_mentionResults.isNotEmpty || _mentionSearching || _mentionQuery.isNotEmpty) {
+        setState(() {
+          _mentionResults = const [];
+          _mentionQuery = '';
+          _mentionAtIndex = null;
+          _mentionCursor = null;
+          _mentionSearching = false;
+        });
+      }
+      return;
+    }
+    _mentionAtIndex = q.atIndex;
+    _mentionCursor = q.cursor;
+    if (q.query == _mentionQuery && _mentionResults.isNotEmpty) return;
+    _mentionQuery = q.query;
+    _mentionDebounce?.cancel();
+    _mentionDebounce = Timer(const Duration(milliseconds: 300), () async {
+      if (!mounted) return;
+      final app = context.read<AppState>();
+      final base = app.baseUrl; final user = app.username; final pass = await app.storage.read(key: 'password');
+      if (base == null || user == null || pass == null) return;
+      if (!_mentionMembersLoaded) {
+        final boardId = widget.boardId ?? app.activeBoard?.id;
+        if (boardId != null) {
+          _mentionBoardScoped = true;
+          try {
+            final members = await app.api.fetchBoardMemberUids(base, user, pass, boardId);
+            if (mounted) {
+              setState(() {
+                _mentionMembers = members.map((e) => e.toLowerCase()).toSet();
+                _mentionMembersLoaded = true;
+              });
+            }
+          } catch (_) {}
+        } else {
+          _mentionMembersLoaded = true;
+        }
+      }
+      setState(() { _mentionSearching = true; });
+      try {
+        final res = await app.api.searchSharees(base, user, pass, _mentionQuery);
+        var users = res.where((u) => (u.shareType ?? 0) == 0).toList();
+        if (_mentionMembers.isNotEmpty) {
+          users = users.where((u) => _mentionMembers.contains(u.id.toLowerCase())).toList();
+        } else if (_mentionBoardScoped && _mentionMembersLoaded) {
+          users = const [];
+        }
+        if (!mounted) return;
+        setState(() { _mentionResults = users; });
+      } finally {
+        if (mounted) setState(() { _mentionSearching = false; });
+      }
+    });
+  }
+
+  void _applyMention(UserRef userRef) {
+    final q = _extractMentionQuery(_commentCtrl);
+    final atIndex = q?.atIndex ?? _mentionAtIndex;
+    final cursor = q?.cursor ?? _mentionCursor;
+    if (atIndex == null || cursor == null) return;
+    final text = _commentCtrl.text;
+    final before = text.substring(0, atIndex);
+    final after = text.substring(cursor);
+    final id = userRef.id.trim();
+    if (id.isEmpty) return;
+    final needsQuotes = RegExp(r'[^A-Za-z0-9_.-]').hasMatch(id);
+    final token = needsQuotes ? '@"$id"' : '@$id';
+    final newText = before + token + ' ' + after;
+    final newCursor = (before + token + ' ').length;
+    _commentCtrl.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newCursor),
+    );
+    setState(() {
+      _mentionResults = const [];
+      _mentionQuery = '';
+      _mentionAtIndex = null;
+      _mentionCursor = null;
+    });
+  }
+
+  Widget _buildMentionSuggestions(BuildContext context) {
+    if (!_mentionSearching && _mentionResults.isEmpty) return const SizedBox.shrink();
+    final theme = CupertinoTheme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      constraints: const BoxConstraints(maxHeight: 160),
+      decoration: BoxDecoration(
+        color: theme.barBackgroundColor.withOpacity(0.95),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: CupertinoColors.separator),
+      ),
+      child: _mentionSearching
+          ? const Padding(
+              padding: EdgeInsets.all(12),
+              child: Center(child: CupertinoActivityIndicator()),
+            )
+          : ListView(
+              shrinkWrap: true,
+              children: _mentionResults.map((u) {
+                final dn = u.displayName.trim();
+                final id = u.id.trim();
+                final label = dn.isEmpty || dn.toLowerCase() == id.toLowerCase() ? id : '$dn ($id)';
+                return CupertinoButton(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  onPressed: () => _applyMention(u),
+                  alignment: Alignment.centerLeft,
+                  child: Text(label, style: TextStyle(color: CupertinoColors.label.resolveFrom(context))),
+                );
+              }).toList(),
+            ),
+    );
   }
 
   Future<void> _loadAttachments() async {
@@ -748,6 +909,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                           .toList(),
                     ),
                   const SizedBox(height: 8),
+                  _buildMentionSuggestions(context),
                   Row(
                     children: [
                       if (_replyTo != null) ...[
@@ -766,6 +928,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                           maxLines: 3,
                           minLines: 1,
                           onSubmitted: (_) => _sendComment(),
+                          onChanged: (_) => _onCommentChanged(),
                         ),
                       ),
                       const SizedBox(width: 8),
@@ -1167,6 +1330,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                           .toList(),
                                     ),
                                   const SizedBox(height: 8),
+                                  _buildMentionSuggestions(context),
                                   Row(
                                     children: [
                                       if (_replyTo != null) ...[
@@ -1185,6 +1349,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                           maxLines: 3,
                                           minLines: 1,
                                           onSubmitted: (_) => _sendComment(),
+                                          onChanged: (_) => _onCommentChanged(),
                                         ),
                                       ),
                                       const SizedBox(width: 8),
@@ -1861,6 +2026,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
   void dispose() {
     _commentCtrl.dispose();
     _descDebounce?.cancel();
+    _mentionDebounce?.cancel();
     _descFocus.dispose();
     _titleCtrl.dispose();
     _descCtrl.dispose();
@@ -1903,6 +2069,57 @@ Future<_PickedFile?> _pickFile() async {
   }
 }
 
+class _MentionQuery {
+  final String query;
+  final int atIndex;
+  final int cursor;
+  const _MentionQuery({required this.query, required this.atIndex, required this.cursor});
+}
+
+class _MentionMatch {
+  final int start;
+  final int end;
+  final CommentMention mention;
+  _MentionMatch({required this.start, required this.end, required this.mention});
+}
+
+List<InlineSpan> _buildCommentSpans(CommentItem comment, TextStyle baseStyle, TextStyle mentionStyle) {
+  final message = comment.message;
+  if (comment.mentions.isEmpty || message.isEmpty) {
+    return [TextSpan(text: message, style: baseStyle)];
+  }
+  final matches = <_MentionMatch>[];
+  for (final m in comment.mentions) {
+    final id = m.mentionId;
+    if (id.isEmpty) continue;
+    final tokens = ['@"$id"', '@$id'];
+    for (final t in tokens) {
+      var idx = message.indexOf(t);
+      while (idx >= 0) {
+        matches.add(_MentionMatch(start: idx, end: idx + t.length, mention: m));
+        idx = message.indexOf(t, idx + t.length);
+      }
+    }
+  }
+  if (matches.isEmpty) return [TextSpan(text: message, style: baseStyle)];
+  matches.sort((a, b) => a.start.compareTo(b.start));
+  final spans = <InlineSpan>[];
+  var pos = 0;
+  for (final m in matches) {
+    if (m.start < pos) continue;
+    if (m.start > pos) {
+      spans.add(TextSpan(text: message.substring(pos, m.start), style: baseStyle));
+    }
+    final dn = m.mention.mentionDisplayName.isNotEmpty ? m.mention.mentionDisplayName : m.mention.mentionId;
+    spans.add(TextSpan(text: '@$dn', style: mentionStyle));
+    pos = m.end;
+  }
+  if (pos < message.length) {
+    spans.add(TextSpan(text: message.substring(pos), style: baseStyle));
+  }
+  return spans;
+}
+
 class _CommentTileInline extends StatelessWidget {
   final CommentItem comment;
   final bool isMine;
@@ -1941,7 +2158,19 @@ class _CommentTileInline extends StatelessWidget {
               ),
               child: Text(_short(comment.replyTo!.message), style: const TextStyle(fontSize: 12, color: CupertinoColors.systemGrey)),
             ),
-          Text(comment.message),
+          RichText(
+            text: TextSpan(
+              style: CupertinoTheme.of(context).textTheme.textStyle,
+              children: _buildCommentSpans(
+                comment,
+                CupertinoTheme.of(context).textTheme.textStyle,
+                CupertinoTheme.of(context).textTheme.textStyle.copyWith(
+                  color: CupertinoColors.activeBlue,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
