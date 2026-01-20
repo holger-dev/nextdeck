@@ -24,76 +24,6 @@ import '../models/comment.dart';
 import '../l10n/app_localizations.dart';
 // import 'labels_manage_page.dart';
 
-bool _isDoneTitleLocal(String title) {
-  final t = title.toLowerCase();
-  const doneTokens = [
-    'done',
-    'erledigt',
-    'hecho',
-    'abgeschlossen',
-    'fertig',
-    'finished',
-    'completed',
-    'completado',
-    'geschlossen'
-  ];
-  for (final tok in doneTokens) {
-    if (t.contains(tok)) return true;
-  }
-  return false;
-}
-
-int? _findDoneColumnIdLocal(List<deck.Column> cols) {
-  const preferred = [
-    'done',
-    'erledigt',
-    'abgeschlossen',
-    'fertig',
-    'finished',
-    'completed',
-    'hecho',
-    'completado',
-    'geschlossen'
-  ];
-  for (final p in preferred) {
-    for (final c in cols) {
-      if (c.title.toLowerCase().contains(p)) return c.id;
-    }
-  }
-  for (final c in cols) {
-    if (_isDoneTitleLocal(c.title)) return c.id;
-  }
-  if (cols.isNotEmpty) return cols.last.id;
-  return null;
-}
-
-int? _findUndoneColumnIdLocal(List<deck.Column> cols) {
-  const preferred = [
-    'to do',
-    'to-do',
-    'todo',
-    'offen',
-    'open',
-    'backlog',
-    'inbox',
-    'pendiente',
-    'por hacer',
-    'por-hacer',
-    'aufgaben'
-  ];
-  for (final p in preferred) {
-    for (final c in cols) {
-      final t = c.title.toLowerCase();
-      if (!_isDoneTitleLocal(t) && t.contains(p)) return c.id;
-    }
-  }
-  for (final c in cols) {
-    if (!_isDoneTitleLocal(c.title)) return c.id;
-  }
-  if (cols.isNotEmpty) return cols.first.id;
-  return null;
-}
-
 class CardDetailPage extends StatefulWidget {
   final int cardId;
   final int? boardId;
@@ -137,11 +67,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
   bool _assigneesLoading = true;
   bool _initialFetchDone = false;
 
-  bool get _isDoneStack {
-    if (_currentStackId == null) return false;
-    final col = _columns.firstWhere((c) => c.id == _currentStackId, orElse: () => deck.Column(id: -1, title: '', cards: const []));
-    return col.id != -1 && _isDoneTitleLocal(col.title);
-  }
+  bool get _isDoneCard => _card?.done != null;
 
   @override
   void initState() {
@@ -386,22 +312,21 @@ class _CardDetailPageState extends State<CardDetailPage> {
   }
 
   Future<void> _toggleDone(bool done) async {
-    if (_columns.isEmpty) return;
-    final targetId =
-        done ? _findDoneColumnIdLocal(_columns) : _findUndoneColumnIdLocal(_columns);
-    if (targetId == null || targetId == _currentStackId) return;
-    final prevStack = _currentStackId;
-    setState(() => _currentStackId = targetId);
-    final app = context.read<AppState>();
-    final boardId = widget.boardId ?? app.activeBoard?.id;
-    if (boardId != null && prevStack != null) {
-      app.updateLocalCard(
-          boardId: boardId,
-          stackId: prevStack,
-          cardId: widget.cardId,
-          moveToStackId: targetId);
+    final doneAt = done ? DateTime.now().toUtc() : null;
+    if (_card != null) {
+      _card = CardItem(
+        id: _card!.id,
+        title: _card!.title,
+        description: _card!.description,
+        due: _card!.due,
+        done: doneAt,
+        labels: _card!.labels,
+        assignees: _card!.assignees,
+        order: _card!.order,
+      );
     }
-    await _savePatch({'stackId': targetId}, useStackId: prevStack);
+    if (mounted) setState(() {});
+    await _savePatch({'done': doneAt}, optimistic: true);
   }
 
   Future<void> _clearDueDate() async {
@@ -474,7 +399,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                               const SizedBox(height: 10),
                               _StatusRow(
                                 label: L10n.of(context).status,
-                                isDone: _isDoneStack,
+                                isDone: _isDoneCard,
                                 onChanged: (v) => _toggleDone(v),
                                 markDoneLabel: L10n.of(context).markDone,
                                 markUndoneLabel: L10n.of(context).markUndone,
@@ -880,7 +805,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                 const SizedBox(height: 10),
                                 _StatusRow(
                                   label: L10n.of(context).status,
-                                  isDone: _isDoneStack,
+                                  isDone: _isDoneCard,
                                   onChanged: (v) => _toggleDone(v),
                                   markDoneLabel: L10n.of(context).markDone,
                                   markUndoneLabel: L10n.of(context).markUndone,

@@ -120,21 +120,7 @@ class SyncServiceImpl implements SyncService {
             final cards = <Map<String, dynamic>>[];
 
             for (final cardData in cardsData.cast<Map<String, dynamic>>()) {
-              cards.add({
-                'id': cardData['id'] as int,
-                'title': cardData['title'] as String,
-                'description': cardData['description'] ?? '',
-                'duedate': _parseDueDate(cardData['duedate']),
-                'order': cardData['order'] as int?,
-                'labels': (cardData['labels'] as List? ?? [])
-                    .cast<Map<String, dynamic>>()
-                    .map((l) => {
-                          'id': l['id'] as int,
-                          'title': l['title'] as String,
-                          'color': l['color'] as String,
-                        })
-                    .toList(),
-              });
+              cards.add(_buildCardCache(cardData));
             }
 
             columns.add({
@@ -163,21 +149,7 @@ class SyncServiceImpl implements SyncService {
               final cards = <Map<String, dynamic>>[];
 
               for (final cardData in cardsData.cast<Map<String, dynamic>>()) {
-                cards.add({
-                  'id': cardData['id'] as int,
-                  'title': cardData['title'] as String,
-                  'description': cardData['description'] ?? '',
-                  'duedate': _parseDueDate(cardData['duedate']),
-                  'order': cardData['order'] as int?,
-                  'labels': (cardData['labels'] as List? ?? [])
-                      .cast<Map<String, dynamic>>()
-                      .map((l) => {
-                            'id': l['id'] as int,
-                            'title': l['title'] as String,
-                            'color': l['color'] as String,
-                          })
-                      .toList(),
-                });
+                cards.add(_buildCardCache(cardData));
               }
 
               columns.add({
@@ -260,21 +232,7 @@ class SyncServiceImpl implements SyncService {
         final cards = <Map<String, dynamic>>[];
 
         for (final cardData in cardsData.cast<Map<String, dynamic>>()) {
-          cards.add({
-            'id': cardData['id'] as int,
-            'title': cardData['title'] as String,
-            'description': cardData['description'] ?? '',
-            'duedate': _parseDueDate(cardData['duedate']),
-            'order': cardData['order'] as int?,
-            'labels': (cardData['labels'] as List? ?? [])
-                .cast<Map<String, dynamic>>()
-                .map((l) => {
-                      'id': l['id'] as int,
-                      'title': l['title'] as String,
-                      'color': l['color'] as String,
-                    })
-                .toList(),
-          });
+          cards.add(_buildCardCache(cardData));
         }
 
         columns.add({
@@ -302,5 +260,83 @@ class SyncServiceImpl implements SyncService {
       } catch (_) {}
     }
     return null;
+  }
+
+  int? _parseDoneDate(dynamic done) {
+    if (done == null || done == false) return null;
+    if (done is bool) return done ? 0 : null;
+    if (done is num) {
+      final v = done.toInt();
+      return v < 1000000000000 ? v * 1000 : v;
+    }
+    if (done is String) {
+      final trimmed = done.trim();
+      if (trimmed.isEmpty || trimmed == '0' || trimmed.toLowerCase() == 'false') {
+        return null;
+      }
+      if (trimmed == '1' || trimmed.toLowerCase() == 'true') return 0;
+      try {
+        return DateTime.parse(trimmed).toUtc().millisecondsSinceEpoch;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  List<Map<String, dynamic>> _normalizeAssignees(dynamic raw) {
+    if (raw is! List) return const [];
+    final out = <Map<String, dynamic>>[];
+    for (final item in raw) {
+      if (item is Map) {
+        Map<String, dynamic> data = item.cast<String, dynamic>();
+        final participant = data['participant'];
+        if (participant is Map) {
+          data = participant.cast<String, dynamic>();
+        }
+        final id = (data['uid'] ?? data['id'] ?? data['userId'] ?? data['userid'] ?? '').toString();
+        final label = (data['displayname'] ?? data['displayName'] ?? data['label'] ?? data['name'] ?? '').toString();
+        final displayName = label.isNotEmpty ? label : id;
+        if (id.isEmpty && displayName.isEmpty) continue;
+        final entry = <String, dynamic>{
+          'id': id,
+          'displayName': displayName,
+        };
+        final unique = data['shareWithDisplayNameUnique'] ?? data['unique'];
+        if (unique != null && unique.toString().isNotEmpty) {
+          entry['unique'] = unique;
+        }
+        if (data['shareType'] != null) {
+          entry['shareType'] = data['shareType'];
+        }
+        out.add(entry);
+      } else if (item is String || item is num) {
+        final id = item.toString();
+        if (id.isNotEmpty) {
+          out.add({'id': id, 'displayName': id});
+        }
+      }
+    }
+    return out;
+  }
+
+  Map<String, dynamic> _buildCardCache(Map<String, dynamic> cardData) {
+    final rawDone = cardData['done'] ?? cardData['doneDate'] ?? cardData['doneAt'];
+    final rawAssignees = cardData['assignedUsers'] ?? cardData['assigned'] ?? cardData['members'];
+    return {
+      'id': cardData['id'] as int,
+      'title': cardData['title'] as String,
+      'description': cardData['description'] ?? '',
+      'duedate': _parseDueDate(cardData['duedate']),
+      'done': _parseDoneDate(rawDone),
+      'order': cardData['order'] as int?,
+      'labels': (cardData['labels'] as List? ?? [])
+          .cast<Map<String, dynamic>>()
+          .map((l) => {
+                'id': l['id'] as int,
+                'title': l['title'] as String,
+                'color': l['color'] as String,
+              })
+          .toList(),
+      'assignedUsers': _normalizeAssignees(rawAssignees),
+    };
   }
 }

@@ -16,82 +16,8 @@ import 'board_search_page.dart';
 import '../theme/app_theme.dart';
 import '../l10n/app_localizations.dart';
 
-bool _isDoneTitle(String title) {
-  final t = title.toLowerCase();
-  const doneTokens = [
-    'done',
-    'erledigt',
-    'hecho',
-    'abgeschlossen',
-    'fertig',
-    'finished',
-    'completed',
-    'completado',
-    'geschlossen'
-  ];
-  for (final tok in doneTokens) {
-    if (t.contains(tok)) return true;
-  }
-  return false;
-}
-
 const TextStyle _destructiveActionTextStyle =
     TextStyle(color: CupertinoColors.white);
-
-int? _findDoneColumnId(List<deck.Column> cols) {
-  const preferred = [
-    'done',
-    'erledigt',
-    'abgeschlossen',
-    'fertig',
-    'finished',
-    'completed',
-    'hecho',
-    'completado',
-    'geschlossen'
-  ];
-  for (final p in preferred) {
-    for (final c in cols) {
-      if (c.title.toLowerCase().contains(p)) return c.id;
-    }
-  }
-  for (final c in cols) {
-    if (_isDoneTitle(c.title)) return c.id;
-  }
-  // Fallback: letzte Spalte als "Done" interpretieren
-  if (cols.isNotEmpty) return cols.last.id;
-  return null;
-}
-
-int? _findUndoneColumnId(List<deck.Column> cols) {
-  // Prefer ToDo-like columns first
-  const preferred = [
-    'to do',
-    'to-do',
-    'todo',
-    'offen',
-    'open',
-    'backlog',
-    'inbox',
-    'pendiente',
-    'por hacer',
-    'por-hacer',
-    'aufgaben'
-  ];
-  for (final p in preferred) {
-    for (final c in cols) {
-      final t = c.title.toLowerCase();
-      if (!_isDoneTitle(t) && t.contains(p)) return c.id;
-    }
-  }
-  // Fall back to first non-done column (usually left-most)
-  for (final c in cols) {
-    if (!_isDoneTitle(c.title)) return c.id;
-  }
-  // Absolute Fallback: erste Spalte
-  if (cols.isNotEmpty) return cols.first.id;
-  return null;
-}
 
 class BoardPage extends StatefulWidget {
   const BoardPage({super.key});
@@ -723,6 +649,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                     : () => widget.onTapCard!(card.id),
                                 background: bg,
                                 due: card.due,
+                                done: card.done,
                                 footer: _CardMetaRow(
                                     boardId: app.activeBoard?.id,
                                     stackId: widget.column.id,
@@ -900,6 +827,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                         onTap: null,
                                         background: bg,
                                         due: card.due,
+                                        done: card.done,
                                         footer: _CardMetaRow(
                                             boardId: app.activeBoard?.id,
                                             stackId: widget.column.id,
@@ -926,56 +854,24 @@ class _ColumnViewState extends State<_ColumnView> {
                                                     context.read<AppState>();
                                                 final boardId =
                                                     app.activeBoard?.id;
-                                                final cols =
-                                                    app.columnsForActiveBoard();
-                                                final isDoneCol = cols.any((c) =>
-                                                    c.id == widget.column.id &&
-                                                    (c.title
-                                                            .toLowerCase()
-                                                            .contains('done') ||
-                                                        c.title
-                                                            .toLowerCase()
-                                                            .contains(
-                                                                'erledigt')));
-                                                if (!isDoneCol) {
+                                                final isDone =
+                                                    card.done != null;
+                                                if (!isDone) {
                                                   items.add(
                                                       CupertinoActionSheetAction(
                                                     onPressed: () async {
                                                       Navigator.of(ctx).pop();
                                                       if (boardId == null)
                                                         return;
-                                                      final targetId =
-                                                          _findDoneColumnId(
-                                                              cols);
-                                                      if (targetId == null) {
-                                                        await showCupertinoDialog(
-                                                          context:
-                                                              rootNav.context,
-                                                          builder: (_) =>
-                                                              CupertinoAlertDialog(
-                                                                  title: Text(
-                                                                      l10n
-                                                                          .hint),
-                                                                  content: Text(
-                                                                      l10n.noDoneListFound),
-                                                                  actions: [
-                                                                CupertinoDialogAction(
-                                                                    onPressed: () =>
-                                                                        rootNav
-                                                                            .pop(),
-                                                                    child: Text(
-                                                                        l10n.ok)),
-                                                              ]),
-                                                        );
-                                                        return;
-                                                      }
+                                                      final doneAt =
+                                                          DateTime.now()
+                                                              .toUtc();
                                                       app.updateLocalCard(
                                                           boardId: boardId,
                                                           stackId:
                                                               widget.column.id,
                                                           cardId: card.id,
-                                                          moveToStackId:
-                                                              targetId);
+                                                          done: doneAt);
                                                       final base = app.baseUrl;
                                                       final user = app.username;
                                                       final pass = await app
@@ -995,10 +891,9 @@ class _ColumnViewState extends State<_ColumnView> {
                                                                       .id,
                                                                   cardId: card.id,
                                                                   patch: {
-                                                                'stackId':
-                                                                    targetId,
                                                                 'title':
-                                                                    card.title
+                                                                    card.title,
+                                                                'done': doneAt,
                                                               });
                                                         } catch (_) {}
                                                       }
@@ -1013,18 +908,12 @@ class _ColumnViewState extends State<_ColumnView> {
                                                       Navigator.of(ctx).pop();
                                                       if (boardId == null)
                                                         return;
-                                                      final targetId =
-                                                          _findUndoneColumnId(
-                                                              cols);
-                                                      if (targetId == null)
-                                                        return;
                                                       app.updateLocalCard(
                                                           boardId: boardId,
                                                           stackId:
                                                               widget.column.id,
                                                           cardId: card.id,
-                                                          moveToStackId:
-                                                              targetId);
+                                                          clearDone: true);
                                                       final base = app.baseUrl;
                                                       final user = app.username;
                                                       final pass = await app
@@ -1044,10 +933,9 @@ class _ColumnViewState extends State<_ColumnView> {
                                                                       .id,
                                                                   cardId: card.id,
                                                                   patch: {
-                                                                'stackId':
-                                                                    targetId,
                                                                 'title':
-                                                                    card.title
+                                                                    card.title,
+                                                                'done': null,
                                                               });
                                                         } catch (_) {}
                                                       }
@@ -1134,6 +1022,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                             : () => widget.onTapCard!(card.id),
                                         background: bg,
                                         due: card.due,
+                                        done: card.done,
                                         footer: _CardMetaRow(
                                             boardId: app.activeBoard?.id,
                                             stackId: widget.column.id,
@@ -1192,6 +1081,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                   : () => widget.onTapCard!(card.id),
                               background: bg,
                               due: card.due,
+                              done: card.done,
                               footer: _CardMetaRow(
                                   boardId: app.activeBoard?.id,
                                   stackId: widget.column.id,
@@ -1388,6 +1278,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                           onTap: null,
                                           background: bg,
                                           due: card.due,
+                                          done: card.done,
                                           footer: _CardMetaRow(
                                               boardId: app.activeBoard?.id,
                                               stackId: widget.column.id,
@@ -1427,6 +1318,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                             : () => widget.onTapCard!(card.id),
                                         background: bg,
                                         due: card.due,
+                                        done: card.done,
                                         footer: _CardMetaRow(
                                             boardId: app.activeBoard?.id,
                                             stackId: widget.column.id,
@@ -1447,20 +1339,9 @@ class _ColumnViewState extends State<_ColumnView> {
                                                 ...() {
                                                   final app =
                                                       context.read<AppState>();
-                                                  final cols = app
-                                                      .columnsForActiveBoard();
-                                                  final isDoneCol = cols.any((c) =>
-                                                      c.id ==
-                                                          widget.column.id &&
-                                                      (c.title
-                                                              .toLowerCase()
-                                                              .contains(
-                                                                  'done') ||
-                                                          c.title
-                                                              .toLowerCase()
-                                                              .contains(
-                                                                  'erledigt')));
-                                                  if (!isDoneCol) {
+                                                  final isDone =
+                                                      card.done != null;
+                                                  if (!isDone) {
                                                     return [
                                                       CupertinoActionSheetAction(
                                                         onPressed: () async {
@@ -1470,42 +1351,15 @@ class _ColumnViewState extends State<_ColumnView> {
                                                               .activeBoard?.id;
                                                           if (boardId == null)
                                                             return;
-                                                          int? targetId =
-                                                              _findDoneColumnId(
-                                                                  cols);
-                                                          targetId ??=
-                                                              cols.isNotEmpty
-                                                                  ? cols.last.id
-                                                                  : null;
-                                                          if (targetId ==
-                                                              null) {
-                                                            await showCupertinoDialog(
-                                                              context: rootNav
-                                                                  .context,
-                                                              builder: (_) => CupertinoAlertDialog(
-                                                                  title: Text(
-                                                                      l10n
-                                                                          .hint),
-                                                                  content: Text(
-                                                                      l10n.noDoneListFound),
-                                                                  actions: [
-                                                                    CupertinoDialogAction(
-                                                                        onPressed: () =>
-                                                                            rootNav
-                                                                                .pop(),
-                                                                        child: Text(
-                                                                            l10n.ok)),
-                                                                  ]),
-                                                            );
-                                                            return;
-                                                          }
+                                                          final doneAt =
+                                                              DateTime.now()
+                                                                  .toUtc();
                                                           app.updateLocalCard(
                                                               boardId: boardId,
                                                               stackId: widget
                                                                   .column.id,
                                                               cardId: card.id,
-                                                              moveToStackId:
-                                                                  targetId);
+                                                              done: doneAt);
                                                           final base =
                                                               app.baseUrl;
                                                           final user =
@@ -1527,10 +1381,10 @@ class _ColumnViewState extends State<_ColumnView> {
                                                                       .id,
                                                                   cardId: card.id,
                                                                   patch: {
-                                                                    'stackId':
-                                                                        targetId,
                                                                     'title': card
-                                                                        .title
+                                                                        .title,
+                                                                    'done':
+                                                                        doneAt,
                                                                   });
                                                             } catch (_) {}
                                                           }
@@ -1549,22 +1403,12 @@ class _ColumnViewState extends State<_ColumnView> {
                                                               .activeBoard?.id;
                                                           if (boardId == null)
                                                             return;
-                                                          int? targetId =
-                                                              _findUndoneColumnId(
-                                                                  cols);
-                                                          targetId ??= cols
-                                                                  .isNotEmpty
-                                                              ? cols.first.id
-                                                              : null;
-                                                          if (targetId == null)
-                                                            return;
                                                           app.updateLocalCard(
                                                               boardId: boardId,
                                                               stackId: widget
                                                                   .column.id,
                                                               cardId: card.id,
-                                                              moveToStackId:
-                                                                  targetId);
+                                                              clearDone: true);
                                                           final base =
                                                               app.baseUrl;
                                                           final user =
@@ -1586,10 +1430,9 @@ class _ColumnViewState extends State<_ColumnView> {
                                                                       .id,
                                                                   cardId: card.id,
                                                                   patch: {
-                                                                    'stackId':
-                                                                        targetId,
                                                                     'title': card
-                                                                        .title
+                                                                        .title,
+                                                                    'done': null,
                                                                   });
                                                             } catch (_) {}
                                                           }
@@ -1711,6 +1554,7 @@ class _CardTile extends StatelessWidget {
   final List<Label> labels;
   final List<UserRef> assignees;
   final DateTime? due;
+  final DateTime? done;
   final VoidCallback? onMoveUp;
   final VoidCallback? onMoveDown;
   final Widget? footer;
@@ -1723,6 +1567,7 @@ class _CardTile extends StatelessWidget {
       this.labels = const [],
       this.assignees = const [],
       this.due,
+      this.done,
       this.onMoveUp,
       this.onMoveDown,
       this.footer,
@@ -1778,6 +1623,15 @@ class _CardTile extends StatelessWidget {
                         color: textColor),
                   ),
                 ),
+                if (done != null)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6, top: 2),
+                    child: Icon(
+                      CupertinoIcons.checkmark_seal_fill,
+                      size: 18,
+                      color: CupertinoColors.systemGreen,
+                    ),
+                  ),
                 if (onMore != null)
                   CupertinoButton(
                     padding: const EdgeInsets.all(4),
@@ -2422,44 +2276,19 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                 final app =
                                                                     context.read<
                                                                         AppState>();
-                                                                final cols = app
-                                                                    .columnsForBoard(
-                                                                        widget
-                                                                            .boardId);
-                                                                final isDoneCol = (c
-                                                                        .title
-                                                                        .toLowerCase()
-                                                                        .contains(
-                                                                            'done') ||
-                                                                    c.title
-                                                                        .toLowerCase()
-                                                                        .contains(
-                                                                            'erledigt'));
-                                                                if (!isDoneCol) {
+                                                                final isDone =
+                                                                    card.done !=
+                                                                        null;
+                                                                if (!isDone) {
                                                                   return [
                                                                     CupertinoActionSheetAction(
                                                                       onPressed:
                                                                           () async {
                                                                         Navigator.of(ctx)
                                                                             .pop();
-                                                                        int?
-                                                                            targetId =
-                                                                            _findDoneColumnId(cols);
-                                                                        targetId ??= cols.isNotEmpty
-                                                                            ? cols.last.id
-                                                                            : null;
-                                                                        if (targetId ==
-                                                                            null) {
-                                                                          await showCupertinoDialog(
-                                                                            context:
-                                                                                rootNav.context,
-                                                                            builder: (_) =>
-                                                                                CupertinoAlertDialog(title: Text(l10n.hint), content: Text(l10n.noDoneListFound), actions: [
-                                                                              CupertinoDialogAction(onPressed: () => rootNav.pop(), child: Text(l10n.ok)),
-                                                                            ]),
-                                                                          );
-                                                                          return;
-                                                                        }
+                                                                        final doneAt =
+                                                                            DateTime.now()
+                                                                                .toUtc();
                                                                         final boardId =
                                                                             widget.boardId;
                                                                         app.updateLocalCard(
@@ -2468,7 +2297,7 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                             stackId:
                                                                                 c.id,
                                                                             cardId: card.id,
-                                                                            moveToStackId: targetId);
+                                                                            done: doneAt);
                                                                         final base =
                                                                             app.baseUrl;
                                                                         final user =
@@ -2483,8 +2312,8 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                                 null) {
                                                                           try {
                                                                             await app.updateCardAndRefresh(boardId: boardId, stackId: c.id, cardId: card.id, patch: {
-                                                                              'stackId': targetId,
-                                                                              'title': card.title
+                                                                              'title': card.title,
+                                                                              'done': doneAt,
                                                                             });
                                                                           } catch (_) {}
                                                                         }
@@ -2500,15 +2329,6 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                           () async {
                                                                         Navigator.of(ctx)
                                                                             .pop();
-                                                                        int?
-                                                                            targetId =
-                                                                            _findUndoneColumnId(cols);
-                                                                        targetId ??= cols.isNotEmpty
-                                                                            ? cols.first.id
-                                                                            : null;
-                                                                        if (targetId ==
-                                                                            null)
-                                                                          return;
                                                                         final boardId =
                                                                             widget.boardId;
                                                                         app.updateLocalCard(
@@ -2517,7 +2337,7 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                             stackId:
                                                                                 c.id,
                                                                             cardId: card.id,
-                                                                            moveToStackId: targetId);
+                                                                            clearDone: true);
                                                                         final base =
                                                                             app.baseUrl;
                                                                         final user =
@@ -2532,8 +2352,8 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                                 null) {
                                                                           try {
                                                                             await app.updateCardAndRefresh(boardId: boardId, stackId: c.id, cardId: card.id, patch: {
-                                                                              'stackId': targetId,
-                                                                              'title': card.title
+                                                                              'title': card.title,
+                                                                              'done': null,
                                                                             });
                                                                           } catch (_) {}
                                                                         }
@@ -2638,6 +2458,7 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                         )),
                                                         background: tileBg,
                                                         due: card.due,
+                                                        done: card.done,
                                                         footer: _CardMetaRow(
                                                             boardId:
                                                                 widget.boardId,
@@ -2662,84 +2483,105 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                             builder: (ctx) =>
                                                                 CupertinoActionSheet(
                                                               actions: [
-                                                                CupertinoActionSheetAction(
-                                                                  onPressed:
-                                                                      () async {
-                                                                    Navigator.of(
-                                                                            ctx)
-                                                                        .pop();
-                                                                    // Move to Done/Erledigt within this board view
-                                                                    final app =
-                                                                        context.read<
-                                                                            AppState>();
-                                                                    final cols =
-                                                                        app.columnsForBoard(
-                                                                            widget.boardId);
-                                                                    int?
-                                                                        targetId =
-                                                                        _findDoneColumnId(
-                                                                            cols);
-                                                                    targetId ??= cols
-                                                                            .isNotEmpty
-                                                                        ? cols
-                                                                            .last
-                                                                            .id
-                                                                        : null;
-                                                                    if (targetId ==
-                                                                        null) {
-                                                                      await showCupertinoDialog(
-                                                                        context:
-                                                                            rootNav.context,
-                                                                        builder: (_) => CupertinoAlertDialog(
-                                                                            title:
-                                                                                Text(l10n.hint),
-                                                                            content: Text(l10n.noDoneListFound),
-                                                                            actions: [
-                                                                              CupertinoDialogAction(onPressed: () => rootNav.pop(), child: Text(l10n.ok)),
-                                                                            ]),
-                                                                      );
-                                                                      return;
-                                                                    }
-                                                                    app.updateLocalCard(
-                                                                        boardId:
-                                                                            widget
-                                                                                .boardId,
-                                                                        stackId: c
-                                                                            .id,
-                                                                        cardId: card
-                                                                            .id,
-                                                                        moveToStackId:
-                                                                            targetId);
-                                                                    final base =
-                                                                        app.baseUrl;
-                                                                    final user =
-                                                                        app.username;
-                                                                    final pass = await app
-                                                                        .storage
-                                                                        .read(
-                                                                            key:
-                                                                                'password');
-                                                                    if (base != null &&
-                                                                        user !=
-                                                                            null &&
-                                                                        pass !=
-                                                                            null) {
-                                                                      try {
-                                                                        await app.updateCardAndRefresh(
-                                                                            boardId:
-                                                                                widget.boardId,
-                                                                            stackId: c.id,
-                                                                            cardId: card.id,
-                                                                            patch: {
-                                                                              'stackId': targetId,
-                                                                              'title': card.title
-                                                                            });
-                                                                      } catch (_) {}
-                                                                    }
-                                                                  },
-                                                                  child: Text(l10n
-                                                                      .markDone),
-                                                                ),
+                                                                if (card.done ==
+                                                                    null)
+                                                                  CupertinoActionSheetAction(
+                                                                    onPressed:
+                                                                        () async {
+                                                                      Navigator.of(
+                                                                              ctx)
+                                                                          .pop();
+                                                                      final doneAt =
+                                                                          DateTime.now()
+                                                                              .toUtc();
+                                                                      final app =
+                                                                          context.read<AppState>();
+                                                                      app.updateLocalCard(
+                                                                          boardId:
+                                                                              widget.boardId,
+                                                                          stackId: c
+                                                                              .id,
+                                                                          cardId: card
+                                                                              .id,
+                                                                          done: doneAt);
+                                                                      final base =
+                                                                          app.baseUrl;
+                                                                      final user =
+                                                                          app.username;
+                                                                      final pass = await app
+                                                                          .storage
+                                                                          .read(
+                                                                              key:
+                                                                                  'password');
+                                                                      if (base != null &&
+                                                                          user !=
+                                                                              null &&
+                                                                          pass !=
+                                                                              null) {
+                                                                        try {
+                                                                          await app.updateCardAndRefresh(
+                                                                              boardId:
+                                                                                  widget.boardId,
+                                                                              stackId: c.id,
+                                                                              cardId: card.id,
+                                                                              patch: {
+                                                                                'title': card.title,
+                                                                                'done': doneAt,
+                                                                              });
+                                                                        } catch (_) {}
+                                                                      }
+                                                                    },
+                                                                    child: Text(l10n
+                                                                        .markDone),
+                                                                  )
+                                                                else
+                                                                  CupertinoActionSheetAction(
+                                                                    onPressed:
+                                                                        () async {
+                                                                      Navigator.of(
+                                                                              ctx)
+                                                                          .pop();
+                                                                      final app =
+                                                                          context.read<AppState>();
+                                                                      app.updateLocalCard(
+                                                                          boardId:
+                                                                              widget.boardId,
+                                                                          stackId: c
+                                                                              .id,
+                                                                          cardId: card
+                                                                              .id,
+                                                                          clearDone:
+                                                                              true);
+                                                                      final base =
+                                                                          app.baseUrl;
+                                                                      final user =
+                                                                          app.username;
+                                                                      final pass = await app
+                                                                          .storage
+                                                                          .read(
+                                                                              key:
+                                                                                  'password');
+                                                                      if (base != null &&
+                                                                          user !=
+                                                                              null &&
+                                                                          pass !=
+                                                                              null) {
+                                                                        try {
+                                                                          await app.updateCardAndRefresh(
+                                                                              boardId:
+                                                                                  widget.boardId,
+                                                                              stackId: c.id,
+                                                                              cardId: card.id,
+                                                                              patch: {
+                                                                                'title': card.title,
+                                                                                'done': null,
+                                                                              });
+                                                                        } catch (_) {}
+                                                                      }
+                                                                    },
+                                                                    child: Text(l10n
+                                                                        .markUndone),
+                                                                  ),
                                                                 CupertinoActionSheetAction(
                                                                   isDestructiveAction:
                                                                       true,

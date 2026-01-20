@@ -1329,6 +1329,17 @@ class AppState extends ChangeNotifier {
     return false;
   }
 
+  CardItem? _findCardInBoard(int boardId, int cardId) {
+    final cols = _columnsByBoard[boardId];
+    if (cols == null) return null;
+    for (final c in cols) {
+      for (final card in c.cards) {
+        if (card.id == cardId) return card;
+      }
+    }
+    return null;
+  }
+
   final Set<int> _stackLoading = {};
   final Set<int> _stackLoaded = {};
   // Prevent concurrent/redundant stacks fetches per board across different code paths
@@ -1388,6 +1399,8 @@ class AppState extends ChangeNotifier {
           payload['description'] = card.description;
         if (card.due != null)
           payload['duedate'] = card.due!.toUtc().toIso8601String();
+        if (card.done != null)
+          payload['done'] = card.done!.toUtc().toIso8601String();
         if (card.labels.isNotEmpty)
           payload['labels'] = card.labels.map((l) => l.id).toList();
         if (card.assignees.isNotEmpty)
@@ -1726,10 +1739,31 @@ class AppState extends ChangeNotifier {
   }) async {
     if (_localMode) return; // local-only mode: callers already did optimistic update
     if (_baseUrl == null || _username == null || _password == null) return;
+    final effectivePatch = Map<String, dynamic>.from(patch);
+    if (!effectivePatch.containsKey('done')) {
+      final local = _findCardInBoard(boardId, cardId);
+      if (local?.done != null) {
+        effectivePatch['done'] = local!.done!.toUtc().toIso8601String();
+      }
+    }
     try {
       await api.updateCard(
-          _baseUrl!, _username!, _password!, boardId, stackId, cardId, patch);
+          _baseUrl!, _username!, _password!, boardId, stackId, cardId, effectivePatch);
       // Apply successful server response locally to ensure consistency
+      final doneValue = () {
+        if (!effectivePatch.containsKey('done')) return null;
+        final v = effectivePatch['done'];
+        if (v == null || v == false) return null;
+        if (v is DateTime) return v.toLocal();
+        if (v is int) {
+          final ts = v > 100000000000 ? v ~/ 1000 : v;
+          return DateTime.fromMillisecondsSinceEpoch(ts * 1000, isUtc: true)
+              .toLocal();
+        }
+        if (v is String) return DateTime.tryParse(v)?.toLocal();
+        return null;
+      }();
+      final clearDone = effectivePatch.containsKey('done') && doneValue == null;
       updateLocalCard(
         boardId: boardId,
         stackId: stackId,
@@ -1738,6 +1772,8 @@ class AppState extends ChangeNotifier {
         description: patch['description'] as String?,
         due: patch['duedate'] != null ? DateTime.parse(patch['duedate'] as String) : null,
         clearDue: patch.containsKey('duedate') && patch['duedate'] == null,
+        done: doneValue,
+        clearDone: clearDone,
       );
     } catch (e) {
       // API call failed, but keep local optimistic update
@@ -1841,6 +1877,7 @@ class AppState extends ChangeNotifier {
                         'title': k.title,
                         'description': k.description,
                         'duedate': k.due?.toUtc().millisecondsSinceEpoch,
+                        'done': k.done?.toUtc().millisecondsSinceEpoch,
                         'order': k.order, // Save card order to cache
                         'assignedUsers': k.assignees
                             .map((u) => {
@@ -1889,6 +1926,12 @@ class AppState extends ChangeNotifier {
             due =
                 DateTime.fromMillisecondsSinceEpoch(dd, isUtc: true).toLocal();
           }
+          DateTime? done;
+          final dn = k['done'];
+          if (dn is int) {
+            done =
+                DateTime.fromMillisecondsSinceEpoch(dn, isUtc: true).toLocal();
+          }
           final assignees = <UserRef>[];
           final rawAssignees = k['assignedUsers'];
           if (rawAssignees is List) {
@@ -1906,6 +1949,7 @@ class AppState extends ChangeNotifier {
             title: (k['title'] ?? '').toString(),
             description: (k['description'] as String?),
             due: due,
+            done: done,
             assignees: assignees,
             labels: ((k['labels'] as List?) ?? const [])
                 .whereType<Map>()
@@ -1955,7 +1999,8 @@ class AppState extends ChangeNotifier {
           description: description,
           labels: const [],
           assignees: const [],
-          due: null);
+          due: null,
+          done: null);
       final updated = [
         for (final c in cols)
           if (c.id == columnId)
@@ -2038,6 +2083,8 @@ class AppState extends ChangeNotifier {
     String? description,
     DateTime? due,
     bool clearDue = false,
+    DateTime? done,
+    bool clearDone = false,
     int? moveToStackId,
     int? insertIndex,
     List<Label>? setLabels,
@@ -2068,6 +2115,7 @@ class AppState extends ChangeNotifier {
       title: title ?? current.title,
       description: description ?? current.description,
       due: clearDue ? null : (due ?? current.due),
+      done: clearDone ? null : (done ?? current.done),
       labels: setLabels ?? current.labels,
       assignees: setAssignees ?? current.assignees,
       order: current.order, // Preserve card order
@@ -2159,6 +2207,7 @@ class AppState extends ChangeNotifier {
         title: card.title,
         description: card.description,
         due: card.due,
+        done: card.done,
         labels: card.labels,
         assignees: card.assignees,
         order: i + 1, // Update order to match new position

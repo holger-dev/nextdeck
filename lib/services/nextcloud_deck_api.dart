@@ -1946,6 +1946,18 @@ class NextcloudDeckApi {
         payload['duedate'] = null;
       }
     }
+    if (payload.containsKey('done')) {
+      final v = payload['done'];
+      if (v is DateTime) {
+        payload['done'] = v.toUtc().toIso8601String();
+      } else if (v is int) {
+        final ts = v > 100000000000 ? v ~/ 1000 : v;
+        payload['done'] = DateTime.fromMillisecondsSinceEpoch(ts * 1000, isUtc: true)
+            .toIso8601String();
+      } else if (v == null) {
+        payload['done'] = null;
+      }
+    }
 
     Future<http.Response?> trySend(
         String method, String path, Map<String, dynamic> body) async {
@@ -2216,6 +2228,9 @@ class NextcloudDeckApi {
           if (card.due != null) {
             fallbackPatch['duedate'] = card.due!.toUtc().toIso8601String();
           }
+          if (card.done != null) {
+            fallbackPatch['done'] = card.done!.toUtc().toIso8601String();
+          }
           if (card.labels.isNotEmpty) {
             fallbackPatch['labels'] = card.labels.map((l) => l.id).toList();
           }
@@ -2247,6 +2262,9 @@ class NextcloudDeckApi {
             }
             if (card.due != null) {
               directPayload['duedate'] = card.due!.toUtc().toIso8601String();
+            }
+            if (card.done != null) {
+              directPayload['done'] = card.done!.toUtc().toIso8601String();
             }
             if (card.labels.isNotEmpty) {
               directPayload['labels'] = card.labels.map((l) => l.id).toList();
@@ -2287,6 +2305,8 @@ class NextcloudDeckApi {
         'description': local.description,
       if (local != null && local.due != null)
         'duedate': local.due!.toUtc().toIso8601String(),
+      if (local != null && local.done != null)
+        'done': local.done!.toUtc().toIso8601String(),
       if (local != null && local.labels.isNotEmpty)
         'labels': local.labels.map((l) => l.id).toList(),
       if (local != null && local.assignees.isNotEmpty)
@@ -2331,6 +2351,18 @@ class NextcloudDeckApi {
         payload['duedate'] =
             DateTime.fromMillisecondsSinceEpoch(v * 1000, isUtc: true)
                 .toIso8601String();
+      }
+    }
+    if (payload.containsKey('done')) {
+      final v = payload['done'];
+      if (v is DateTime) {
+        payload['done'] = v.toUtc().toIso8601String();
+      } else if (v is int) {
+        final ts = v > 100000000000 ? v ~/ 1000 : v;
+        payload['done'] = DateTime.fromMillisecondsSinceEpoch(ts * 1000, isUtc: true)
+            .toIso8601String();
+      } else if (v == null) {
+        payload['done'] = null;
       }
     }
     final path =
