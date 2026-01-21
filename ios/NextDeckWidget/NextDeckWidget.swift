@@ -406,7 +406,7 @@ struct UpcomingLargeWidgetView: View {
       }
     }
     let sorted = filtered.sorted(by: sortCards(_:_:))
-    return Array(sorted.prefix(8))
+    return Array(sorted.prefix(16))
   }
 
   private func cardColumn(_ cards: [WidgetCard]) -> some View {
