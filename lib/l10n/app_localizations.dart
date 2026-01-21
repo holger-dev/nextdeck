@@ -435,6 +435,96 @@ class L10n {
       : _isEs
           ? 'No hay tableros cargados.'
           : 'No boards loaded.';
+  String get boardActions => _isDe
+      ? 'Board-Aktionen'
+      : _isEs
+          ? 'Acciones del tablero'
+          : 'Board actions';
+  String get changeBoardColor => _isDe
+      ? 'Board-Farbe ändern'
+      : _isEs
+          ? 'Cambiar color del tablero'
+          : 'Change board color';
+  String get pickColor => _isDe
+      ? 'Farbe auswählen'
+      : _isEs
+          ? 'Seleccionar color'
+          : 'Pick a color';
+  String get boardColorDefault => _isDe
+      ? 'Standardfarbe'
+      : _isEs
+          ? 'Color estándar'
+          : 'Default color';
+  String get newBoard => _isDe
+      ? 'Neues Board'
+      : _isEs
+          ? 'Nuevo tablero'
+          : 'New board';
+  String get newColumn => _isDe
+      ? 'Neue Spalte'
+      : _isEs
+          ? 'Nueva columna'
+          : 'New column';
+  String get reorderColumns => _isDe
+      ? 'Spalten sortieren'
+      : _isEs
+          ? 'Ordenar columnas'
+          : 'Reorder columns';
+  String reorderColumnsFor(String title) => _isDe
+      ? 'Spalten: $title'
+      : _isEs
+          ? 'Columnas: $title'
+          : 'Columns: $title';
+  String get selectBoard => _isDe
+      ? 'Board auswählen'
+      : _isEs
+          ? 'Seleccionar tablero'
+          : 'Select board';
+  String get boardTitlePlaceholder => _isDe
+      ? 'Board-Titel'
+      : _isEs
+          ? 'Título del tablero'
+          : 'Board title';
+  String get columnTitlePlaceholder => _isDe
+      ? 'Spalten-Titel'
+      : _isEs
+          ? 'Título de columna'
+          : 'Column title';
+  String get deleteColumn => _isDe
+      ? 'Spalte löschen'
+      : _isEs
+          ? 'Eliminar columna'
+          : 'Delete column';
+  String deleteColumnQuestion(String title) => _isDe
+      ? 'Spalte "$title" wirklich löschen?'
+      : _isEs
+          ? '¿Eliminar la columna "$title"?'
+          : 'Delete column "$title"?';
+  String get columnDeleteFailed => _isDe
+      ? 'Spalte konnte nicht gelöscht werden'
+      : _isEs
+          ? 'No se pudo eliminar la columna'
+          : 'Column could not be deleted';
+  String get boardCreateFailed => _isDe
+      ? 'Board konnte nicht erstellt werden'
+      : _isEs
+          ? 'No se pudo crear el tablero'
+          : 'Board could not be created';
+  String get boardUpdateFailed => _isDe
+      ? 'Board konnte nicht aktualisiert werden'
+      : _isEs
+          ? 'No se pudo actualizar el tablero'
+          : 'Board could not be updated';
+  String get columnCreateFailed => _isDe
+      ? 'Spalte konnte nicht erstellt werden'
+      : _isEs
+          ? 'No se pudo crear la columna'
+          : 'Column could not be created';
+  String get noColumnsLoaded => _isDe
+      ? 'Keine Spalten geladen.'
+      : _isEs
+          ? 'No hay columnas cargadas.'
+          : 'No columns loaded.';
   String get activeBoard => _isDe
       ? 'Standard Board'
       : _isEs

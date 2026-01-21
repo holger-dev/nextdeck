@@ -9,6 +9,7 @@ import '../models/column.dart' as deck;
 import '../theme/app_theme.dart';
 import '../l10n/app_localizations.dart';
 import 'board_search_page.dart';
+import 'stack_reorder_page.dart';
 
 class OverviewPage extends StatefulWidget {
   const OverviewPage({super.key});
@@ -20,10 +21,23 @@ class OverviewPage extends StatefulWidget {
 class _OverviewPageState extends State<OverviewPage> {
   bool _hiddenExpanded = false;
   bool _archivedExpanded = false;
+  bool _actionsExpanded = false;
   final ScrollController _scroll = ScrollController();
   bool _showSearch = false;
   String _query = '';
   final FocusNode _searchFocus = FocusNode();
+  static const _boardColors = [
+    '1E88E5',
+    '43A047',
+    'F4511E',
+    '8E24AA',
+    '00ACC1',
+    '3949AB',
+    'D81B60',
+    '5E35B1',
+    '00897B',
+    'EF6C00',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -86,9 +100,11 @@ class _OverviewPageState extends State<OverviewPage> {
                 ),
                 const SizedBox(height: 12),
               ],
+              ..._buildBoardActions(context, app),
             if (app.boards.isEmpty) ...[
               Text(L10n.of(context).noBoardsLoaded),
             ] else if (app.activeBoard != null) ...[
+              const SizedBox(height: 8),
               if (_query.isEmpty || app.activeBoard!.title.toLowerCase().contains(_query.toLowerCase())) ...[
                 Text(L10n.of(context).activeBoard, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 12),
@@ -180,6 +196,259 @@ class _OverviewPageState extends State<OverviewPage> {
         ),
       ),
     ),
+    );
+  }
+
+  List<Widget> _buildBoardActions(BuildContext context, AppState app) {
+    final l10n = L10n.of(context);
+    return [
+      GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() => _actionsExpanded = !_actionsExpanded),
+        child: Row(
+          children: [
+            Icon(
+                _actionsExpanded
+                    ? CupertinoIcons.chevron_down
+                    : CupertinoIcons.chevron_right,
+                size: 16,
+                color: CupertinoColors.systemGrey),
+            const SizedBox(width: 6),
+            Text(l10n.boardActions,
+                style: const TextStyle(
+                    fontSize: 16, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+      if (_actionsExpanded) ...[
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(
+            color: CupertinoTheme.of(context)
+                .barBackgroundColor
+                .withOpacity(app.isDarkMode ? 0.25 : 0.7),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: CupertinoColors.separator),
+          ),
+          child: Column(
+            children: [
+              _ActionRow(
+                icon: CupertinoIcons.plus_circled,
+                label: l10n.newBoard,
+                onTap: () => _createBoard(context),
+              ),
+              const _ActionDivider(),
+              _ActionRow(
+                icon: CupertinoIcons.square_list,
+                label: l10n.newColumn,
+                onTap: () => _createColumn(context),
+              ),
+              const _ActionDivider(),
+              _ActionRow(
+                icon: CupertinoIcons.arrow_up_arrow_down_circle,
+                label: l10n.reorderColumns,
+                onTap: () => _reorderColumns(context),
+              ),
+              const _ActionDivider(),
+              _ActionRow(
+                icon: CupertinoIcons.paintbrush,
+                label: l10n.changeBoardColor,
+                onTap: () => _changeBoardColor(context),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+      ],
+    ];
+  }
+
+  Future<void> _createBoard(BuildContext context) async {
+    final l10n = L10n.of(context);
+    final title = await _promptForText(
+      context,
+      title: l10n.newBoard,
+      placeholder: l10n.boardTitlePlaceholder,
+    );
+    if (title == null) return;
+    final color = await _pickBoardColor(context, allowSkip: true);
+    if (color == null) return;
+    final app = context.read<AppState>();
+    final created =
+        await app.createBoard(title: title, color: color.isEmpty ? null : color);
+    if (created == null) {
+      _showInfoDialog(context,
+          title: l10n.errorMsg(l10n.boardCreateFailed));
+    }
+  }
+
+  Future<void> _createColumn(BuildContext context) async {
+    final app = context.read<AppState>();
+    final l10n = L10n.of(context);
+    final board = await _pickBoard(context, title: l10n.selectBoard);
+    if (board == null) return;
+    final title = await _promptForText(
+      context,
+      title: l10n.newColumn,
+      placeholder: l10n.columnTitlePlaceholder,
+    );
+    if (title == null) return;
+    final ok = await app.createStack(boardId: board.id, title: title);
+    if (ok) {
+      await app.refreshSingleBoard(board.id);
+    } else {
+      _showInfoDialog(context,
+          title: l10n.errorMsg(l10n.columnCreateFailed));
+    }
+  }
+
+  Future<void> _reorderColumns(BuildContext context) async {
+    final l10n = L10n.of(context);
+    final board = await _pickBoard(context, title: l10n.selectBoard);
+    if (board == null) return;
+    if (context.mounted) {
+      Navigator.of(context).push(CupertinoPageRoute(
+          builder: (_) =>
+              StackReorderPage(boardId: board.id, boardTitle: board.title)));
+    }
+  }
+
+  Future<void> _changeBoardColor(BuildContext context) async {
+    final l10n = L10n.of(context);
+    final board = await _pickBoard(context, title: l10n.selectBoard);
+    if (board == null) return;
+    final color = await _pickBoardColor(context, allowSkip: false);
+    if (color == null) return;
+    final app = context.read<AppState>();
+    final ok =
+        await app.updateBoardColor(boardId: board.id, color: color);
+    if (!ok) {
+      _showInfoDialog(context,
+          title: l10n.errorMsg(l10n.boardUpdateFailed));
+    }
+  }
+
+  Future<String?> _promptForText(BuildContext context,
+      {required String title, String? placeholder}) async {
+    final controller = TextEditingController();
+    final l10n = L10n.of(context);
+    return showCupertinoModalPopup<String>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(title),
+        message: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: CupertinoTextField(
+            controller: controller,
+            placeholder: placeholder ?? l10n.title,
+            autofocus: true,
+          ),
+        ),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              final text = controller.text.trim();
+              if (text.isEmpty) return;
+              Navigator.of(ctx).pop(text);
+            },
+            child: Text(l10n.create),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(ctx).pop(),
+          isDefaultAction: true,
+          child: Text(l10n.cancel),
+        ),
+      ),
+    );
+  }
+
+  Future<Board?> _pickBoard(BuildContext context,
+      {required String title}) async {
+    final app = context.read<AppState>();
+    final l10n = L10n.of(context);
+    final boards =
+        app.boards.where((b) => !b.archived).toList(growable: false);
+    if (boards.isEmpty) {
+      _showInfoDialog(context,
+          title: l10n.errorMsg(l10n.noBoardsLoaded));
+      return null;
+    }
+    return showCupertinoModalPopup<Board>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(title),
+        actions: boards
+            .map((b) => CupertinoActionSheetAction(
+                  onPressed: () => Navigator.of(ctx).pop(b),
+                  child: Text(b.title),
+                ))
+            .toList(),
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(ctx).pop(),
+          isDefaultAction: true,
+          child: Text(l10n.cancel),
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _pickBoardColor(BuildContext context,
+      {required bool allowSkip}) async {
+    final l10n = L10n.of(context);
+    return showCupertinoModalPopup<String>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(l10n.pickColor),
+        actions: [
+          if (allowSkip)
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(ctx).pop(''),
+              child: Text(l10n.boardColorDefault),
+            ),
+          for (final hex in _boardColors)
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(ctx).pop(hex),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: Color(int.parse('FF$hex', radix: 16)),
+                      borderRadius: BorderRadius.circular(7),
+                      border: Border.all(color: CupertinoColors.separator),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('#$hex'),
+                ],
+              ),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(ctx).pop(),
+          isDefaultAction: true,
+          child: Text(l10n.cancel),
+        ),
+      ),
+    );
+  }
+
+  void _showInfoDialog(BuildContext context, {required String title}) {
+    final l10n = L10n.of(context);
+    showCupertinoDialog<void>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text(title),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(l10n.ok),
+          ),
+        ],
+      ),
     );
   }
 
@@ -292,6 +561,47 @@ class _OverviewPageState extends State<OverviewPage> {
         ),
       ],
     ];
+  }
+}
+
+class _ActionRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _ActionRow(
+      {required this.icon, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: CupertinoColors.systemGrey),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(label,
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.w600)),
+            ),
+            const Icon(CupertinoIcons.chevron_right,
+                size: 16, color: CupertinoColors.systemGrey),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActionDivider extends StatelessWidget {
+  const _ActionDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(height: 1, color: CupertinoColors.separator);
   }
 }
 

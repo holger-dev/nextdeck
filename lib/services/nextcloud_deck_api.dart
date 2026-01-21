@@ -446,6 +446,33 @@ class NextcloudDeckApi {
     return null;
   }
 
+  Future<bool> updateBoard(String baseUrl, String user, String pass, int boardId,
+      {required String title, required String color, required bool archived}) async {
+    final body = jsonEncode(
+        {'title': title, 'color': color, 'archived': archived});
+    final headers = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'authorization': _basicAuth(user, pass)
+    };
+    final paths = <String>[
+      '/apps/deck/api/v1.1/boards/$boardId',
+      '/apps/deck/api/v1.0/boards/$boardId',
+    ];
+    http.Response? last;
+    for (final p in paths) {
+      for (final withIndex in [false, true]) {
+        try {
+          last = await _send(
+              'PUT', _buildUri(baseUrl, p, withIndex), headers,
+              body: body);
+          if (_isOk(last!)) return true;
+        } catch (_) {}
+      }
+    }
+    return false;
+  }
+
   Future<List<Map<String, dynamic>>> fetchBoardsRaw(
       String baseUrl, String username, String password) async {
     final res =
@@ -1029,6 +1056,115 @@ class NextcloudDeckApi {
       }
     }
     return null;
+  }
+
+  Future<bool> updateStack(String baseUrl, String user, String pass, int boardId,
+      int stackId, {required String title, int? order}) async {
+    final payload = {
+      'title': title,
+      if (order != null) 'order': order,
+    };
+    final body = jsonEncode(payload);
+    final headers = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'authorization': _basicAuth(user, pass)
+    };
+    final paths = <String>[
+      '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId',
+      '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId',
+    ];
+    for (final p in paths) {
+      for (final withIndex in [false, true]) {
+        try {
+          final res = await _send(
+              'PUT', _buildUri(baseUrl, p, withIndex), headers,
+              body: body);
+          if (_isOk(res)) {
+            if (p.contains('/ocs/')) {
+              final data = _parseBodyOk(res);
+              if (!_isOcsOk(data)) continue;
+            }
+            return true;
+          }
+        } catch (_) {}
+      }
+    }
+    return false;
+  }
+
+  Future<bool> reorderStack(
+      String baseUrl, String user, String pass, int stackId, int order) async {
+    final body = jsonEncode({'order': order});
+    final headers = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'authorization': _basicAuth(user, pass)
+    };
+    final paths = <String>[
+      '/apps/deck/api/v1.1/stacks/$stackId/reorder',
+      '/apps/deck/api/v1.0/stacks/$stackId/reorder',
+    ];
+    for (final p in paths) {
+      for (final withIndex in [false, true]) {
+        try {
+          final res = await _send(
+              'PUT', _buildUri(baseUrl, p, withIndex), headers,
+              body: body);
+          if (_isOk(res)) {
+            if (p.contains('/ocs/')) {
+              final data = _parseBodyOk(res);
+              if (!_isOcsOk(data)) continue;
+            }
+            return true;
+          }
+        } catch (_) {}
+      }
+    }
+    return false;
+  }
+
+  bool _isOcsOk(dynamic data) {
+    if (data is Map && data['ocs'] is Map) {
+      final meta = (data['ocs'] as Map)['meta'];
+      if (meta is Map) {
+        final status = (meta['status'] ?? '').toString().toLowerCase();
+        final code = meta['statuscode'];
+        if (status == 'ok') return true;
+        if (code is num && code.toInt() == 100) return true;
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<bool> deleteStack(
+      String baseUrl, String user, String pass, int boardId, int stackId) async {
+    final headers = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'authorization': _basicAuth(user, pass)
+    };
+    final paths = <String>[
+      '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId',
+      '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId',
+    ];
+    for (final p in paths) {
+      for (final withIndex in [false, true]) {
+        try {
+          final res =
+              await _send('DELETE', _buildUri(baseUrl, p, withIndex), headers);
+          if (_isOk(res)) {
+            if (p.contains('/ocs/')) {
+              final data = _parseBodyOk(res);
+              if (!_isOcsOk(data)) continue;
+            }
+            return true;
+          }
+        } catch (_) {}
+      }
+    }
+    return false;
   }
 
   Future<List<CardItem>> fetchCards(String baseUrl, String username,

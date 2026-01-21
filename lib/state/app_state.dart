@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:hive/hive.dart';
@@ -39,6 +40,18 @@ class AppState extends ChangeNotifier {
   bool _localMode = false;
   static const int localBoardId = -1;
   bool _isWarming = false;
+  static const List<String> _defaultBoardColors = [
+    '1E88E5',
+    '43A047',
+    'F4511E',
+    '8E24AA',
+    '00ACC1',
+    '3949AB',
+    'D81B60',
+    '5E35B1',
+    '00897B',
+    'EF6C00',
+  ];
   int _startupTabIndex = 1; // 0=Upcoming,1=Board,2=Overview
   bool _upcomingSingleColumn =
       false; // user setting: show Upcoming as single list
@@ -1271,7 +1284,11 @@ class AppState extends ChangeNotifier {
       final nextId = ((cache.get('local_next_stack_id') as int?) ?? 1000) + 1;
       final updated = [
         ...cols,
-        deck.Column(id: nextId, title: title, cards: const [])
+        deck.Column(
+            id: nextId,
+            title: title,
+            cards: const [],
+            order: cols.length)
       ];
       _columnsByBoard[boardId] = updated;
       cache.put('local_next_stack_id', nextId);
@@ -1289,10 +1306,101 @@ class AppState extends ChangeNotifier {
           _baseUrl!, _username!, _password!, boardId,
           title: title, order: order);
       if (created != null) {
+        final existing = _columnsByBoard[boardId] ?? const <deck.Column>[];
+        final nextOrder = existing.length;
+        final updated = [
+          ...existing,
+          deck.Column(
+              id: created.id,
+              title: created.title,
+              cards: const [],
+              order: created.order ?? nextOrder)
+        ];
+        _columnsByBoard[boardId] = updated;
+        cache.put('columns_$boardId', _serializeColumnsForCache(updated));
+        notifyListeners();
         return true;
       }
     } catch (_) {}
     return false;
+  }
+
+  Future<bool> deleteStack(
+      {required int boardId, required int stackId}) async {
+    if (_localMode) {
+      final cols = _columnsByBoard[boardId] ?? const <deck.Column>[];
+      final updated = cols.where((c) => c.id != stackId).toList();
+      _columnsByBoard[boardId] = updated;
+      cache.put('columns_$boardId', _serializeColumnsForCache(updated));
+      notifyListeners();
+      return true;
+    }
+    if (_baseUrl == null || _username == null || _password == null)
+      return false;
+    try {
+      final ok = await api.deleteStack(
+          _baseUrl!, _username!, _password!, boardId, stackId);
+      if (ok) {
+        final cols = _columnsByBoard[boardId] ?? const <deck.Column>[];
+        final updated = cols.where((c) => c.id != stackId).toList();
+        _columnsByBoard[boardId] = updated;
+        cache.put('columns_$boardId', _serializeColumnsForCache(updated));
+        notifyListeners();
+      }
+      return ok;
+    } catch (_) {}
+    return false;
+  }
+
+  int _normalizeReorderIndex(int oldIndex, int newIndex, int length) {
+    var target = newIndex;
+    if (target > oldIndex) target -= 1;
+    if (target < 0) target = 0;
+    if (target >= length) target = length - 1;
+    return target;
+  }
+
+  void reorderStackLocal(
+      {required int boardId, required int oldIndex, required int newIndex}) {
+    final cols = _columnsByBoard[boardId];
+    if (cols == null || cols.isEmpty) return;
+    if (oldIndex < 0 || oldIndex >= cols.length) return;
+    final target = _normalizeReorderIndex(oldIndex, newIndex, cols.length);
+    final list = List<deck.Column>.from(cols);
+    final moved = list.removeAt(oldIndex);
+    list.insert(target, moved);
+    final updated = <deck.Column>[];
+    for (int i = 0; i < list.length; i++) {
+      final c = list[i];
+      updated.add(deck.Column(
+          id: c.id, title: c.title, cards: c.cards, order: i));
+    }
+    _columnsByBoard[boardId] = updated;
+    cache.put('columns_$boardId', _serializeColumnsForCache(updated));
+    notifyListeners();
+  }
+
+  Future<void> reorderStack(
+      {required int boardId, required int oldIndex, required int newIndex}) async {
+    final cols = _columnsByBoard[boardId];
+    if (cols == null || cols.isEmpty) return;
+    if (oldIndex < 0 || oldIndex >= cols.length) return;
+    final target = _normalizeReorderIndex(oldIndex, newIndex, cols.length);
+    final moved = cols[oldIndex];
+    if (target == oldIndex) return;
+    reorderStackLocal(boardId: boardId, oldIndex: oldIndex, newIndex: newIndex);
+    if (_localMode) return;
+    if (_baseUrl == null || _username == null || _password == null) return;
+    try {
+      final updated = _columnsByBoard[boardId] ?? const <deck.Column>[];
+      final start = math.min(oldIndex, target);
+      final end = math.max(oldIndex, target);
+      for (int i = start; i <= end && i < updated.length; i++) {
+        final c = updated[i];
+        await api.updateStack(_baseUrl!, _username!, _password!, boardId, c.id,
+            title: c.title, order: i);
+      }
+    } catch (_) {}
   }
 
   Future<Board?> createBoard(
@@ -1303,8 +1411,12 @@ class AppState extends ChangeNotifier {
     }
     if (_baseUrl == null || _username == null || _password == null) return null;
     try {
+      final normalizedColor = _normalizeBoardColor(
+          (color == null || color.trim().isEmpty)
+              ? _defaultBoardColors[_boards.length % _defaultBoardColors.length]
+              : color);
       final created = await api.createBoard(_baseUrl!, _username!, _password!,
-          title: title, color: color);
+          title: title, color: normalizedColor);
       await refreshBoards();
       if (created != null && activate) {
         final found = _boards.firstWhere((b) => b.id == created.id,
@@ -1315,6 +1427,83 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<bool> updateBoardColor(
+      {required int boardId, required String color}) async {
+    final idx = _boards.indexWhere((b) => b.id == boardId);
+    if (idx < 0) return false;
+    final board = _boards[idx];
+    final normalizedColor = _normalizeBoardColor(color);
+    if (_localMode) {
+      final updated = Board(
+          id: board.id,
+          title: board.title,
+          color: normalizedColor,
+          archived: board.archived);
+      _boards = [
+        ..._boards.sublist(0, idx),
+        updated,
+        ..._boards.sublist(idx + 1),
+      ];
+      if (_activeBoard?.id == boardId) _activeBoard = updated;
+      cache.put(
+          'boards',
+          _boards
+              .map((b) => {
+                    'id': b.id,
+                    'title': b.title,
+                    if (b.color != null) 'color': b.color,
+                    'archived': b.archived,
+                  })
+              .toList());
+      notifyListeners();
+      return true;
+    }
+    if (_baseUrl == null || _username == null || _password == null)
+      return false;
+    try {
+      final ok = await api.updateBoard(_baseUrl!, _username!, _password!,
+          boardId,
+          title: board.title, color: normalizedColor, archived: board.archived);
+      if (!ok) return false;
+      final updated = Board(
+          id: board.id,
+          title: board.title,
+          color: normalizedColor,
+          archived: board.archived);
+      _boards = [
+        ..._boards.sublist(0, idx),
+        updated,
+        ..._boards.sublist(idx + 1),
+      ];
+      if (_activeBoard?.id == boardId) _activeBoard = updated;
+      cache.put(
+          'boards',
+          _boards
+              .map((b) => {
+                    'id': b.id,
+                    'title': b.title,
+                    if (b.color != null) 'color': b.color,
+                    'archived': b.archived,
+                  })
+              .toList());
+      notifyListeners();
+      return true;
+    } catch (_) {}
+    return false;
+  }
+
+  String _normalizeBoardColor(String value) {
+    var s = value.trim();
+    if (s.startsWith('#')) s = s.substring(1);
+    if (s.length == 3) {
+      s = s.split('').map((c) => '$c$c').join();
+    } else if (s.length == 8 && s.startsWith('FF')) {
+      s = s.substring(2);
+    }
+    if (s.length > 6) s = s.substring(0, 6);
+    return s;
   }
 
   void _startAutoSync() {
