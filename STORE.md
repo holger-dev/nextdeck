@@ -260,5 +260,5 @@ Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (wer
 - Es wurde ein Notification-Service hinzugefügt, der alarmiert, sobald Karten mit einem Zeitpunkt überfällig sind. Hier gibt es div. Einstellungsmöglicihkeiten.
 - In Kommentaren kann nun per @ ein User verlinkt werden. Dies wird ebenfalls korrekt in der WebUI angezeigt.
 - Auf den Karten im Board werden nun weitere Infos angezeigt, z.B. welchen Usern die Karte zugewiesen ist und, wenn vorhanden, wie viele Aufgaben in der Beschreibung bereits erledigt sind.
-- Es können nun neue Boards angelegt werden.
-- In einem Board kann nun eine neue Spalte angelegt werden und auch die Reihenfolge der Spalten angepasst werden.
+- Unter Board-Aktionen können neue Boards erstellt werden, Spalten für ein Board angelegt und verschoben werden und die Farbe eines Board geändert werden.
+- Klickt man nun in der Boardansicht oben links auf den Boardnamen, öffnet sich eine Übersicht mit allen sichtbaren Boards. Klickt man davon ein Board an, wird dieses Board geöffnet.

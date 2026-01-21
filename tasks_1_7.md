@@ -413,7 +413,7 @@ Tests/Checks
 Blocker/Unklar
 - Gewuenschter Workflow (parallel vs switch) nicht definiert.
 
-## Task R — Home-Screen Widget
+## Task R — Home-Screen Widget (Done)
 Zuordnung
 - Issue #41
 
