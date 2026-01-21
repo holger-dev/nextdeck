@@ -453,6 +453,6 @@ Tests/Checks
 Blocker/Unklar
 - Auswahl der Speech-API pro Plattform.
 
-# Task M - Quick-Jump to antoher Board
+# Task M - Quick-Jump to antoher Board (Done)
 
 Wenn ich oben auf den Boardnamen klicke, sollen alle sichtbaren Boards gezeigt werden. Klicke ich dann auf eines, soll sich dieses Board öffnen.

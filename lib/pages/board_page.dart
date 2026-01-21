@@ -7,6 +7,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import '../state/app_state.dart';
+import '../models/board.dart';
 import '../models/column.dart' as deck;
 import 'card_detail_page.dart';
 import '../models/label.dart';
@@ -55,6 +56,70 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
     _spinCtrl.dispose();
     _pageController.dispose();
     super.dispose();
+  }
+
+  Future<void> _showVisibleBoards(BuildContext context) async {
+    final app = context.read<AppState>();
+    final visibleBoards = app.boards
+        .where((b) => !b.archived && !app.isBoardHidden(b.id))
+        .toList();
+    if (visibleBoards.isEmpty) return;
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(L10n.of(context).selectBoard),
+        actions: visibleBoards
+            .map((b) => CupertinoActionSheetAction(
+                  onPressed: () async {
+                    Navigator.of(ctx).pop();
+                    await _openBoard(context, b);
+                  },
+                  child: Text(b.title),
+                ))
+            .toList(),
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(ctx).pop(),
+          isDefaultAction: true,
+          child: Text(L10n.of(context).cancel),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openBoard(BuildContext context, Board board) async {
+    final app = context.read<AppState>();
+    final rootNav = Navigator.of(context, rootNavigator: true);
+    showCupertinoDialog(
+      context: rootNav.context,
+      barrierDismissible: false,
+      builder: (_) => Center(
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color:
+                CupertinoTheme.of(context).barBackgroundColor.withOpacity(0.9),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CupertinoActivityIndicator(),
+              const SizedBox(height: 8),
+              Text(L10n.of(context).loadingBoard(board.title),
+                  textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      ),
+    );
+    try {
+      await app.setActiveBoard(board);
+      if (app.columnsForBoard(board.id).isEmpty) {
+        await app.refreshColumnsFor(board);
+      }
+    } finally {
+      if (rootNav.canPop()) rootNav.pop();
+    }
   }
 
   @override
@@ -151,28 +216,34 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                 }();
                 return SizedBox(
                   width: double.infinity,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.max,
-                    children: [
-                      Container(
-                        width: 16,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: topColor,
-                          borderRadius: BorderRadius.circular(8),
+                  child: CupertinoButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: () => _showVisibleBoards(context),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.max,
+                      children: [
+                        Container(
+                          width: 16,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: topColor,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          displayTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700, color: txtColor),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            displayTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontWeight: FontWeight.w700, color: txtColor),
+                          ),
                         ),
-                      ),
-                    ],
+                        Icon(CupertinoIcons.chevron_down,
+                            size: 14, color: txtColor),
+                      ],
+                    ),
                   ),
                 );
               }),
