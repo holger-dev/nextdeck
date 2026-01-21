@@ -432,11 +432,12 @@ class _UpcomingPageState extends State<UpcomingPage> {
           ? AppTheme.blend(baseCol, const Color(0xFF000000), 0.75)
           : AppTheme.blend(baseCol, const Color(0xFFFFFFFF), 0.55);
     }();
-    final baseForCards = app.smartColors
-        ? AppTheme.preferredColumnColor(app, title, 0)
-        : (CupertinoTheme.of(context).brightness == Brightness.dark
-            ? CupertinoColors.systemGrey5
-            : CupertinoColors.systemGrey6);
+    final neutralBase = AppTheme.neutralCardBase(app);
+    final baseForCards = app.cardColorsFromLabels
+        ? (app.smartColors
+            ? AppTheme.preferredColumnColor(app, title, 0)
+            : neutralBase)
+        : neutralBase;
     return Container(
       decoration: BoxDecoration(color: containerBg),
       child: Column(

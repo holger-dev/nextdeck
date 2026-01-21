@@ -660,6 +660,16 @@ class L10n {
       : _isEs
           ? 'Marcar como no hecho'
           : 'Mark as undone';
+  String get archiveCard => _isDe
+      ? 'Karte archivieren'
+      : _isEs
+          ? 'Archivar tarjeta'
+          : 'Archive card';
+  String get unarchiveCard => _isDe
+      ? 'Karte dearchivieren'
+      : _isEs
+          ? 'Desarchivar tarjeta'
+          : 'Unarchive card';
   String get noDoneListFound => _isDe
       ? 'Keine "Erledigt"-Liste gefunden'
       : _isEs
@@ -793,16 +803,46 @@ class L10n {
       : _isEs
           ? 'Sistema'
           : 'System';
+  String get boardBandMode => _isDe
+      ? 'Hintergrundband zwischen Spalten'
+      : _isEs
+          ? 'Banda de fondo entre columnas'
+          : 'Background band between columns';
+  String get boardBandNextcloud => _isDe
+      ? 'Nextcloud-Farbe'
+      : _isEs
+          ? 'Color de Nextcloud'
+          : 'Nextcloud color';
+  String get boardBandHidden => _isDe
+      ? 'Ausblenden'
+      : _isEs
+          ? 'Ocultar'
+          : 'Hidden';
+  String get boardBandHelp => _isDe
+      ? 'Legt fest, ob das Hintergrundband die Board-Farbe aus Nextcloud nutzt oder ausgeblendet wird.'
+      : _isEs
+          ? 'Controla si la banda de fondo usa el color del tablero de Nextcloud o se oculta.'
+          : 'Controls whether the background band uses the board color from Nextcloud or is hidden.';
   String get smartColors => _isDe
       ? 'Intelligente Farben'
       : _isEs
           ? 'Colores inteligentes'
           : 'Smart colors';
   String get smartColorsHelp => _isDe
-      ? 'Wenn aktiviert, passen sich Spaltenhintergründe automatisch der Spaltenbezeichnung an (z. B. "Done" → grün). Wenn deaktiviert, sind Spaltenhintergründe neutral. Kartenfarben bleiben erhalten.'
+      ? 'Wenn aktiviert, passen sich Spaltenhintergründe automatisch der Spaltenbezeichnung an (z. B. "Done" → grün). Wenn deaktiviert, sind Spaltenhintergründe neutral. Kartenfarben werden separat eingestellt.'
       : _isEs
-          ? 'Si está activado, los fondos de las columnas se ajustan automáticamente al nombre de la columna (p. ej., "Done" → verde). Si está desactivado, los fondos son neutros. Los colores de las tarjetas se mantienen.'
-          : 'If enabled, column backgrounds adapt to status keywords (e.g., "Done" → green). If disabled, backgrounds are neutral. Card colors remain.';
+          ? 'Si está activado, los fondos de las columnas se ajustan automáticamente al nombre de la columna (p. ej., "Done" → verde). Si está desactivado, los fondos son neutros. Los colores de las tarjetas se configuran por separado.'
+          : 'If enabled, column backgrounds adapt to status keywords (e.g., "Done" → green). If disabled, backgrounds are neutral. Card colors are configured separately.';
+  String get cardColorsFromLabels => _isDe
+      ? 'Kartenfarben aus Labels'
+      : _isEs
+          ? 'Colores de tarjetas desde etiquetas'
+          : 'Card colors from labels';
+  String get cardColorsFromLabelsHelp => _isDe
+      ? 'Wenn aktiviert, nutzen Karten die Farbe des ersten Labels. Wenn deaktiviert, sind Karten neutral gefärbt.'
+      : _isEs
+          ? 'Si está activado, las tarjetas usan el color de la primera etiqueta. Si está desactivado, las tarjetas son neutras.'
+          : 'If enabled, cards use the first label color. If disabled, cards are neutral.';
   String get descriptionLabel => _isDe
       ? 'Beschreibung'
       : _isEs

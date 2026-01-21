@@ -26,8 +26,10 @@ class AppState extends ChangeNotifier {
   String _themeMode = 'light'; // light | dark | system
   int _themeIndex = 0;
   bool _smartColors = true;
+  bool _cardColorsFromLabels = true;
   bool _showDescriptionText = true;
   bool _overviewShowBoardInfo = true; // show board stats in overview
+  String _boardBandMode = 'nextcloud'; // nextcloud | hidden
   String? _localeCode; // 'de' | 'en' | 'es' | null for system
   bool _isSyncing = false;
   String? _baseUrl;
@@ -71,8 +73,10 @@ class AppState extends ChangeNotifier {
   String get themeMode => _themeMode;
   int get themeIndex => _themeIndex;
   bool get smartColors => _smartColors;
+  bool get cardColorsFromLabels => _cardColorsFromLabels;
   bool get showDescriptionText => _showDescriptionText;
   bool get overviewShowBoardInfo => _overviewShowBoardInfo;
+  String get boardBandMode => _boardBandMode;
   String? get localeCode => _localeCode;
   bool get isSyncing => _isSyncing;
   bool get isWarming => _isWarming;
@@ -143,6 +147,8 @@ class AppState extends ChangeNotifier {
     _themeIndex =
         int.tryParse(await storage.read(key: 'themeIndex') ?? '') ?? 0;
     _smartColors = (await storage.read(key: 'smartColors')) != '0';
+    _cardColorsFromLabels =
+        (await storage.read(key: 'card_colors_from_labels')) != '0';
     _showDescriptionText =
         (await storage.read(key: 'showDescriptionText')) != '0';
     _upcomingSingleColumn = (await storage.read(key: 'up_single')) == '1';
@@ -152,6 +158,10 @@ class AppState extends ChangeNotifier {
         (await storage.read(key: 'board_archived_only')) == '1';
     _overviewShowBoardInfo =
         (await storage.read(key: 'overview_board_info')) != '0';
+    final bandMode = await storage.read(key: 'board_band_mode');
+    if (bandMode == 'nextcloud' || bandMode == 'hidden') {
+      _boardBandMode = bandMode!;
+    }
     _dueNotificationsEnabled =
         (await storage.read(key: 'due_notif_enabled')) == '1';
     _dueOverdueEnabled =
@@ -638,6 +648,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setCardColorsFromLabels(bool value) {
+    _cardColorsFromLabels = value;
+    storage.write(
+        key: 'card_colors_from_labels', value: value ? '1' : '0');
+    notifyListeners();
+  }
+
   void setShowDescriptionText(bool value) {
     _showDescriptionText = value;
     storage.write(key: 'showDescriptionText', value: value ? '1' : '0');
@@ -647,6 +664,13 @@ class AppState extends ChangeNotifier {
   void setOverviewShowBoardInfo(bool value) {
     _overviewShowBoardInfo = value;
     storage.write(key: 'overview_board_info', value: value ? '1' : '0');
+    notifyListeners();
+  }
+
+  void setBoardBandMode(String mode) {
+    if (mode != 'nextcloud' && mode != 'hidden') return;
+    _boardBandMode = mode;
+    storage.write(key: 'board_band_mode', value: mode);
     notifyListeners();
   }
 
@@ -1890,7 +1914,7 @@ class AppState extends ChangeNotifier {
       await api.updateCard(
           _baseUrl!, _username!, _password!, boardId, stackId, cardId, effectivePatch);
       // Apply successful server response locally to ensure consistency
-      final doneValue = () {
+    final doneValue = () {
         if (!effectivePatch.containsKey('done')) return null;
         final v = effectivePatch['done'];
         if (v == null || v == false) return null;
@@ -1901,20 +1925,28 @@ class AppState extends ChangeNotifier {
               .toLocal();
         }
         if (v is String) return DateTime.tryParse(v)?.toLocal();
-        return null;
-      }();
-      final clearDone = effectivePatch.containsKey('done') && doneValue == null;
-      updateLocalCard(
-        boardId: boardId,
-        stackId: stackId,
-        cardId: cardId,
-        title: patch['title'] as String?,
-        description: patch['description'] as String?,
-        due: patch['duedate'] != null ? DateTime.parse(patch['duedate'] as String) : null,
-        clearDue: patch.containsKey('duedate') && patch['duedate'] == null,
-        done: doneValue,
-        clearDone: clearDone,
-      );
+      return null;
+    }();
+    final clearDone = effectivePatch.containsKey('done') && doneValue == null;
+    final archivedValue = () {
+      if (!effectivePatch.containsKey('archived')) return null;
+      final v = effectivePatch['archived'];
+      if (v is bool) return v;
+      if (v is num) return v != 0;
+      return null;
+    }();
+    updateLocalCard(
+      boardId: boardId,
+      stackId: stackId,
+      cardId: cardId,
+      title: patch['title'] as String?,
+      description: patch['description'] as String?,
+      due: patch['duedate'] != null ? DateTime.parse(patch['duedate'] as String) : null,
+      clearDue: patch.containsKey('duedate') && patch['duedate'] == null,
+      done: doneValue,
+      clearDone: clearDone,
+      archived: archivedValue,
+    );
     } catch (e) {
       // API call failed, but keep local optimistic update
     }
@@ -2234,6 +2266,7 @@ class AppState extends ChangeNotifier {
     bool clearDue = false,
     DateTime? done,
     bool clearDone = false,
+    bool? archived,
     int? moveToStackId,
     int? insertIndex,
     List<Label>? setLabels,
@@ -2265,7 +2298,7 @@ class AppState extends ChangeNotifier {
       description: description ?? current.description,
       due: clearDue ? null : (due ?? current.due),
       done: clearDone ? null : (done ?? current.done),
-      archived: current.archived,
+      archived: archived ?? current.archived,
       labels: setLabels ?? current.labels,
       assignees: setAssignees ?? current.assignees,
       order: current.order, // Preserve card order

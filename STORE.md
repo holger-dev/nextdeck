@@ -250,4 +250,13 @@ Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (wer
 # DE – Version 1.7
 
 - In den Einstellungen kann nur definiert werden, ob die Ansicht Boards und Anstehend nur mir zugewiesene Karten anzeigt oder alle. Die Filter können auch einfach in den jeweiligen Ansichten direkt eingestellt werden.
-- 
+- In den Einstellungen kann nun definiert werden, ob die Farbe einer Karte durch das erste Tag bestimmt wird oder neutral ist.
+- Der "Karte als erledigt"-Ablauf ist nun identisch mit dem Ablauf in der WebUI! Eine Karte wird mit einem grünen Stern markiert und nicht mehr in eine Done-Spalte verschoben. Zudem wird die Karte in der WebUI korrekt als Erledigt Markiert angezeigt.
+- Es gibt einen Filter, um Karten anzuzeigen, die nur dem eingeloggten User zugewiesen sind.
+- In den Boards kann nun nach archivierten Karten gefiltert werden.
+- Karten können nun archiviert werden.
+- Es wurde ein Fehler behoben, dass PDF-Dokumente nicht zu öffnen sind. Hier muss aber sichergestellt sein, dass ein Programm in iOS für PDF-Dateien hinterlegt ist.
+- Man kann nun als Anhang entweder Dateien oder BIlder aus der Galerie hochladen.
+- Es wurde ein Notification-Service hinzugefügt, der alarmiert, sobald Karten mit einem Zeitpunkt überfällig sind. Hier gibt es div. Einstellungsmöglicihkeiten.
+- In Kommentaren kann nun per @ ein User verlinkt werden. Dies wird ebenfalls korrekt in der WebUI angezeigt.
+- Auf den Karten im Board werden nun weitere Infos angezeigt, z.B. welchen Usern die Karte zugewiesen ist und, wenn vorhanden, wie viele Aufgaben in der Beschreibung bereits erledigt sind.

@@ -17,7 +17,7 @@ import '../theme/app_theme.dart';
 import '../l10n/app_localizations.dart';
 
 const TextStyle _destructiveActionTextStyle =
-    TextStyle(color: CupertinoColors.white);
+    TextStyle(color: CupertinoColors.destructiveRed);
 
 class BoardPage extends StatefulWidget {
   const BoardPage({super.key});
@@ -62,6 +62,19 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
     final app = context.watch<AppState>();
     final board = app.activeBoard;
     final columns = app.columnsForActiveBoard();
+    final boardIndex =
+        board == null ? -1 : app.boards.indexWhere((b) => b.id == board.id);
+    final boardNcColor = (boardIndex >= 0 && boardIndex < app.boards.length)
+        ? app.boards[boardIndex].color
+        : null;
+    final boardBaseColor = board == null
+        ? null
+        : (AppTheme.boardColorFrom(boardNcColor) ??
+            AppTheme.boardStrongColor(boardIndex < 0 ? 0 : boardIndex));
+    final showBoardBand = board != null && app.boardBandMode == 'nextcloud';
+    final boardBackground = showBoardBand
+        ? AppTheme.boardBandBackground(app, boardBaseColor!)
+        : AppTheme.appBackground(app);
     if (board != null && app.boardArchivedOnly) {
       final archived = app.archivedCardsForBoard(board.id);
       if (archived.isEmpty && !app.isArchivedCardsLoading(board.id)) {
@@ -81,7 +94,7 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
       });
     }
     return CupertinoPageScaffold(
-      backgroundColor: AppTheme.appBackground(app),
+      backgroundColor: boardBackground,
       navigationBar: CupertinoNavigationBar(
         backgroundColor: CupertinoColors.transparent,
         border: null,
@@ -277,20 +290,14 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
       child: Stack(
         children: [
           // Gradient under transparent navbar
-          if (board != null) ...[
+          if (showBoardBand) ...[
             Positioned(
               top: 0,
               left: 0,
               right: 0,
               child: Builder(builder: (context) {
                 final topPad = MediaQuery.of(context).padding.top;
-                final boards = app.boards;
-                final idx = boards.indexWhere((b) => b.id == board.id);
-                final ncColor = (idx >= 0 && idx < boards.length)
-                    ? boards[idx].color
-                    : null;
-                final base = AppTheme.boardColorFrom(ncColor) ??
-                    AppTheme.boardStrongColor(idx < 0 ? 0 : idx);
+                final base = boardBaseColor!;
                 final topColor = app.isDarkMode
                     ? AppTheme.blend(base, const Color(0xFF000000), 0.25)
                     : AppTheme.blend(base, const Color(0xFF000000), 0.15);
@@ -459,11 +466,12 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
         // Derive card base color from target column for contrast-aware text in the field
         final cols = app.columnsForActiveBoard();
         final colIdx = cols.indexWhere((c) => c.id == columnId);
-        final baseForCards = app.smartColors && colIdx >= 0
-            ? AppTheme.preferredColumnColor(app, cols[colIdx].title, colIdx)
-            : (CupertinoTheme.of(sheetCtx).brightness == Brightness.dark
-                ? CupertinoColors.systemGrey5
-                : CupertinoColors.systemGrey6);
+        final neutralBase = AppTheme.neutralCardBase(app);
+        final baseForCards = app.cardColorsFromLabels
+            ? (app.smartColors && colIdx >= 0
+                ? AppTheme.preferredColumnColor(app, cols[colIdx].title, colIdx)
+                : neutralBase)
+            : neutralBase;
         final tileBg = AppTheme.cardBgFromBase(app, const [], baseForCards, 0);
         final inputColor = AppTheme.textOn(tileBg);
         return AnimatedPadding(
@@ -596,11 +604,12 @@ class _ColumnViewState extends State<_ColumnView> {
           ? AppTheme.blend(baseCol, const Color(0xFF000000), 0.75)
           : AppTheme.blend(baseCol, const Color(0xFFFFFFFF), 0.55);
     }();
-    final baseForCards = app.smartColors
-        ? AppTheme.preferredColumnColor(app, col.title, widget.columnIndex)
-        : (CupertinoTheme.of(context).brightness == Brightness.dark
-            ? CupertinoColors.systemGrey5
-            : CupertinoColors.systemGrey6);
+    final neutralBase = AppTheme.neutralCardBase(app);
+    final baseForCards = app.cardColorsFromLabels
+        ? (app.smartColors
+            ? AppTheme.preferredColumnColor(app, col.title, widget.columnIndex)
+            : neutralBase)
+        : neutralBase;
     final filterAssigned = app.upcomingAssignedOnly;
     final sourceCards = showArchivedOnly ? archivedCards : col.cards;
     final cards = sourceCards
@@ -901,6 +910,8 @@ class _ColumnViewState extends State<_ColumnView> {
                                                     app.activeBoard?.id;
                                                 final isDone =
                                                     card.done != null;
+                                                final isArchived =
+                                                    card.archived;
                                                 if (!isDone) {
                                                   items.add(
                                                       CupertinoActionSheetAction(
@@ -989,6 +1000,57 @@ class _ColumnViewState extends State<_ColumnView> {
                                                         Text(l10n.markUndone),
                                                   ));
                                                 }
+                                                items.add(
+                                                    CupertinoActionSheetAction(
+                                                  onPressed: () async {
+                                                    Navigator.of(ctx).pop();
+                                                    if (boardId == null)
+                                                      return;
+                                                    final nextArchived =
+                                                        !isArchived;
+                                                    app.updateLocalCard(
+                                                        boardId: boardId,
+                                                        stackId:
+                                                            widget.column.id,
+                                                        cardId: card.id,
+                                                        archived:
+                                                            nextArchived);
+                                                    final base = app.baseUrl;
+                                                    final user = app.username;
+                                                    final pass = await app
+                                                        .storage
+                                                        .read(key: 'password');
+                                                    if (base != null &&
+                                                        user != null &&
+                                                        pass != null) {
+                                                      try {
+                                                        await app
+                                                            .updateCardAndRefresh(
+                                                                boardId:
+                                                                    boardId,
+                                                                stackId: widget
+                                                                    .column
+                                                                    .id,
+                                                                cardId:
+                                                                    card.id,
+                                                                patch: {
+                                                              'title':
+                                                                  card.title,
+                                                              'archived':
+                                                                  nextArchived,
+                                                            });
+                                                      } catch (_) {}
+                                                    }
+                                                    if (app.boardArchivedOnly) {
+                                                      await app
+                                                          .refreshArchivedCardsForBoard(
+                                                              boardId);
+                                                    }
+                                                  },
+                                                  child: Text(isArchived
+                                                      ? l10n.unarchiveCard
+                                                      : l10n.archiveCard),
+                                                ));
                                                 return items;
                                               }(),
                                               CupertinoActionSheetAction(
@@ -1390,6 +1452,8 @@ class _ColumnViewState extends State<_ColumnView> {
                                                       context.read<AppState>();
                                                   final isDone =
                                                       card.done != null;
+                                                  final isArchived =
+                                                      card.archived;
                                                   if (!isDone) {
                                                     return [
                                                       CupertinoActionSheetAction(
@@ -1441,6 +1505,63 @@ class _ColumnViewState extends State<_ColumnView> {
                                                         child:
                                                             Text(l10n.markDone),
                                                       ),
+                                                      CupertinoActionSheetAction(
+                                                        onPressed: () async {
+                                                          Navigator.of(ctx)
+                                                              .pop();
+                                                          final boardId = app
+                                                              .activeBoard?.id;
+                                                          if (boardId == null)
+                                                            return;
+                                                          final nextArchived =
+                                                              !isArchived;
+                                                          app.updateLocalCard(
+                                                              boardId: boardId,
+                                                              stackId: widget
+                                                                  .column.id,
+                                                              cardId: card.id,
+                                                              archived:
+                                                                  nextArchived);
+                                                          final base =
+                                                              app.baseUrl;
+                                                          final user =
+                                                              app.username;
+                                                          final pass = await app
+                                                              .storage
+                                                              .read(
+                                                                  key:
+                                                                      'password');
+                                                          if (base != null &&
+                                                              user != null &&
+                                                              pass != null) {
+                                                            try {
+                                                              await app.updateCardAndRefresh(
+                                                                  boardId:
+                                                                      boardId,
+                                                                  stackId: widget
+                                                                      .column
+                                                                      .id,
+                                                                  cardId: card.id,
+                                                                  patch: {
+                                                                    'title': card
+                                                                        .title,
+                                                                    'archived':
+                                                                        nextArchived,
+                                                                  });
+                                                            } catch (_) {}
+                                                          }
+                                                          if (app.boardArchivedOnly) {
+                                                            await app
+                                                                .refreshArchivedCardsForBoard(
+                                                                    boardId);
+                                                          }
+                                                        },
+                                                        child: Text(isArchived
+                                                            ? l10n
+                                                                .unarchiveCard
+                                                            : l10n
+                                                                .archiveCard),
+                                                      ),
                                                     ];
                                                   } else {
                                                     return [
@@ -1488,6 +1609,63 @@ class _ColumnViewState extends State<_ColumnView> {
                                                         },
                                                         child: Text(
                                                             l10n.markUndone),
+                                                      ),
+                                                      CupertinoActionSheetAction(
+                                                        onPressed: () async {
+                                                          Navigator.of(ctx)
+                                                              .pop();
+                                                          final boardId = app
+                                                              .activeBoard?.id;
+                                                          if (boardId == null)
+                                                            return;
+                                                          final nextArchived =
+                                                              !isArchived;
+                                                          app.updateLocalCard(
+                                                              boardId: boardId,
+                                                              stackId: widget
+                                                                  .column.id,
+                                                              cardId: card.id,
+                                                              archived:
+                                                                  nextArchived);
+                                                          final base =
+                                                              app.baseUrl;
+                                                          final user =
+                                                              app.username;
+                                                          final pass = await app
+                                                              .storage
+                                                              .read(
+                                                                  key:
+                                                                      'password');
+                                                          if (base != null &&
+                                                              user != null &&
+                                                              pass != null) {
+                                                            try {
+                                                              await app.updateCardAndRefresh(
+                                                                  boardId:
+                                                                      boardId,
+                                                                  stackId: widget
+                                                                      .column
+                                                                      .id,
+                                                                  cardId: card.id,
+                                                                  patch: {
+                                                                    'title': card
+                                                                        .title,
+                                                                    'archived':
+                                                                        nextArchived,
+                                                                  });
+                                                            } catch (_) {}
+                                                          }
+                                                          if (app.boardArchivedOnly) {
+                                                            await app
+                                                                .refreshArchivedCardsForBoard(
+                                                                    boardId);
+                                                          }
+                                                        },
+                                                        child: Text(isArchived
+                                                            ? l10n
+                                                                .unarchiveCard
+                                                            : l10n
+                                                                .archiveCard),
                                                       ),
                                                     ];
                                                   }
@@ -2516,6 +2694,67 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                     child: Text(
                                                                         l10n.markUndone),
                                                                   ),
+                                                                CupertinoActionSheetAction(
+                                                                  onPressed:
+                                                                      () async {
+                                                                    Navigator.of(
+                                                                            ctx)
+                                                                        .pop();
+                                                                    final app =
+                                                                        context.read<AppState>();
+                                                                    final nextArchived =
+                                                                        !card.archived;
+                                                                    app.updateLocalCard(
+                                                                        boardId:
+                                                                            widget.boardId,
+                                                                        stackId: c
+                                                                            .id,
+                                                                        cardId: card
+                                                                            .id,
+                                                                        archived:
+                                                                            nextArchived);
+                                                                    final base =
+                                                                        app.baseUrl;
+                                                                    final user =
+                                                                        app.username;
+                                                                    final pass = await app
+                                                                        .storage
+                                                                        .read(
+                                                                            key:
+                                                                                'password');
+                                                                    if (base != null &&
+                                                                        user !=
+                                                                            null &&
+                                                                        pass !=
+                                                                            null) {
+                                                                      try {
+                                                                        await app.updateCardAndRefresh(
+                                                                            boardId:
+                                                                                widget.boardId,
+                                                                            stackId:
+                                                                                c.id,
+                                                                            cardId:
+                                                                                card.id,
+                                                                            patch: {
+                                                                              'title': card.title,
+                                                                              'archived':
+                                                                                  nextArchived,
+                                                                            });
+                                                                      } catch (_) {}
+                                                                    }
+                                                                    if (app.boardArchivedOnly) {
+                                                                      await app
+                                                                          .refreshArchivedCardsForBoard(
+                                                                              widget.boardId);
+                                                                    }
+                                                                  },
+                                                                  child: Text(
+                                                                      card.archived
+                                                                          ? l10n
+                                                                              .unarchiveCard
+                                                                          : l10n
+                                                                              .archiveCard),
+                                                                ),
                                                                 CupertinoActionSheetAction(
                                                                   isDestructiveAction:
                                                                       true,

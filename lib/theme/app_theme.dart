@@ -65,8 +65,12 @@ class AppTheme {
     return null;
   }
 
+  static Color neutralCardBase(AppState app) {
+    return app.isDarkMode ? const Color(0xFF1F1F1F) : const Color(0xFFF5F5F5);
+  }
+
   static Color cardBgFromBase(AppState app, List<Label> labels, Color base, int cardIndex) {
-    if (labels.isNotEmpty) {
+    if (labels.isNotEmpty && app.cardColorsFromLabels) {
       final labelBase = _parseDeckColor(labels.first.color) ?? base;
       return app.isDarkMode ? _blend(labelBase, const Color(0xFF101010), 0.6) : _blend(labelBase, const Color(0xFFFFFFFF), 0.8);
     }
@@ -75,9 +79,14 @@ class AppTheme {
   }
 
   static Color cardBg(AppState app, List<Label> labels, int columnIndex, int cardIndex) {
-    if (labels.isNotEmpty) {
-      final base = _parseDeckColor(labels.first.color) ?? (app.isDarkMode ? const Color(0xFF2A2A2A) : const Color(0xFFF5F5F5));
+    if (labels.isNotEmpty && app.cardColorsFromLabels) {
+      final base = _parseDeckColor(labels.first.color) ?? neutralCardBase(app);
       return app.isDarkMode ? _blend(base, const Color(0xFF101010), 0.55) : _blend(base, const Color(0xFFFFFFFF), 0.7);
+    }
+    if (!app.cardColorsFromLabels) {
+      final base = neutralCardBase(app);
+      final tweak = (cardIndex % 2 == 0) ? 0.15 : -0.05;
+      return _tint(base, app.isDarkMode ? -0.1 + tweak : 0.25 + tweak);
     }
     final col = columnColor(app, columnIndex);
     final tweak = (cardIndex % 2 == 0) ? 0.15 : -0.05;
@@ -96,6 +105,12 @@ class AppTheme {
     final base = app.isDarkMode ? Color(palettesDark[idx][0]) : Color(palettesLight[idx][0]);
     // Subtle blend towards neutral to avoid overwhelming
     return app.isDarkMode ? blend(base, const Color(0xFF000000), 0.7) : blend(base, const Color(0xFFFFFFFF), 0.8);
+  }
+
+  static Color boardBandBackground(AppState app, Color base) {
+    return app.isDarkMode
+        ? blend(base, const Color(0xFF000000), 0.75)
+        : blend(base, const Color(0xFFFFFFFF), 0.85);
   }
 
   static Color boardColor(AppState app, int boardIndex) {

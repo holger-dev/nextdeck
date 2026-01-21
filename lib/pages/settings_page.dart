@@ -594,6 +594,33 @@ class _SettingsPageState extends State<SettingsPage> {
                 style: const TextStyle(
                     color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),
+            Text(l10n.boardBandMode,
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            CupertinoSlidingSegmentedControl<String>(
+              groupValue: app.boardBandMode,
+              children: {
+                'nextcloud': Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(l10n.boardBandNextcloud),
+                ),
+                'hidden': Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(l10n.boardBandHidden),
+                ),
+              },
+              onValueChanged: (mode) {
+                if (mode != null) {
+                  app.setBoardBandMode(mode);
+                }
+              },
+            ),
+            const SizedBox(height: 6),
+            Text(l10n.boardBandHelp,
+                style: const TextStyle(
+                    color: CupertinoColors.systemGrey, fontSize: 12)),
+            const SizedBox(height: 12),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -605,6 +632,20 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 6),
             Text(l10n.smartColorsHelp,
+                style: const TextStyle(
+                    color: CupertinoColors.systemGrey, fontSize: 12)),
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: Text(l10n.cardColorsFromLabels)),
+                CupertinoSwitch(
+                    value: app.cardColorsFromLabels,
+                    onChanged: (v) => app.setCardColorsFromLabels(v)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(l10n.cardColorsFromLabelsHelp,
                 style: const TextStyle(
                     color: CupertinoColors.systemGrey, fontSize: 12)),
             const SizedBox(height: 12),

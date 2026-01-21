@@ -273,7 +273,7 @@ Tests/Checks
 Blocker/Unklar
 - API-Parameter fuer archived Cards muessen bestaetigt werden.
 
-## Task K — macOS Text-Replacements / Quick Action
+## Task K — macOS Text-Replacements / Quick Action (Not integrated)
 Zuordnung
 - Issue #42
 
@@ -294,7 +294,7 @@ Tests/Checks
 Blocker/Unklar
 - Entscheidung: System-Fix vs Quick-Action als Standard.
 
-## Task L — Kartenfarbe konfigurieren
+## Task L — Kartenfarbe konfigurieren (Done)
 Zuordnung
 - Issue #30
 
@@ -314,7 +314,7 @@ Tests/Checks
 Blocker/Unklar
 - UX-Entscheidung: global, pro Board oder pro Karte?
 
-## Task M — Hintergrundband zwischen Spalten
+## Task M — Hintergrundband zwischen Spalten (Doen)
 Zuordnung
 - Issue #29
 
@@ -334,7 +334,7 @@ Tests/Checks
 Blocker/Unklar
 - Quelle der Farbe: App-Style oder Nextcloud Theme?
 
-## Task N — App-Logo verbessern
+## Task N — App-Logo verbessern --> 2.0
 Zuordnung
 - Issue #35
 
@@ -393,7 +393,7 @@ Tests/Checks
 Blocker/Unklar
 - API-Endpoint/Permissions fuer Stack-Create bestaetigen.
 
-## Task Q — Multi-Account Management
+## Task Q — Multi-Account Management --> 2.0
 Zuordnung
 - Issue #17
 
@@ -433,7 +433,7 @@ Tests/Checks
 Blocker/Unklar
 - Plattform-Scope (iOS only vs Android parallel) offen.
 
-## Task S — Voice Input (Speech-to-Text)
+## Task S — Voice Input (Speech-to-Text) Closed weil nicht nötig!
 Zuordnung
 - Issue #40
 
