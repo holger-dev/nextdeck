@@ -1,0 +1,35 @@
+"widget.displayName" = "Next Deck";
+"widget.description" = "Schneller Zugriff auf Boards und Karten.";
+"widget.defaultTitle" = "Next Deck";
+"widget.noCards" = "Keine Karten";
+"widget.intentDescription" = "Board und Filter auswaehlen.";
+
+"filter.title" = "Filter";
+"filter.all" = "Alle Karten";
+"filter.assigned" = "Nur mir zugewiesen";
+"filter.dueSoon" = "Faellig bald";
+
+"view.title" = "Ansicht";
+"view.board" = "Board";
+"view.upcoming" = "Anstehend";
+"view.upcoming.title" = "Anstehend";
+"view.upcoming.subtitle" = "Naechste 3 Karten";
+
+"parameter.board" = "Board";
+"parameter.filter" = "Filter";
+"parameter.view" = "Ansicht";
+"board.title" = "Board";
+"parameter.assignment" = "Filter";
+"assignment.title" = "Filter";
+"assignment.assigned" = "Zugewiesen";
+"assignment.all" = "Alle Karten";
+"upcomingLarge.widgetTitle" = "Anstehend-Gross-Widget";
+"upcomingLarge.intentDescription" = "Anstehende Karten nach Zuweisung filtern.";
+"newcard.widgetTitle" = "Neue-Karte-Widget";
+"newcard.intentDescription" = "Board fuer Schnellzugriff waehlen.";
+
+"Next Deck Widget" = "Next Deck-Widget";
+"Show %@ for %@" = "Zeige %@ fuer %@";
+"Show %@ for %@ with %@" = "Zeige %@ fuer %@ mit %@";
+"Create card in %@" = "Karte erstellen in %@";
+"Show %@ cards" = "Zeige %@ Karten";

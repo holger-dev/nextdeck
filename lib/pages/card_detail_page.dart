@@ -30,7 +30,15 @@ class CardDetailPage extends StatefulWidget {
   final int? boardId;
   final int? stackId;
   final Color? bgColor;
-  const CardDetailPage({super.key, required this.cardId, this.boardId, this.stackId, this.bgColor});
+  final bool startEditing;
+  const CardDetailPage({
+    super.key,
+    required this.cardId,
+    this.boardId,
+    this.stackId,
+    this.bgColor,
+    this.startEditing = false,
+  });
 
   @override
   State<CardDetailPage> createState() => _CardDetailPageState();
@@ -44,6 +52,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
   bool _saving = false;
   bool _uploadingAttachment = false;
   final _titleCtrl = TextEditingController();
+  final FocusNode _titleFocus = FocusNode();
   final _descCtrl = TextEditingController();
   Timer? _descDebounce;
   final FocusNode _descFocus = FocusNode();
@@ -150,6 +159,12 @@ class _CardDetailPageState extends State<CardDetailPage> {
     _load();
     _loadComments();
     _loadAttachments();
+    if (widget.startEditing) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _titleFocus.requestFocus();
+      });
+    }
     _titleCtrl.addListener(() {
       // Mark as dirty while editing title (committed on submit)
       _titleDirty = true;
@@ -624,6 +639,8 @@ class _CardDetailPageState extends State<CardDetailPage> {
                             children: [
                               CupertinoTextField(
                                 controller: _titleCtrl,
+                                focusNode: _titleFocus,
+                                autofocus: widget.startEditing,
                                 placeholder: L10n.of(context).title,
                                 onSubmitted: (v) => _savePatch({'title': v}, optimistic: true),
                               ),
@@ -644,7 +661,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                               MarkdownEditor(
                                 controller: _descCtrl,
                                 focusNode: _descFocus,
-                                initialPreview: true,
+                                initialPreview: !widget.startEditing,
                                 placeholder: L10n.of(context).descriptionPlaceholder,
                                 onSubmitted: (v) => _savePatch({'description': v}, optimistic: true),
                                 onSave: _saveDescriptionNow,
@@ -969,6 +986,8 @@ class _CardDetailPageState extends State<CardDetailPage> {
                               children: [
                                 CupertinoTextField(
                                   controller: _titleCtrl,
+                                  focusNode: _titleFocus,
+                                  autofocus: widget.startEditing,
                                   placeholder: L10n.of(context).title,
                                   onSubmitted: (v) => _savePatch({'title': v}, optimistic: true),
                                 ),
@@ -993,7 +1012,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                       child: MarkdownEditor(
                                         controller: _descCtrl,
                                         focusNode: _descFocus,
-                                        initialPreview: true,
+                                        initialPreview: !widget.startEditing,
                                         placeholder: L10n.of(context).descriptionPlaceholder,
                                         onSubmitted: (v) => _savePatch({'description': v}, optimistic: true),
                                         onSave: _saveDescriptionNow,
@@ -1997,6 +2016,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
     _mentionDebounce?.cancel();
     _descFocus.dispose();
     _titleCtrl.dispose();
+    _titleFocus.dispose();
     _descCtrl.dispose();
     super.dispose();
   }

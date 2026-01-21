@@ -1,0 +1,37 @@
+"widget.displayName" = "Next Deck";
+"widget.description" = "Schneller Zugriff auf Boards und Karten.";
+"widget.defaultTitle" = "Next Deck";
+"widget.noCards" = "Keine Karten";
+"widget.intentDescription" = "Board und Filter auswaehlen.";
+"upcomingLarge.displayName" = "Anstehend (Gross)";
+"upcomingLarge.description" = "Zweispaltige Ansicht der anstehenden Karten.";
+"upcomingLarge.header" = "Anstehend";
+"assignment.assigned" = "Zugewiesen";
+"assignment.all" = "Alle Karten";
+"parameter.assignment" = "Filter";
+"newcard.displayName" = "Neue Karte";
+"newcard.description" = "Karte in einem Board erstellen.";
+"newcard.header" = "Neue Karte";
+"newcard.button" = "Neue Karte";
+"newcard.noBoard" = "Kein Board";
+"newcard.missingBoard" = "Board in den Widget-Einstellungen waehlen.";
+
+"filter.title" = "Filter";
+"filter.all" = "Alle Karten";
+"filter.assigned" = "Nur mir zugewiesen";
+"filter.dueSoon" = "Faellig bald";
+
+"view.title" = "Ansicht";
+"view.board" = "Board";
+"view.upcoming" = "Anstehend";
+"view.upcoming.title" = "Anstehend";
+"view.upcoming.subtitle" = "Naechste 3 Karten";
+
+"parameter.board" = "Board";
+"parameter.filter" = "Filter";
+"parameter.view" = "Ansicht";
+"board.title" = "Board";
+
+"Next Deck Widget" = "Next Deck-Widget";
+"Show %@ for %@" = "Zeige %@ fuer %@";
+"Show %@ for %@ with %@" = "Zeige %@ fuer %@ mit %@";

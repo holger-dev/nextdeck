@@ -47,11 +47,22 @@
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Zugriff auf die Mediathek, um Bilder als Anhänge an Karten hochzuladen.</string>
-    <key>CFBundleLocalizations</key>
-    <array>
-        <string>de</string>
-        <string>en</string>
-        <string>es</string>
-    </array>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>de</string>
+		<string>en</string>
+		<string>es</string>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>nextdeck</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>nextdeck</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

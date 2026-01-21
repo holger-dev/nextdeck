@@ -16,6 +16,7 @@ import '../models/user_ref.dart';
 import 'board_search_page.dart';
 import '../theme/app_theme.dart';
 import '../l10n/app_localizations.dart';
+import '../navigation/nav_keys.dart';
 
 const TextStyle _destructiveActionTextStyle =
     TextStyle(color: CupertinoColors.destructiveRed);
@@ -31,12 +32,20 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
   final PageController _pageController = PageController();
   double _page = 0;
   int? _lastBoardId;
+  bool _quickAddInFlight = false;
+  bool _openCardInFlight = false;
+  AppState? _appRef;
   late final AnimationController _spinCtrl;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Kein Netz-Refresh hier: Daten kommen aus dem einmaligen Global-Fetch (details=true)
+    final app = context.read<AppState>();
+    if (_appRef == null) {
+      _appRef = app;
+      app.addListener(_handleAppChange);
+    }
   }
 
   @override
@@ -53,6 +62,7 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _appRef?.removeListener(_handleAppChange);
     _spinCtrl.dispose();
     _pageController.dispose();
     super.dispose();
@@ -127,6 +137,26 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
     final app = context.watch<AppState>();
     final board = app.activeBoard;
     final columns = app.columnsForActiveBoard();
+    if (!_quickAddInFlight &&
+        board != null &&
+        columns.isNotEmpty &&
+        app.hasPendingQuickAddFor(board.id)) {
+      _quickAddInFlight = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        app.clearPendingQuickAdd();
+        final columnId = columns.first.id;
+        await _showCreateCard(context, board.id, columnId);
+        if (!mounted) return;
+        setState(() => _quickAddInFlight = false);
+      });
+    }
+    if (!_openCardInFlight &&
+        board != null &&
+        columns.isNotEmpty &&
+        app.hasPendingOpenCardFor(board.id)) {
+      _tryOpenPendingCard(app, board, columns);
+    }
     final boardIndex =
         board == null ? -1 : app.boards.indexWhere((b) => b.id == board.id);
     final boardNcColor = (boardIndex >= 0 && boardIndex < app.boards.length)
@@ -524,6 +554,80 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
         ],
       ),
     );
+  }
+
+  void _handleAppChange() {
+    if (!mounted) return;
+    final app = _appRef;
+    if (app == null) return;
+    final board = app.activeBoard;
+    final columns = board == null ? <deck.Column>[] : app.columnsForBoard(board.id);
+    if (board == null || columns.isEmpty) return;
+    if (app.hasPendingOpenCardFor(board.id) && !_openCardInFlight) {
+      _tryOpenPendingCard(app, board, columns);
+    }
+  }
+
+  void _tryOpenPendingCard(
+      AppState app, Board board, List<deck.Column> columns) {
+    _openCardInFlight = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final pending = app.consumePendingOpenCard(board.id);
+      if (pending == null) {
+        if (mounted) setState(() => _openCardInFlight = false);
+        return;
+      }
+      final stack = _resolveStackForCard(columns, pending);
+      if (stack == null) {
+        if (mounted) setState(() => _openCardInFlight = false);
+        return;
+      }
+      final list = app.boardArchivedOnly
+          ? (app.archivedCardsForBoard(board.id)[stack.id] ??
+              const <CardItem>[])
+          : stack.cards;
+      if (list.isEmpty) {
+        if (mounted) setState(() => _openCardInFlight = false);
+        return;
+      }
+      final card = list.firstWhere(
+        (c) => c.id == pending.cardId,
+        orElse: () => list.first,
+      );
+      final colIdx = columns.indexOf(stack);
+      final cardIdx = list.indexOf(card);
+      final bg = AppTheme.cardBg(
+          app, card.labels, colIdx < 0 ? 0 : colIdx, cardIdx < 0 ? 0 : cardIdx);
+      final nav = AppNavKeys.boardNavKey.currentState ?? Navigator.of(context);
+      nav.popUntil((route) => route.isFirst);
+      await nav.push(
+        CupertinoPageRoute(
+          builder: (_) => CardDetailPage(
+            cardId: pending.cardId,
+            boardId: board.id,
+            stackId: stack.id,
+            bgColor: bg,
+            startEditing: pending.edit,
+          ),
+        ),
+      );
+      if (mounted) setState(() => _openCardInFlight = false);
+    });
+  }
+
+  deck.Column? _resolveStackForCard(
+      List<deck.Column> columns, PendingCardOpen pending) {
+    if (pending.stackId != null) {
+      return columns.firstWhere(
+        (c) => c.id == pending.stackId,
+        orElse: () => columns.isNotEmpty ? columns.first : deck.Column(id: -1, title: '—', cards: const []),
+      );
+    }
+    for (final col in columns) {
+      if (col.cards.any((c) => c.id == pending.cardId)) return col;
+    }
+    return columns.isNotEmpty ? columns.first : null;
   }
 
   Future<void> _showCreateCard(

@@ -13,6 +13,8 @@ import '../models/label.dart';
 import '../models/user_ref.dart';
 import '../services/nextcloud_deck_api.dart';
 import '../services/notification_service.dart';
+import '../services/deep_link_service.dart';
+import '../services/widget_service.dart';
 import '../sync/sync_service.dart';
 import '../sync/sync_service_impl.dart';
 
@@ -138,15 +140,31 @@ class AppState extends ChangeNotifier {
 
   final api = NextcloudDeckApi();
   final NotificationService _notifications = NotificationService();
+  final WidgetService _widgetService = WidgetService();
   SyncService? _sync;
+  StreamSubscription<Uri>? _deepLinkSub;
+  int? _pendingOpenBoardId;
+  int? _pendingQuickAddBoardId;
+  PendingCardOpen? _pendingOpenCard;
   bool _bootSyncing = false;
   String? _bootMessage;
   bool get bootSyncing => _bootSyncing;
   String? get bootMessage => _bootMessage;
 
+  @override
+  void dispose() {
+    _deepLinkSub?.cancel();
+    super.dispose();
+  }
+
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
+    if (Platform.isIOS) {
+      await DeepLinkService.instance.init();
+      _deepLinkSub ??=
+          DeepLinkService.instance.links.listen((uri) => unawaited(_handleDeepLink(uri)));
+    }
     final String? storedThemeMode = await storage.read(key: 'themeMode');
     if (storedThemeMode == 'light' ||
         storedThemeMode == 'dark' ||
@@ -213,6 +231,7 @@ class AppState extends ChangeNotifier {
     final activeBoardIdStr = await storage.read(key: 'activeBoardId');
     if (_localMode) {
       _setupLocalBoard();
+      unawaited(_updateWidgetData());
       notifyListeners();
       return;
     }
@@ -703,6 +722,31 @@ class AppState extends ChangeNotifier {
     tabController.index = index;
   }
 
+  bool hasPendingQuickAddFor(int boardId) =>
+      _pendingQuickAddBoardId == boardId;
+
+  void clearPendingQuickAdd() {
+    _pendingQuickAddBoardId = null;
+  }
+
+  bool hasPendingOpenCardFor(int boardId) =>
+      _pendingOpenCard?.boardId == boardId;
+
+  PendingCardOpen? consumePendingOpenCard(int boardId) {
+    final pending = _pendingOpenCard;
+    if (pending == null || pending.boardId != boardId) return null;
+    _pendingOpenCard = null;
+    return pending;
+  }
+
+  PendingCardOpen? get pendingOpenCard => _pendingOpenCard;
+
+  PendingCardOpen? consumePendingOpenCardAny() {
+    final pending = _pendingOpenCard;
+    _pendingOpenCard = null;
+    return pending;
+  }
+
   Future<void> setLocalMode(bool enabled) async {
     _localMode = enabled;
     await storage.write(key: 'local_mode', value: enabled ? '1' : '0');
@@ -873,6 +917,7 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       await _ensureActiveBoardValid();
       _rebuildUpcomingCacheFromMemory();
+      unawaited(_updateWidgetData());
       notifyListeners();
       return;
     }
@@ -880,6 +925,7 @@ class AppState extends ChangeNotifier {
     if (res.notModified) {
       await _ensureActiveBoardValid();
       _rebuildUpcomingCacheFromMemory();
+      unawaited(_updateWidgetData());
       notifyListeners();
       return;
     }
@@ -1107,6 +1153,8 @@ class AppState extends ChangeNotifier {
     if (_dueNotificationsEnabled && Platform.isIOS) {
       unawaited(_rescheduleDueNotificationsFromMemory());
     }
+    unawaited(_updateWidgetData());
+    unawaited(_applyPendingDeepLinkIfReady());
     notifyListeners();
   }
 
@@ -1183,6 +1231,122 @@ class AppState extends ChangeNotifier {
     await storage.write(key: 'defaultBoardId', value: board.id.toString());
     // Do not change the currently active board; applies on next app start based on startup mode
     notifyListeners();
+  }
+
+  Future<void> _handleDeepLink(Uri uri) async {
+    final action = uri.host.isNotEmpty
+        ? uri.host
+        : (uri.pathSegments.isNotEmpty ? uri.pathSegments.first : '');
+    final boardId = int.tryParse(uri.queryParameters['board'] ?? '');
+    final cardId = int.tryParse(uri.queryParameters['card'] ?? '');
+    final stackId = int.tryParse(uri.queryParameters['stack'] ?? '');
+    final edit = uri.queryParameters['edit'] == '1';
+    if (action == 'quick-add') {
+      await _queueDeepLinkAction(boardId, quickAdd: true);
+      return;
+    }
+    if (action == 'card') {
+      if (boardId == null || cardId == null) return;
+      await _queueCardDeepLink(
+          boardId: boardId, cardId: cardId, stackId: stackId, edit: edit);
+      return;
+    }
+    if (action == 'open' || action == 'board') {
+      await _queueDeepLinkAction(boardId, quickAdd: false);
+    }
+  }
+
+  Future<void> _queueDeepLinkAction(int? boardId,
+      {required bool quickAdd}) async {
+    final resolved = boardId ?? _defaultBoardId ?? _activeBoard?.id;
+    if (resolved == null) return;
+    _pendingOpenBoardId = resolved;
+    if (quickAdd) _pendingQuickAddBoardId = resolved;
+    await _applyPendingDeepLinkIfReady();
+  }
+
+  Future<void> _queueCardDeepLink(
+      {required int boardId,
+      required int cardId,
+      int? stackId,
+      required bool edit}) async {
+    _pendingOpenCard = PendingCardOpen(
+        cardId: cardId, boardId: boardId, stackId: stackId, edit: edit);
+    _pendingOpenBoardId = boardId;
+    notifyListeners();
+    await _applyPendingDeepLinkIfReady();
+  }
+
+  Future<void> _applyPendingDeepLinkIfReady() async {
+    if (_pendingOpenBoardId == null) return;
+    final target = _boards.firstWhere(
+      (b) => b.id == _pendingOpenBoardId,
+      orElse: () => Board.empty(),
+    );
+    if (target.id < 0) return;
+    final quickAdd = _pendingQuickAddBoardId == target.id;
+    _pendingOpenBoardId = null;
+    await _openBoardFromDeepLink(target, quickAdd: quickAdd);
+  }
+
+  Future<void> _openBoardFromDeepLink(Board board,
+      {required bool quickAdd}) async {
+    await setActiveBoard(board);
+    if (columnsForBoard(board.id).isEmpty) {
+      await refreshColumnsFor(board, forceNetwork: true);
+    }
+    selectTab(1);
+    if (quickAdd) _pendingQuickAddBoardId = board.id;
+  }
+
+  Map<String, dynamic> _buildWidgetPayload() {
+    final visibleBoards = _boards
+        .where((b) => !b.archived && !_hiddenBoards.contains(b.id))
+        .toList();
+    final cards = <Map<String, dynamic>>[];
+    const maxCards = 300;
+    for (final b in visibleBoards) {
+      final cols = _columnsByBoard[b.id] ?? const <deck.Column>[];
+      for (final col in cols) {
+        for (final card in col.cards) {
+          if (cards.length >= maxCards) break;
+          if (card.archived) continue;
+          if (card.done != null) continue;
+          cards.add({
+            'id': card.id,
+            'title': card.title,
+            'boardId': b.id,
+            'columnId': col.id,
+            if (card.due != null)
+              'due': card.due!.toUtc().millisecondsSinceEpoch,
+            'assignedToMe': _isAssignedToMe(card),
+          });
+        }
+        if (cards.length >= maxCards) break;
+      }
+      if (cards.length >= maxCards) break;
+    }
+    return {
+      'updatedAt': DateTime.now().toUtc().millisecondsSinceEpoch,
+      'defaultBoardId': _defaultBoardId ?? _activeBoard?.id,
+      'boards': visibleBoards
+          .map((b) => {
+                'id': b.id,
+                'title': b.title,
+                if (b.color != null) 'color': b.color,
+              })
+          .toList(),
+      'cards': cards,
+    };
+  }
+
+  Future<void> _updateWidgetData() async {
+    if (!Platform.isIOS) return;
+    try {
+      await _widgetService.updateWidgetData(_buildWidgetPayload());
+    } catch (_) {
+      // ignore widget update errors
+    }
   }
 
   void setStartupBoardMode(String mode) {
@@ -1274,6 +1438,7 @@ class AppState extends ChangeNotifier {
       _stackLoaded.add(c.id);
     }
     _lastError = null;
+    unawaited(_updateWidgetData());
     notifyListeners();
     return true;
   }
@@ -2222,6 +2387,7 @@ class AppState extends ChangeNotifier {
       _hiddenBoards.remove(boardId);
     }
     cache.put('hiddenBoards', _hiddenBoards.toList());
+    unawaited(_updateWidgetData());
     notifyListeners();
   }
 
@@ -2381,6 +2547,7 @@ class AppState extends ChangeNotifier {
       _columnsByBoard[boardId] = updated;
       cache.put('local_next_card_id', nextId + 1);
       cache.put('columns_$boardId', _serializeColumnsForCache(updated));
+      unawaited(_updateWidgetData());
       notifyListeners();
       return;
     }
@@ -2407,6 +2574,7 @@ class AppState extends ChangeNotifier {
         cache.put('columns_$boardId', _serializeColumnsForCache(updated));
         // Rebuild Upcoming view after creating card
         _rebuildUpcomingCacheFromMemory();
+        unawaited(_updateWidgetData());
         notifyListeners();
       }
     }
@@ -2622,4 +2790,18 @@ class AppState extends ChangeNotifier {
       notifyListeners();
     }
   }
+}
+
+class PendingCardOpen {
+  final int cardId;
+  final int boardId;
+  final int? stackId;
+  final bool edit;
+
+  const PendingCardOpen({
+    required this.cardId,
+    required this.boardId,
+    this.stackId,
+    required this.edit,
+  });
 }

@@ -1,0 +1,35 @@
+"widget.displayName" = "Next Deck";
+"widget.description" = "Quick access to boards and cards.";
+"widget.defaultTitle" = "Next Deck";
+"widget.noCards" = "No cards";
+"widget.intentDescription" = "Choose a board and filter.";
+
+"filter.title" = "Filter";
+"filter.all" = "All cards";
+"filter.assigned" = "Assigned only";
+"filter.dueSoon" = "Due soon";
+
+"view.title" = "View";
+"view.board" = "Board";
+"view.upcoming" = "Upcoming";
+"view.upcoming.title" = "Upcoming";
+"view.upcoming.subtitle" = "Next 3 cards";
+
+"parameter.board" = "Board";
+"parameter.filter" = "Filter";
+"parameter.view" = "View";
+"board.title" = "Board";
+"parameter.assignment" = "Filter";
+"assignment.title" = "Filter";
+"assignment.assigned" = "Assigned";
+"assignment.all" = "All cards";
+"upcomingLarge.widgetTitle" = "Upcoming Large Widget";
+"upcomingLarge.intentDescription" = "Upcoming cards with assignment filter.";
+"newcard.widgetTitle" = "New Card Widget";
+"newcard.intentDescription" = "Choose a board for quick add.";
+
+"Next Deck Widget" = "Next Deck Widget";
+"Show %@ for %@" = "Show %@ for %@";
+"Show %@ for %@ with %@" = "Show %@ for %@ with %@";
+"Create card in %@" = "Create card in %@";
+"Show %@ cards" = "Show %@ cards";

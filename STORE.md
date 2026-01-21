@@ -249,16 +249,48 @@ Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (wer
 
 # DE – Version 1.7
 
-- In den Einstellungen kann nur definiert werden, ob die Ansicht Boards und Anstehend nur mir zugewiesene Karten anzeigt oder alle. Die Filter können auch einfach in den jeweiligen Ansichten direkt eingestellt werden.
-- In den Einstellungen kann nun definiert werden, ob die Farbe einer Karte durch das erste Tag bestimmt wird oder neutral ist.
-- Der "Karte als erledigt"-Ablauf ist nun identisch mit dem Ablauf in der WebUI! Eine Karte wird mit einem grünen Stern markiert und nicht mehr in eine Done-Spalte verschoben. Zudem wird die Karte in der WebUI korrekt als Erledigt Markiert angezeigt.
-- Es gibt einen Filter, um Karten anzuzeigen, die nur dem eingeloggten User zugewiesen sind.
-- In den Boards kann nun nach archivierten Karten gefiltert werden.
-- Karten können nun archiviert werden.
-- Es wurde ein Fehler behoben, dass PDF-Dokumente nicht zu öffnen sind. Hier muss aber sichergestellt sein, dass ein Programm in iOS für PDF-Dateien hinterlegt ist.
-- Man kann nun als Anhang entweder Dateien oder BIlder aus der Galerie hochladen.
-- Es wurde ein Notification-Service hinzugefügt, der alarmiert, sobald Karten mit einem Zeitpunkt überfällig sind. Hier gibt es div. Einstellungsmöglicihkeiten.
-- In Kommentaren kann nun per @ ein User verlinkt werden. Dies wird ebenfalls korrekt in der WebUI angezeigt.
-- Auf den Karten im Board werden nun weitere Infos angezeigt, z.B. welchen Usern die Karte zugewiesen ist und, wenn vorhanden, wie viele Aufgaben in der Beschreibung bereits erledigt sind.
-- Unter Board-Aktionen können neue Boards erstellt werden, Spalten für ein Board angelegt und verschoben werden und die Farbe eines Board geändert werden.
-- Klickt man nun in der Boardansicht oben links auf den Boardnamen, öffnet sich eine Übersicht mit allen sichtbaren Boards. Klickt man davon ein Board an, wird dieses Board geöffnet.
+- Filtersteuerung fuer Boards und Anstehend: Wahl zwischen "nur mir zugewiesen" und "alle" in den Ansichten, zusaetzlich per Einstellung.
+- Kartenfarben konfigurierbar: Tag-Farbe oder neutral.
+- "Als erledigt markieren" wie in der Web-UI: gruener Stern statt Verschieben in eine Done-Spalte; Status wird in der Web-UI korrekt angezeigt.
+- Filter fuer nur zugewiesene Karten.
+- Archiv-Filter in Boards und Archivieren von Karten.
+- PDF-Anhaenge auf iOS wieder oeffnbar (mit installiertem PDF-Reader).
+- Anhaenge aus Dateien oder Galerie.
+- Benachrichtigungen fuer ueberfaellige Karten inkl. konfigurierbarer Optionen.
+- @-Mentions in Kommentaren, korrekt in der Web-UI sichtbar.
+- Mehr Karteninfos im Board: Zuweisungen und Aufgabenzaehler aus der Beschreibung.
+- Board-Aktionen: Boards erstellen, Spalten anlegen/verschieben, Board-Farbe aendern.
+- Schnellwechsel per Boardnamen: Liste aller sichtbaren Boards, direkter Wechsel.
+- Neue Home-Screen-Widgets fuer Board- und Karteninfos.
+
+# EN – Version 1.7
+
+- Board and Upcoming filters: choose "assigned to me" vs "all" in the views, also configurable in settings.
+- Card color mode: tag-based or neutral.
+- "Mark as done" now matches the web UI: green star instead of moving to a Done column; status shows correctly in the web UI.
+- Filter for assigned-only cards.
+- Archive filter in boards and ability to archive cards.
+- PDFs open again on iOS (requires a PDF reader installed).
+- Attachments from files or photo library.
+- Notifications for overdue cards with configurable options.
+- @-mentions in comments, shown correctly in the web UI.
+- More card meta on boards: assignees and checklist counts from description.
+- Board actions: create boards, add/move columns, change board color.
+- Quick board switcher via board title.
+- New home screen widgets for board and card info.
+
+# ES – Version 1.7
+
+- Filtros en Tableros y Proximas: elegir "asignadas a mi" o "todas" en las vistas y en ajustes.
+- Modo de color de tarjetas: por etiqueta o neutro.
+- "Marcar como hecho" igual que en la web: estrella verde en lugar de mover a Done; estado correcto en la web.
+- Filtro para mostrar solo tarjetas asignadas.
+- Filtro de archivadas en tableros y archivado de tarjetas.
+- PDFs vuelven a abrir en iOS (requiere lector PDF instalado).
+- Adjuntos desde archivos o galeria.
+- Notificaciones de vencidas con opciones configurables.
+- Menciones con @ en comentarios, visibles correctamente en la web.
+- Mas info en tarjetas: asignados y conteo de tareas desde la descripcion.
+- Acciones de tablero: crear tableros, anadir/mover columnas, cambiar color del tablero.
+- Cambio rapido de tablero desde el titulo.
+- Nuevos widgets de pantalla de inicio con info de tableros y tarjetas.
