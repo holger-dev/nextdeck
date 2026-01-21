@@ -16,13 +16,13 @@
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
-		A1B2C3D4E5F60123456789C9 /* AppIntents.strings in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60123456789CC /* AppIntents.strings */; };
-		A1B2C3D4E5F60123456789C8 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60123456789C7 /* Localizable.strings */; };
 		A1B2C3D4E5F60123456789C0 /* NextDeckWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60123456789AC /* NextDeckWidget.swift */; };
 		A1B2C3D4E5F60123456789C1 /* NextDeckWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60123456789AD /* NextDeckWidgetBundle.swift */; };
 		A1B2C3D4E5F60123456789C2 /* NextDeckWidgetIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60123456789AE /* NextDeckWidgetIntent.swift */; };
 		A1B2C3D4E5F60123456789C3 /* WidgetData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60123456789AF /* WidgetData.swift */; };
 		A1B2C3D4E5F60123456789C4 /* NextDeckWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60123456789B2 /* NextDeckWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A1B2C3D4E5F60123456789C8 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60123456789C7 /* Localizable.strings */; };
+		A1B2C3D4E5F60123456789C9 /* AppIntents.strings in Resources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60123456789CC /* AppIntents.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */

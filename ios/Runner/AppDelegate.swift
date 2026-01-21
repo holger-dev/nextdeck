@@ -16,10 +16,11 @@ import WidgetKit
     if let url = launchOptions?[.url] as? URL {
       initialLink = url.absoluteString
     }
-    if let controller = window?.rootViewController as? FlutterViewController {
+    if let registrar = self.registrar(forPlugin: "AppDelegate") {
+      let messenger = registrar.messenger()
       let widgetChannel = FlutterMethodChannel(
         name: "nextdeck/widget",
-        binaryMessenger: controller.binaryMessenger
+        binaryMessenger: messenger
       )
       widgetChannel.setMethodCallHandler { [weak self] call, result in
         guard let self = self else { return }
@@ -32,7 +33,12 @@ import WidgetKit
             return
           }
           let store = UserDefaults(suiteName: self.appGroupId)
-          store?.set(payload, forKey: self.widgetPayloadKey)
+          if let data = payload.data(using: .utf8) {
+            store?.set(data, forKey: self.widgetPayloadKey)
+          } else {
+            store?.set(payload, forKey: self.widgetPayloadKey)
+          }
+          store?.synchronize()
           if #available(iOS 14.0, *) {
             WidgetCenter.shared.reloadAllTimelines()
           }
@@ -43,7 +49,7 @@ import WidgetKit
       }
       let linkChannel = FlutterMethodChannel(
         name: "nextdeck/deeplink",
-        binaryMessenger: controller.binaryMessenger
+        binaryMessenger: messenger
       )
       linkChannel.setMethodCallHandler { [weak self] call, result in
         guard let self = self else { return }

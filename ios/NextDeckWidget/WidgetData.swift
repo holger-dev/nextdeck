@@ -28,6 +28,9 @@ enum WidgetDataStore {
 
   static func load() -> WidgetPayload? {
     let defaults = UserDefaults(suiteName: appGroupId)
+    if let data = defaults?.data(forKey: payloadKey) {
+      return try? JSONDecoder().decode(WidgetPayload.self, from: data)
+    }
     guard let raw = defaults?.string(forKey: payloadKey) else { return nil }
     guard let data = raw.data(using: .utf8) else { return nil }
     return try? JSONDecoder().decode(WidgetPayload.self, from: data)
