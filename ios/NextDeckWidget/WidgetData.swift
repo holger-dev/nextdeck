@@ -35,4 +35,5 @@ enum WidgetDataStore {
     guard let data = raw.data(using: .utf8) else { return nil }
     return try? JSONDecoder().decode(WidgetPayload.self, from: data)
   }
+
 }

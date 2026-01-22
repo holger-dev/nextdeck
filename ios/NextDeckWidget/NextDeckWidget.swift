@@ -133,7 +133,6 @@ struct NextDeckWidgetView: View {
     let displayCards = cards.prefix(maxCardsForFamily())
 
     ZStack {
-      Color(.systemBackground).ignoresSafeArea()
       VStack(alignment: .leading, spacing: 8) {
         HStack {
           Text(boardTitle)
@@ -177,6 +176,7 @@ struct NextDeckWidgetView: View {
       }
       .padding(12)
     }
+    .containerBackground(.background, for: .widget)
   }
 
   private func resolvedBoard(from payload: WidgetPayload?) -> WidgetBoard? {
@@ -308,7 +308,6 @@ struct NewCardWidgetView: View {
     let quickAddUrl = deepLink(action: "quick-add", boardId: board?.id)
 
     ZStack {
-      Color(.systemBackground).ignoresSafeArea()
       VStack(alignment: .leading, spacing: 8) {
         Text(String(localized: "newcard.header"))
           .font(.caption)
@@ -333,6 +332,7 @@ struct NewCardWidgetView: View {
       }
       .padding(12)
     }
+    .containerBackground(.background, for: .widget)
   }
 
   private func resolvedBoard(from payload: WidgetPayload?) -> WidgetBoard? {
@@ -368,7 +368,6 @@ struct UpcomingLargeWidgetView: View {
     let right = Array(cards.enumerated().filter { $0.offset % 2 == 1 }.map { $0.element })
 
     ZStack {
-      Color(.systemBackground).ignoresSafeArea()
       VStack(alignment: .leading, spacing: 8) {
         HStack {
           Text(String(localized: "upcomingLarge.header"))
@@ -392,6 +391,7 @@ struct UpcomingLargeWidgetView: View {
       }
       .padding(12)
     }
+    .containerBackground(.background, for: .widget)
   }
 
   private func upcomingCards(from payload: WidgetPayload?) -> [WidgetCard] {

@@ -19,7 +19,7 @@
 "filter.title" = "Filter";
 "filter.all" = "Alle Karten";
 "filter.assigned" = "Nur mir zugewiesen";
-"filter.dueSoon" = "Faellig bald";
+"filter.dueSoon" = "Bald Faellig";
 
 "view.title" = "Ansicht";
 "view.board" = "Board";
