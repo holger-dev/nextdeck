@@ -74,6 +74,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
   void _addHit(AppState app, int boardId, String boardTitle, int stackId,
       String stackTitle, CardItem card) {
     if (card.due == null) return;
+    if (card.done != null) return;
     if (!app.shouldIncludeAssignedCard(card)) return;
     final st = stackTitle.toLowerCase();
     if (st.contains('done') || st.contains('erledigt')) return; // skip done
@@ -163,6 +164,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
         card = stack.cards.first;
       }
       if (card == null) continue;
+      if (card.done != null) continue;
       if (!app.shouldIncludeAssignedCard(card)) continue;
       final board = app.boards.firstWhere((b) => b.id == bId,
           orElse: () => Board(id: bId, title: 'Board'));

@@ -475,6 +475,7 @@ class AppState extends ChangeNotifier {
           if (ct.contains('done') || ct.contains('erledigt'))
             continue; // exclude done columns
           for (final k in c.cards) {
+            if (k.done != null) continue;
             final due = k.due;
             if (due == null) continue;
             final entry = {
