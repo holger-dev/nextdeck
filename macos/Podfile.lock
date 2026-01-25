@@ -1,7 +1,13 @@
 PODS:
   - file_picker (0.0.1):
     - FlutterMacOS
+  - file_selector_macos (0.0.1):
+    - FlutterMacOS
+  - flutter_local_notifications (0.0.1):
+    - FlutterMacOS
   - flutter_secure_storage_macos (6.1.3):
+    - FlutterMacOS
+  - flutter_timezone (0.1.0):
     - FlutterMacOS
   - FlutterMacOS (1.0.0)
   - path_provider_foundation (0.0.1):
@@ -14,7 +20,10 @@ PODS:
 
 DEPENDENCIES:
   - file_picker (from `Flutter/ephemeral/.symlinks/plugins/file_picker/macos`)
+  - file_selector_macos (from `Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos`)
+  - flutter_local_notifications (from `Flutter/ephemeral/.symlinks/plugins/flutter_local_notifications/macos`)
   - flutter_secure_storage_macos (from `Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_macos/macos`)
+  - flutter_timezone (from `Flutter/ephemeral/.symlinks/plugins/flutter_timezone/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
   - path_provider_foundation (from `Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin`)
   - share_plus (from `Flutter/ephemeral/.symlinks/plugins/share_plus/macos`)
@@ -23,8 +32,14 @@ DEPENDENCIES:
 EXTERNAL SOURCES:
   file_picker:
     :path: Flutter/ephemeral/.symlinks/plugins/file_picker/macos
+  file_selector_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/file_selector_macos/macos
+  flutter_local_notifications:
+    :path: Flutter/ephemeral/.symlinks/plugins/flutter_local_notifications/macos
   flutter_secure_storage_macos:
     :path: Flutter/ephemeral/.symlinks/plugins/flutter_secure_storage_macos/macos
+  flutter_timezone:
+    :path: Flutter/ephemeral/.symlinks/plugins/flutter_timezone/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
   path_provider_foundation:
@@ -36,7 +51,10 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   file_picker: 7584aae6fa07a041af2b36a2655122d42f578c1a
+  file_selector_macos: 9e9e068e90ebee155097d00e89ae91edb2374db7
+  flutter_local_notifications: 7e5a17a1dbc00d83dc10d43c2c4c05f2ceed233c
   flutter_secure_storage_macos: 7f45e30f838cf2659862a4e4e3ee1c347c2b3b54
+  flutter_timezone: bed4b9a391e5727a612e722d7f518882c5da205d
   FlutterMacOS: d0db08ddef1a9af05a5ec4b724367152bb0500b1
   path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
   share_plus: 510bf0af1a42cd602274b4629920c9649c52f4cc
