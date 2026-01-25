@@ -134,7 +134,8 @@ class NotificationService {
     required String? localeCode,
   }) {
     final now = DateTime.now();
-    final l10n = L10n(Locale(localeCode ?? 'en'));
+    final resolvedLocale = _resolveLocaleCode(localeCode);
+    final l10n = L10n(Locale(resolvedLocale));
     final out = <_DueCandidate>[];
     final seen = <int>{};
     for (final card in cards) {
@@ -179,6 +180,16 @@ class NotificationService {
     if (minutes == 60) return l10n.reminderIn1Hour;
     if (minutes == 1440) return l10n.reminderIn1Day;
     return l10n.reminderIn1Hour;
+  }
+
+  String _resolveLocaleCode(String? localeCode) {
+    var code = localeCode?.toLowerCase().trim();
+    if (code == null || code.isEmpty) {
+      code = WidgetsBinding
+          .instance.platformDispatcher.locale.languageCode.toLowerCase();
+    }
+    if (code == 'de' || code == 'es' || code == 'en') return code;
+    return 'en';
   }
 }
 

@@ -27,6 +27,16 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _updatingUrl = false;
   bool _hostValid = true;
   bool _slashMode = false;
+  bool _sectionAccountOpen = true;
+  bool _sectionHelpOpen = false;
+  bool _sectionStartupOpen = false;
+  bool _sectionNotificationsOpen = false;
+  bool _sectionAppearanceOpen = false;
+  bool _sectionLanguageOpen = false;
+  bool _sectionPerformanceOpen = false;
+  bool _sectionLocalOpen = false;
+  bool _sectionDeveloperOpen = false;
+  bool _sectionSupportOpen = false;
   String _stripScheme(String v) {
     var x = v.trim();
     if (x.isEmpty) return x;
@@ -123,6 +133,15 @@ class _SettingsPageState extends State<SettingsPage> {
     _user.dispose();
     _pass.dispose();
     super.dispose();
+  }
+
+  @override
+  void reassemble() {
+    super.reassemble();
+    setState(() {
+      _sectionHelpOpen = false;
+      _sectionStartupOpen = false;
+    });
   }
 
   Future<void> _saveAndTest() async {
@@ -246,558 +265,606 @@ class _SettingsPageState extends State<SettingsPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text(l10n.nextcloudAccess,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            CupertinoTextField(
-              controller: _url,
-              placeholder: l10n.urlPlaceholder,
-              keyboardType: TextInputType.url,
-              textCapitalization: TextCapitalization.none,
-              autocorrect: false,
-              enableSuggestions: false,
-              prefix: Padding(
-                padding: const EdgeInsets.only(left: 6, right: 4),
-                child: Text('https://',
-                    style: TextStyle(
-                        color: CupertinoColors.secondaryLabel
-                            .resolveFrom(context))),
-              ),
-              suffix: _hostValid
-                  ? null
-                  : const Padding(
-                      padding: EdgeInsets.only(right: 6),
-                      child: Icon(CupertinoIcons.exclamationmark_circle,
-                          color: CupertinoColors.systemRed, size: 18),
-                    ),
-              decoration: BoxDecoration(
-                color: CupertinoColors.tertiarySystemFill.resolveFrom(context),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                    color: _hostValid
-                        ? CupertinoColors.separator.resolveFrom(context)
-                        : CupertinoColors.systemRed,
-                    width: _hostValid ? 0.5 : 1.0),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              l10n.httpsEnforcedInfo,
-              style: const TextStyle(
-                  color: CupertinoColors.systemGrey, fontSize: 12),
-            ),
-            const SizedBox(height: 8),
-            CupertinoTextField(
-              controller: _user,
-              placeholder: l10n.username,
-              autocorrect: false,
-              enableSuggestions: false,
-            ),
-            const SizedBox(height: 8),
-            CupertinoTextField(
-              controller: _pass,
-              placeholder: l10n.appPassword,
-              obscureText: true,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              l10n.appPasswordHint,
-              style: const TextStyle(
-                  color: CupertinoColors.systemGrey, fontSize: 12),
-            ),
-            const SizedBox(height: 12),
-            CupertinoButton.filled(
-              onPressed: _testing ? null : _saveAndTest,
-              child: _testing
-                  ? const CupertinoActivityIndicator()
-                  : Text(l10n.loginAndLoadBoards),
-            ),
-            if (_testMsg != null) ...[
-              const SizedBox(height: 8),
-              Text(_testMsg!,
-                  style: TextStyle(
-                      color: _testOk
-                          ? CupertinoColors.activeGreen
-                          : CupertinoColors.destructiveRed)),
-            ],
-            const SizedBox(height: 12),
-            const _Divider(),
-            const SizedBox(height: 20),
-            // Konto
-            const _Divider(),
-            const SizedBox(height: 20),
-
-            // Startup tab selection
-            Text(L10n.of(context).startupPage,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Builder(builder: (ctx) {
-              final options = <int, Widget>{
-                0: Text(L10n.of(ctx).navUpcoming),
-                1: Text(L10n.of(ctx).navBoard),
-                2: Text(L10n.of(ctx).overview),
-              };
-              return CupertinoSlidingSegmentedControl<int>(
-                groupValue: app.startupTabIndex,
-                children: options,
-                onValueChanged: (v) {
-                  if (v != null) context.read<AppState>().setStartupTabIndex(v);
-                },
-              );
-            }),
-            const SizedBox(height: 12),
-            const _Divider(),
-            const SizedBox(height: 20),
-            // Performance
-            Text(L10n.of(context).performance,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Text(L10n.of(context).fullSyncManualHint,
-                style: const TextStyle(
-                    color: CupertinoColors.systemGrey, fontSize: 12)),
-            const SizedBox(height: 8),
-            Row(children: [
-              Expanded(child: Text(L10n.of(context).upcomingSingleColumnLabel)),
-              CupertinoSwitch(
-                  value: app.upcomingSingleColumn,
-                  onChanged: (v) => app.setUpcomingSingleColumn(v))
-            ]),
-            const SizedBox(height: 6),
-            Text(L10n.of(context).upcomingSingleColumnHelp,
-                style: const TextStyle(
-                    color: CupertinoColors.systemGrey, fontSize: 12)),
-            const SizedBox(height: 10),
-            Row(children: [
-              Expanded(child: Text(L10n.of(context).showOnlyMyCardsLabel)),
-              CupertinoSwitch(
-                  value: app.upcomingAssignedOnly,
-                  onChanged: (v) async {
-                    app.setUpcomingAssignedOnly(v);
-                    if (v) {
-                      await app.refreshUpcomingAssigneesIfNeeded();
-                    }
-                  })
-            ]),
-            const SizedBox(height: 6),
-            Text(L10n.of(context).showOnlyMyCardsHelp,
-                style: const TextStyle(
-                    color: CupertinoColors.systemGrey, fontSize: 12)),
-            const SizedBox(height: 8),
-            Text(L10n.of(context).upcomingProgressHelp,
-                style: const TextStyle(
-                    color: CupertinoColors.systemGrey, fontSize: 12)),
-            const SizedBox(height: 12),
-            const _Divider(),
-            const SizedBox(height: 20),
-            if (Platform.isIOS) ...[
-              Text(l10n.notifications,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              Row(children: [
-                Expanded(child: Text(l10n.dueNotificationsEnable)),
-                CupertinoSwitch(
-                  value: app.dueNotificationsEnabled,
-                  onChanged: (v) => app.setDueNotificationsEnabled(v),
-                ),
-              ]),
-              const SizedBox(height: 6),
-              Text(l10n.dueNotificationsHelp,
-                  style: const TextStyle(
-                      color: CupertinoColors.systemGrey, fontSize: 12)),
-              if (app.dueNotificationsEnabled) ...[
-                const SizedBox(height: 10),
-                Row(children: [
-                  Expanded(child: Text(l10n.reminder1hBefore)),
-                  CupertinoSwitch(
-                    value: app.dueReminder1hEnabled,
-                    onChanged: (v) => app.setDueReminderOffsetEnabled(60, v),
+            _SettingsSection(
+              title: l10n.nextcloudAccess,
+              expanded: _sectionAccountOpen,
+              isDarkMode: app.isDarkMode,
+              onToggle: () =>
+                  setState(() => _sectionAccountOpen = !_sectionAccountOpen),
+              children: [
+                CupertinoTextField(
+                  controller: _url,
+                  placeholder: l10n.urlPlaceholder,
+                  keyboardType: TextInputType.url,
+                  textCapitalization: TextCapitalization.none,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  prefix: Padding(
+                    padding: const EdgeInsets.only(left: 6, right: 4),
+                    child: Text('https://',
+                        style: TextStyle(
+                            color: CupertinoColors.secondaryLabel
+                                .resolveFrom(context))),
                   ),
-                ]),
-                const SizedBox(height: 6),
-                Row(children: [
-                  Expanded(child: Text(l10n.reminder1dBefore)),
-                  CupertinoSwitch(
-                    value: app.dueReminder1dEnabled,
-                    onChanged: (v) => app.setDueReminderOffsetEnabled(1440, v),
-                  ),
-                ]),
-                const SizedBox(height: 6),
-                Row(children: [
-                  Expanded(child: Text(l10n.overdueReminderToggle)),
-                  CupertinoSwitch(
-                    value: app.dueOverdueEnabled,
-                    onChanged: (v) => app.setDueOverdueEnabled(v),
-                  ),
-                ]),
-              ],
-              const SizedBox(height: 12),
-              const _Divider(),
-              const SizedBox(height: 20),
-            ],
-            // Language selector
-            Text(l10n.language,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    app.localeCode == null
-                        ? l10n.systemLanguage
-                        : (app.localeCode == 'de'
-                            ? l10n.german
-                            : app.localeCode == 'es'
-                                ? l10n.spanish
-                                : l10n.english),
-                  ),
-                ),
-                CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: () async {
-                    await showCupertinoModalPopup(
-                      context: context,
-                      builder: (ctx) => CupertinoActionSheet(
-                        title: Text(l10n.language),
-                        actions: [
-                          CupertinoActionSheetAction(
-                              onPressed: () {
-                                Navigator.of(ctx).pop();
-                                app.setLocale(null);
-                              },
-                              child: Text(l10n.systemLanguage)),
-                          CupertinoActionSheetAction(
-                              onPressed: () {
-                                Navigator.of(ctx).pop();
-                                app.setLocale('de');
-                              },
-                              child: Text(l10n.german)),
-                          CupertinoActionSheetAction(
-                              onPressed: () {
-                                Navigator.of(ctx).pop();
-                                app.setLocale('en');
-                              },
-                              child: Text(l10n.english)),
-                          CupertinoActionSheetAction(
-                              onPressed: () {
-                                Navigator.of(ctx).pop();
-                                app.setLocale('es');
-                              },
-                              child: Text(l10n.spanish)),
-                        ],
-                        cancelButton: CupertinoActionSheetAction(
-                            onPressed: () => Navigator.of(ctx).pop(),
-                            isDefaultAction: true,
-                            child: Text(l10n.cancel)),
-                      ),
-                    );
-                  },
-                  child: const Icon(CupertinoIcons.globe),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            const _Divider(),
-            const SizedBox(height: 20),
-
-            Text(l10n.activeBoardSection,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            // Startup board behavior
-            Row(
-              children: [
-                Expanded(child: Text(l10n.startupBoardChoice)),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Builder(builder: (ctx) {
-              final options = <String, Widget>{
-                'default': Text(L10n.of(ctx).startupBoardDefault),
-                'last': Text(L10n.of(ctx).startupBoardLast),
-              };
-              return CupertinoSlidingSegmentedControl<String>(
-                groupValue: app.startupBoardMode,
-                children: options,
-                onValueChanged: (v) {
-                  if (v != null)
-                    context.read<AppState>().setStartupBoardMode(v);
-                },
-              );
-            }),
-            const SizedBox(height: 6),
-            Text(l10n.startupBoardHelp,
-                style: const TextStyle(
-                    color: CupertinoColors.systemGrey, fontSize: 12)),
-            const SizedBox(height: 12),
-            if (app.boards.isEmpty)
-              Text(l10n.noBoardsPleaseTest)
-            else
-              _BoardPicker(
-                boards: app.boards.where((b) => !b.archived).toList(),
-                selected: () {
-                  final d = app.defaultBoardId;
-                  if (d != null) {
-                    return app.boards.firstWhere(
-                      (b) => b.id == d,
-                      orElse: () =>
-                          app.activeBoard ??
-                          (app.boards.isNotEmpty
-                              ? app.boards.first
-                              : Board.empty()),
-                    );
-                  }
-                  return app.activeBoard;
-                }(),
-                onChanged: (b) => app.setDefaultBoard(b),
-              ),
-            // Board teilen Link entfernt
-            const SizedBox(height: 12),
-            const _Divider(),
-            const SizedBox(height: 20),
-            Text(l10n.appearance,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Text(l10n.themeMode,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            CupertinoSlidingSegmentedControl<String>(
-              groupValue: app.themeMode,
-              children: {
-                'light': Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(l10n.themeLight),
-                ),
-                'dark': Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(l10n.themeDark),
-                ),
-                'system': Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(l10n.themeSystem),
-                ),
-              },
-              onValueChanged: (mode) {
-                if (mode != null) {
-                  app.setThemeMode(mode);
-                }
-              },
-            ),
-            const SizedBox(height: 6),
-            Text(l10n.themeModeHelp,
-                style: const TextStyle(
-                    color: CupertinoColors.systemGrey, fontSize: 12)),
-            const SizedBox(height: 12),
-            Text(l10n.boardBandMode,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            CupertinoSlidingSegmentedControl<String>(
-              groupValue: app.boardBandMode,
-              children: {
-                'nextcloud': Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(l10n.boardBandNextcloud),
-                ),
-                'hidden': Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  child: Text(l10n.boardBandHidden),
-                ),
-              },
-              onValueChanged: (mode) {
-                if (mode != null) {
-                  app.setBoardBandMode(mode);
-                }
-              },
-            ),
-            const SizedBox(height: 6),
-            Text(l10n.boardBandHelp,
-                style: const TextStyle(
-                    color: CupertinoColors.systemGrey, fontSize: 12)),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: Text(l10n.smartColors)),
-                CupertinoSwitch(
-                    value: app.smartColors,
-                    onChanged: (v) => app.setSmartColors(v)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(l10n.smartColorsHelp,
-                style: const TextStyle(
-                    color: CupertinoColors.systemGrey, fontSize: 12)),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: Text(l10n.cardColorsFromLabels)),
-                CupertinoSwitch(
-                    value: app.cardColorsFromLabels,
-                    onChanged: (v) => app.setCardColorsFromLabels(v)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(l10n.cardColorsFromLabelsHelp,
-                style: const TextStyle(
-                    color: CupertinoColors.systemGrey, fontSize: 12)),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: Text(l10n.showDescriptionAlways)),
-                CupertinoSwitch(
-                    value: app.showDescriptionText,
-                    onChanged: (v) => app.setShowDescriptionText(v)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(l10n.showDescriptionHelp,
-                style: const TextStyle(
-                    color: CupertinoColors.systemGrey, fontSize: 12)),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: Text(l10n.overviewShowBoardInfo)),
-                CupertinoSwitch(
-                    value: app.overviewShowBoardInfo,
-                    onChanged: (v) => app.setOverviewShowBoardInfo(v)),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(l10n.overviewShowBoardInfoHelp,
-                style: const TextStyle(
-                    color: CupertinoColors.systemGrey, fontSize: 12)),
-            const SizedBox(height: 12),
-            const _Divider(),
-            const SizedBox(height: 20),
-            // Lokaler Modus Hinweis
-            if (app.localMode) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: CupertinoColors.systemYellow.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: CupertinoColors.systemYellow),
-                ),
-                child: Text(l10n.localModeBanner,
-                    style: const TextStyle(fontSize: 13)),
-              ),
-              const SizedBox(height: 16),
-            ],
-            Text(l10n.localBoardSection,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: Text(l10n.localModeToggleLabel)),
-                CupertinoSwitch(
-                  value: app.localMode,
-                  onChanged: (v) async {
-                    if (v) {
-                      await showCupertinoDialog(
-                        context: context,
-                        builder: (ctx) => CupertinoAlertDialog(
-                          title: Text(l10n.localModeEnableTitle),
-                          content: Text(l10n.localModeEnableContent),
-                          actions: [
-                            CupertinoDialogAction(
-                                onPressed: () => Navigator.of(ctx).pop(),
-                                child: Text(l10n.cancel)),
-                            CupertinoDialogAction(
-                              isDefaultAction: true,
-                              onPressed: () async {
-                                Navigator.of(ctx).pop();
-                                await context
-                                    .read<AppState>()
-                                    .setLocalMode(true);
-                              },
-                              child: Text(l10n.enable),
-                            ),
-                          ],
+                  suffix: _hostValid
+                      ? null
+                      : const Padding(
+                          padding: EdgeInsets.only(right: 6),
+                          child: Icon(CupertinoIcons.exclamationmark_circle,
+                              color: CupertinoColors.systemRed, size: 18),
                         ),
-                      );
-                    } else {
-                      await context.read<AppState>().setLocalMode(false);
-                    }
-                  },
+                  decoration: BoxDecoration(
+                    color:
+                        CupertinoColors.tertiarySystemFill.resolveFrom(context),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: _hostValid
+                            ? CupertinoColors.separator.resolveFrom(context)
+                            : CupertinoColors.systemRed,
+                        width: _hostValid ? 0.5 : 1.0),
+                  ),
                 ),
+                const SizedBox(height: 6),
+                Text(
+                  l10n.httpsEnforcedInfo,
+                  style: const TextStyle(
+                      color: CupertinoColors.systemGrey, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                CupertinoTextField(
+                  controller: _user,
+                  placeholder: l10n.username,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                ),
+                const SizedBox(height: 8),
+                CupertinoTextField(
+                  controller: _pass,
+                  placeholder: l10n.appPassword,
+                  obscureText: true,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  l10n.appPasswordHint,
+                  style: const TextStyle(
+                      color: CupertinoColors.systemGrey, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                CupertinoButton.filled(
+                  onPressed: _testing ? null : _saveAndTest,
+                  child: _testing
+                      ? const CupertinoActivityIndicator()
+                      : Text(l10n.loginAndLoadBoards),
+                ),
+                if (_testMsg != null) ...[
+                  const SizedBox(height: 8),
+                  Text(_testMsg!,
+                      style: TextStyle(
+                          color: _testOk
+                              ? CupertinoColors.activeGreen
+                              : CupertinoColors.destructiveRed)),
+                ],
               ],
-            ),
-            const SizedBox(height: 12),
-            const _Divider(),
-            const SizedBox(height: 20),
-            Text(l10n.developer,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(child: Text(l10n.enableNetworkLogs)),
-                CupertinoSwitch(
-                  value: LogService().enabled,
-                  onChanged: (v) {
-                    LogService().enabled = v;
-                    setState(() {});
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            CupertinoButton(
-              onPressed: () => Navigator.of(context).push(
-                  CupertinoPageRoute(builder: (_) => const DebugLogPage())),
-              child: Text(l10n.viewLogs),
-            ),
-            const SizedBox(height: 20),
-            const _Divider(),
-            const SizedBox(height: 20),
-            Text(l10n.helpContact,
-                style: const TextStyle(
-                    color: CupertinoColors.systemBlue, fontSize: 13)),
-            const SizedBox(height: 20),
-            const _Divider(),
-            const SizedBox(height: 12),
-            Text(L10n.of(context).clearLocalDataHelp,
-                style: const TextStyle(
-                    color: CupertinoColors.systemGrey, fontSize: 12)),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: CupertinoButton(
-                color: CupertinoDynamicColor.resolve(
-                    CupertinoColors.systemRed, context),
-                onPressed: app.isSyncing ? null : _confirmClearLocalData,
-                child: Text(
-                  L10n.of(context).clearLocalData,
-                  style: const TextStyle(color: CupertinoColors.white),
-                ),
-              ),
             ),
             const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                () {
-                  final idx = kAppVersion.indexOf('+');
-                  final pretty = idx > 0
-                      ? '${kAppVersion.substring(0, idx)} (${kAppVersion.substring(idx + 1)})'
-                      : kAppVersion;
-                  return '${l10n.appVersionLabel}: $pretty';
-                }(),
-                style: const TextStyle(
-                    color: CupertinoColors.systemGrey, fontSize: 12),
+            _SettingsSection(
+              title: l10n.help,
+              expanded: _sectionHelpOpen,
+              isDarkMode: app.isDarkMode,
+              onToggle: () =>
+                  setState(() => _sectionHelpOpen = !_sectionHelpOpen),
+              children: [
+                Text(l10n.helpQuickStartTitle,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                Text(l10n.helpQuickStartBody,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
+                const SizedBox(height: 10),
+                Text(l10n.helpTipsTitle,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                Text(l10n.helpTipsBody,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _SettingsSection(
+              title: l10n.startupPage,
+              expanded: _sectionStartupOpen,
+              isDarkMode: app.isDarkMode,
+              onToggle: () =>
+                  setState(() => _sectionStartupOpen = !_sectionStartupOpen),
+              children: [
+                Builder(builder: (ctx) {
+                  final options = <int, Widget>{
+                    0: Text(L10n.of(ctx).navUpcoming),
+                    1: Text(L10n.of(ctx).navBoard),
+                    2: Text(L10n.of(ctx).overview),
+                  };
+                  return CupertinoSlidingSegmentedControl<int>(
+                    groupValue: app.startupTabIndex,
+                    children: options,
+                    onValueChanged: (v) {
+                      if (v != null)
+                        context.read<AppState>().setStartupTabIndex(v);
+                    },
+                  );
+                }),
+                const SizedBox(height: 12),
+                Text(l10n.activeBoardSection,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(child: Text(l10n.startupBoardChoice)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Builder(builder: (ctx) {
+                  final options = <String, Widget>{
+                    'default': Text(L10n.of(ctx).startupBoardDefault),
+                    'last': Text(L10n.of(ctx).startupBoardLast),
+                  };
+                  return CupertinoSlidingSegmentedControl<String>(
+                    groupValue: app.startupBoardMode,
+                    children: options,
+                    onValueChanged: (v) {
+                      if (v != null)
+                        context.read<AppState>().setStartupBoardMode(v);
+                    },
+                  );
+                }),
+                const SizedBox(height: 6),
+                Text(l10n.startupBoardHelp,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
+                const SizedBox(height: 12),
+                if (app.boards.isEmpty)
+                  Text(l10n.noBoardsPleaseTest)
+                else
+                  _BoardPicker(
+                    boards: app.boards.where((b) => !b.archived).toList(),
+                    selected: () {
+                      final d = app.defaultBoardId;
+                      if (d != null) {
+                        return app.boards.firstWhere(
+                          (b) => b.id == d,
+                          orElse: () =>
+                              app.activeBoard ??
+                              (app.boards.isNotEmpty
+                                  ? app.boards.first
+                                  : Board.empty()),
+                        );
+                      }
+                      return app.activeBoard;
+                    }(),
+                    onChanged: (b) => app.setDefaultBoard(b),
+                  ),
+              ],
+            ),
+            if (Platform.isIOS) ...[
+              const SizedBox(height: 16),
+              _SettingsSection(
+                title: l10n.notifications,
+                expanded: _sectionNotificationsOpen,
+                isDarkMode: app.isDarkMode,
+                onToggle: () => setState(
+                    () => _sectionNotificationsOpen = !_sectionNotificationsOpen),
+                children: [
+                  Row(children: [
+                    Expanded(child: Text(l10n.dueNotificationsEnable)),
+                    CupertinoSwitch(
+                      value: app.dueNotificationsEnabled,
+                      onChanged: (v) => app.setDueNotificationsEnabled(v),
+                    ),
+                  ]),
+                  const SizedBox(height: 6),
+                  Text(l10n.dueNotificationsHelp,
+                      style: const TextStyle(
+                          color: CupertinoColors.systemGrey, fontSize: 12)),
+                  if (app.dueNotificationsEnabled) ...[
+                    const SizedBox(height: 10),
+                    Row(children: [
+                      Expanded(child: Text(l10n.reminder1hBefore)),
+                      CupertinoSwitch(
+                        value: app.dueReminder1hEnabled,
+                        onChanged: (v) =>
+                            app.setDueReminderOffsetEnabled(60, v),
+                      ),
+                    ]),
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      Expanded(child: Text(l10n.reminder1dBefore)),
+                      CupertinoSwitch(
+                        value: app.dueReminder1dEnabled,
+                        onChanged: (v) =>
+                            app.setDueReminderOffsetEnabled(1440, v),
+                      ),
+                    ]),
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      Expanded(child: Text(l10n.overdueReminderToggle)),
+                      CupertinoSwitch(
+                        value: app.dueOverdueEnabled,
+                        onChanged: (v) => app.setDueOverdueEnabled(v),
+                      ),
+                    ]),
+                  ],
+                ],
               ),
+            ],
+            const SizedBox(height: 16),
+            _SettingsSection(
+              title: l10n.appearance,
+              expanded: _sectionAppearanceOpen,
+              isDarkMode: app.isDarkMode,
+              onToggle: () =>
+                  setState(() => _sectionAppearanceOpen = !_sectionAppearanceOpen),
+              children: [
+                Text(l10n.themeMode,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                CupertinoSlidingSegmentedControl<String>(
+                  groupValue: app.themeMode,
+                  children: {
+                    'light': Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(l10n.themeLight),
+                    ),
+                    'dark': Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(l10n.themeDark),
+                    ),
+                    'system': Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(l10n.themeSystem),
+                    ),
+                  },
+                  onValueChanged: (mode) {
+                    if (mode != null) {
+                      app.setThemeMode(mode);
+                    }
+                  },
+                ),
+                const SizedBox(height: 6),
+                Text(l10n.themeModeHelp,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
+                const SizedBox(height: 12),
+                Text(l10n.boardBandMode,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                CupertinoSlidingSegmentedControl<String>(
+                  groupValue: app.boardBandMode,
+                  children: {
+                    'nextcloud': Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(l10n.boardBandNextcloud),
+                    ),
+                    'hidden': Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(l10n.boardBandHidden),
+                    ),
+                  },
+                  onValueChanged: (mode) {
+                    if (mode != null) {
+                      app.setBoardBandMode(mode);
+                    }
+                  },
+                ),
+                const SizedBox(height: 6),
+                Text(l10n.boardBandHelp,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: Text(l10n.smartColors)),
+                    CupertinoSwitch(
+                        value: app.smartColors,
+                        onChanged: (v) => app.setSmartColors(v)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(l10n.smartColorsHelp,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: Text(l10n.cardColorsFromLabels)),
+                    CupertinoSwitch(
+                        value: app.cardColorsFromLabels,
+                        onChanged: (v) => app.setCardColorsFromLabels(v)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(l10n.cardColorsFromLabelsHelp,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: Text(l10n.showDescriptionAlways)),
+                    CupertinoSwitch(
+                        value: app.showDescriptionText,
+                        onChanged: (v) => app.setShowDescriptionText(v)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(l10n.showDescriptionHelp,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: Text(l10n.overviewShowBoardInfo)),
+                    CupertinoSwitch(
+                        value: app.overviewShowBoardInfo,
+                        onChanged: (v) => app.setOverviewShowBoardInfo(v)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(l10n.overviewShowBoardInfoHelp,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _SettingsSection(
+              title: l10n.language,
+              expanded: _sectionLanguageOpen,
+              isDarkMode: app.isDarkMode,
+              onToggle: () =>
+                  setState(() => _sectionLanguageOpen = !_sectionLanguageOpen),
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        app.localeCode == null
+                            ? l10n.systemLanguage
+                            : (app.localeCode == 'de'
+                                ? l10n.german
+                                : app.localeCode == 'es'
+                                    ? l10n.spanish
+                                    : l10n.english),
+                      ),
+                    ),
+                    CupertinoButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () async {
+                        await showCupertinoModalPopup(
+                          context: context,
+                          builder: (ctx) => CupertinoActionSheet(
+                            title: Text(l10n.language),
+                            actions: [
+                              CupertinoActionSheetAction(
+                                  onPressed: () {
+                                    Navigator.of(ctx).pop();
+                                    app.setLocale(null);
+                                  },
+                                  child: Text(l10n.systemLanguage)),
+                              CupertinoActionSheetAction(
+                                  onPressed: () {
+                                    Navigator.of(ctx).pop();
+                                    app.setLocale('de');
+                                  },
+                                  child: Text(l10n.german)),
+                              CupertinoActionSheetAction(
+                                  onPressed: () {
+                                    Navigator.of(ctx).pop();
+                                    app.setLocale('en');
+                                  },
+                                  child: Text(l10n.english)),
+                              CupertinoActionSheetAction(
+                                  onPressed: () {
+                                    Navigator.of(ctx).pop();
+                                    app.setLocale('es');
+                                  },
+                                  child: Text(l10n.spanish)),
+                            ],
+                            cancelButton: CupertinoActionSheetAction(
+                                onPressed: () => Navigator.of(ctx).pop(),
+                                isDefaultAction: true,
+                                child: Text(l10n.cancel)),
+                          ),
+                        );
+                      },
+                      child: const Icon(CupertinoIcons.globe),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _SettingsSection(
+              title: l10n.performance,
+              expanded: _sectionPerformanceOpen,
+              isDarkMode: app.isDarkMode,
+              onToggle: () => setState(
+                  () => _sectionPerformanceOpen = !_sectionPerformanceOpen),
+              children: [
+                Text(L10n.of(context).fullSyncManualHint,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
+                const SizedBox(height: 8),
+                Row(children: [
+                  Expanded(
+                      child: Text(L10n.of(context).upcomingSingleColumnLabel)),
+                  CupertinoSwitch(
+                      value: app.upcomingSingleColumn,
+                      onChanged: (v) => app.setUpcomingSingleColumn(v))
+                ]),
+                const SizedBox(height: 6),
+                Text(L10n.of(context).upcomingSingleColumnHelp,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
+                const SizedBox(height: 10),
+                Row(children: [
+                  Expanded(child: Text(L10n.of(context).showOnlyMyCardsLabel)),
+                  CupertinoSwitch(
+                      value: app.upcomingAssignedOnly,
+                      onChanged: (v) async {
+                        app.setUpcomingAssignedOnly(v);
+                        if (v) {
+                          await app.refreshUpcomingAssigneesIfNeeded();
+                        }
+                      })
+                ]),
+                const SizedBox(height: 6),
+                Text(L10n.of(context).showOnlyMyCardsHelp,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
+                const SizedBox(height: 8),
+                Text(L10n.of(context).upcomingProgressHelp,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _SettingsSection(
+              title: l10n.localBoardSection,
+              expanded: _sectionLocalOpen,
+              isDarkMode: app.isDarkMode,
+              onToggle: () =>
+                  setState(() => _sectionLocalOpen = !_sectionLocalOpen),
+              children: [
+                if (app.localMode) ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: CupertinoColors.systemYellow.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: CupertinoColors.systemYellow),
+                    ),
+                    child: Text(l10n.localModeBanner,
+                        style: const TextStyle(fontSize: 13)),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: Text(l10n.localModeToggleLabel)),
+                    CupertinoSwitch(
+                      value: app.localMode,
+                      onChanged: (v) async {
+                        if (v) {
+                          await showCupertinoDialog(
+                            context: context,
+                            builder: (ctx) => CupertinoAlertDialog(
+                              title: Text(l10n.localModeEnableTitle),
+                              content: Text(l10n.localModeEnableContent),
+                              actions: [
+                                CupertinoDialogAction(
+                                    onPressed: () => Navigator.of(ctx).pop(),
+                                    child: Text(l10n.cancel)),
+                                CupertinoDialogAction(
+                                  isDefaultAction: true,
+                                  onPressed: () async {
+                                    Navigator.of(ctx).pop();
+                                    await context
+                                        .read<AppState>()
+                                        .setLocalMode(true);
+                                  },
+                                  child: Text(l10n.enable),
+                                ),
+                              ],
+                            ),
+                          );
+                        } else {
+                          await context.read<AppState>().setLocalMode(false);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _SettingsSection(
+              title: l10n.developer,
+              expanded: _sectionDeveloperOpen,
+              isDarkMode: app.isDarkMode,
+              onToggle: () => setState(
+                  () => _sectionDeveloperOpen = !_sectionDeveloperOpen),
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: Text(l10n.enableNetworkLogs)),
+                    CupertinoSwitch(
+                      value: LogService().enabled,
+                      onChanged: (v) {
+                        LogService().enabled = v;
+                        setState(() {});
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                CupertinoButton(
+                  onPressed: () => Navigator.of(context).push(
+                      CupertinoPageRoute(builder: (_) => const DebugLogPage())),
+                  child: Text(l10n.viewLogs),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            _SettingsSection(
+              title: l10n.supportAndData,
+              expanded: _sectionSupportOpen,
+              isDarkMode: app.isDarkMode,
+              onToggle: () =>
+                  setState(() => _sectionSupportOpen = !_sectionSupportOpen),
+              children: [
+                Text(l10n.helpContact,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemBlue, fontSize: 13)),
+                const SizedBox(height: 12),
+                Text(L10n.of(context).clearLocalDataHelp,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: CupertinoButton(
+                    color: CupertinoDynamicColor.resolve(
+                        CupertinoColors.systemRed, context),
+                    onPressed: app.isSyncing ? null : _confirmClearLocalData,
+                    child: Text(
+                      L10n.of(context).clearLocalData,
+                      style: const TextStyle(color: CupertinoColors.white),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    () {
+                      final idx = kAppVersion.indexOf('+');
+                      final pretty = idx > 0
+                          ? '${kAppVersion.substring(0, idx)} (${kAppVersion.substring(idx + 1)})'
+                          : kAppVersion;
+                      return '${l10n.appVersionLabel}: $pretty';
+                    }(),
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -868,6 +935,65 @@ class _BoardPicker extends StatelessWidget {
         onSelectedItemChanged: (i) => onChanged(boards[i]),
         children: boards.map((b) => Center(child: Text(b.title))).toList(),
       ),
+    );
+  }
+}
+
+class _SettingsSection extends StatelessWidget {
+  final String title;
+  final bool expanded;
+  final bool isDarkMode;
+  final VoidCallback onToggle;
+  final List<Widget> children;
+  const _SettingsSection({
+    required this.title,
+    required this.expanded,
+    required this.isDarkMode,
+    required this.onToggle,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: onToggle,
+          child: Row(
+            children: [
+              Icon(
+                  expanded
+                      ? CupertinoIcons.chevron_down
+                      : CupertinoIcons.chevron_right,
+                  size: 16,
+                  color: CupertinoColors.systemGrey),
+              const SizedBox(width: 6),
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+        if (expanded) ...[
+          const SizedBox(height: 8),
+          Container(
+            decoration: BoxDecoration(
+              color: CupertinoTheme.of(context)
+                  .barBackgroundColor
+                  .withOpacity(isDarkMode ? 0.25 : 0.7),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: CupertinoColors.separator),
+            ),
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: children,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

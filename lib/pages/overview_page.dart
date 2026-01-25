@@ -21,7 +21,6 @@ class OverviewPage extends StatefulWidget {
 class _OverviewPageState extends State<OverviewPage> {
   bool _hiddenExpanded = false;
   bool _archivedExpanded = false;
-  bool _actionsExpanded = false;
   final ScrollController _scroll = ScrollController();
   bool _showSearch = false;
   String _query = '';
@@ -100,7 +99,11 @@ class _OverviewPageState extends State<OverviewPage> {
                 ),
                 const SizedBox(height: 12),
               ],
-              ..._buildBoardActions(context, app),
+              _ActionRow(
+                icon: CupertinoIcons.plus_circled,
+                label: L10n.of(context).newBoard,
+                onTap: () => _createBoard(context),
+              ),
             if (app.boards.isEmpty) ...[
               Text(L10n.of(context).noBoardsLoaded),
             ] else if (app.activeBoard != null) ...[
@@ -197,70 +200,6 @@ class _OverviewPageState extends State<OverviewPage> {
       ),
     ),
     );
-  }
-
-  List<Widget> _buildBoardActions(BuildContext context, AppState app) {
-    final l10n = L10n.of(context);
-    return [
-      GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => setState(() => _actionsExpanded = !_actionsExpanded),
-        child: Row(
-          children: [
-            Icon(
-                _actionsExpanded
-                    ? CupertinoIcons.chevron_down
-                    : CupertinoIcons.chevron_right,
-                size: 16,
-                color: CupertinoColors.systemGrey),
-            const SizedBox(width: 6),
-            Text(l10n.boardActions,
-                style: const TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w600)),
-          ],
-        ),
-      ),
-      if (_actionsExpanded) ...[
-        const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: CupertinoTheme.of(context)
-                .barBackgroundColor
-                .withOpacity(app.isDarkMode ? 0.25 : 0.7),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: CupertinoColors.separator),
-          ),
-          child: Column(
-            children: [
-              _ActionRow(
-                icon: CupertinoIcons.plus_circled,
-                label: l10n.newBoard,
-                onTap: () => _createBoard(context),
-              ),
-              const _ActionDivider(),
-              _ActionRow(
-                icon: CupertinoIcons.square_list,
-                label: l10n.newColumn,
-                onTap: () => _createColumn(context),
-              ),
-              const _ActionDivider(),
-              _ActionRow(
-                icon: CupertinoIcons.arrow_up_arrow_down_circle,
-                label: l10n.reorderColumns,
-                onTap: () => _reorderColumns(context),
-              ),
-              const _ActionDivider(),
-              _ActionRow(
-                icon: CupertinoIcons.paintbrush,
-                label: l10n.changeBoardColor,
-                onTap: () => _changeBoardColor(context),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-      ],
-    ];
   }
 
   Future<void> _createBoard(BuildContext context) async {

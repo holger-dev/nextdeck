@@ -14,12 +14,25 @@ import '../models/label.dart';
 import '../models/card_item.dart';
 import '../models/user_ref.dart';
 import 'board_search_page.dart';
+import 'stack_reorder_page.dart';
 import '../theme/app_theme.dart';
 import '../l10n/app_localizations.dart';
 import '../navigation/nav_keys.dart';
 
 const TextStyle _destructiveActionTextStyle =
     TextStyle(color: CupertinoColors.destructiveRed);
+const List<String> _boardColors = [
+  '1E88E5',
+  '43A047',
+  'F4511E',
+  '8E24AA',
+  '00ACC1',
+  '3949AB',
+  'D81B60',
+  '5E35B1',
+  '00897B',
+  'EF6C00',
+];
 
 class BoardPage extends StatefulWidget {
   const BoardPage({super.key});
@@ -167,6 +180,11 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
         : (AppTheme.boardColorFrom(boardNcColor) ??
             AppTheme.boardStrongColor(boardIndex < 0 ? 0 : boardIndex));
     final showBoardBand = board != null && app.boardBandMode == 'nextcloud';
+    final addButtonColor = boardBaseColor == null
+        ? null
+        : (app.isDarkMode
+            ? AppTheme.blend(boardBaseColor!, const Color(0xFF000000), 0.15)
+            : AppTheme.blend(boardBaseColor!, const Color(0xFFFFFFFF), 0.1));
     final boardBackground = showBoardBand
         ? AppTheme.boardBandBackground(app, boardBaseColor!)
         : AppTheme.appBackground(app);
@@ -190,366 +208,471 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
     }
     return CupertinoPageScaffold(
       backgroundColor: boardBackground,
-      navigationBar: CupertinoNavigationBar(
-        backgroundColor: CupertinoColors.transparent,
-        border: null,
-        leading: (board == null)
-            ? null
-            : Builder(builder: (context) {
-                final boards = app.boards;
-                final idx = boards.indexWhere((b) => b.id == board.id);
-                final ncColor = (idx >= 0 && idx < boards.length)
-                    ? boards[idx].color
-                    : null;
-                final base = AppTheme.boardColorFrom(ncColor) ??
-                    AppTheme.boardStrongColor(idx < 0 ? 0 : idx);
-                final topColor = app.isDarkMode
-                    ? AppTheme.blend(base, const Color(0xFF000000), 0.25)
-                    : AppTheme.blend(base, const Color(0xFF000000), 0.15);
-                final txtColor = app.isDarkMode
-                    ? AppTheme.textOn(topColor)
-                    : CupertinoColors.black;
-                return CupertinoButton(
-                  padding: EdgeInsets.zero,
-                  onPressed: () {
-                    Navigator.of(context).push(CupertinoPageRoute(
-                        builder: (_) => const BoardSearchPage()));
-                  },
-                  child: Icon(CupertinoIcons.search, size: 18, color: txtColor),
-                );
-              }),
-        middle: (board == null)
-            ? const SizedBox.shrink()
-            : Builder(builder: (context) {
-                final boards = app.boards;
-                final idx = boards.indexWhere((b) => b.id == board.id);
-                final ncColor = (idx >= 0 && idx < boards.length)
-                    ? boards[idx].color
-                    : null;
-                final base = AppTheme.boardColorFrom(ncColor) ??
-                    AppTheme.boardStrongColor(idx < 0 ? 0 : idx);
-                // Use the same color as header gradient top for contrast decision
-                final topColor = app.isDarkMode
-                    ? AppTheme.blend(base, const Color(0xFF000000), 0.25)
-                    : AppTheme.blend(base, const Color(0xFF000000), 0.15);
-                // In Light Mode we want black text regardless of computed contrast
-                final txtColor = app.isDarkMode
-                    ? AppTheme.textOn(topColor)
-                    : CupertinoColors.black;
-                // Truncate very long titles: if > 20 chars, cut at 18 and append '...'
-                final String displayTitle = () {
-                  final t = board.title;
-                  if (t.length > 20) {
-                    return t.substring(0, 18) + '...';
-                  }
-                  return t;
-                }();
-                return SizedBox(
-                  width: double.infinity,
-                  child: CupertinoButton(
-                    padding: EdgeInsets.zero,
-                    onPressed: () => _showVisibleBoards(context),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.max,
-                      children: [
-                        Container(
-                          width: 16,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: topColor,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
+      child: SafeArea(
+        top: true,
+        child: Column(
+          children: [
+            if (board != null)
+              _buildBoardHeader(
+                  context, app, board, boardBaseColor!, showBoardBand),
+            Expanded(
+              child: Stack(
+                children: [
+                  if (board == null)
+                    Center(child: Text(L10n.of(context).pleaseSelectBoard))
+                  else if ((app.bootSyncing && columns.isEmpty) ||
+                      (columns.isEmpty && (app.lastError == null)))
+                    const Center(child: CupertinoActivityIndicator())
+                  else if (app.lastError != null)
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Text(
+                          app.lastError!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: CupertinoColors.destructiveRed),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            displayTitle,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700, color: txtColor),
-                          ),
-                        ),
-                        Icon(CupertinoIcons.chevron_down,
-                            size: 14, color: txtColor),
-                      ],
-                    ),
-                  ),
-                );
-              }),
-        trailing: (board == null)
-            ? null
-            : Builder(builder: (context) {
-                final boards = app.boards;
-                final idx = boards.indexWhere((b) => b.id == board.id);
-                final ncColor = (idx >= 0 && idx < boards.length)
-                    ? boards[idx].color
-                    : null;
-                final base = AppTheme.boardColorFrom(ncColor) ??
-                    AppTheme.boardStrongColor(idx < 0 ? 0 : idx);
-                // Force black icon in Light Mode for readability
-                final txtColor = app.isDarkMode
-                    ? AppTheme.textOn(base)
-                    : CupertinoColors.black;
-                final isTablet =
-                    MediaQuery.of(context).size.shortestSide >= 600;
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (!isTablet)
-                      CupertinoButton(
-                        padding: EdgeInsets.zero,
-                        onPressed: () async {
-                          final cols = app.columnsForActiveBoard();
-                          if (cols.isEmpty) return;
-                          await showCupertinoModalPopup(
-                            context: context,
-                            builder: (ctx) => CupertinoActionSheet(
-                              title: Text(L10n.of(context).selectColumn),
-                              actions: cols
-                                  .asMap()
-                                  .entries
-                                  .map((e) => CupertinoActionSheetAction(
-                                        onPressed: () {
-                                          Navigator.of(ctx).pop();
-                                          final target = e.key;
-                                          if (_pageController.hasClients) {
-                                            _pageController.animateToPage(
-                                                target,
-                                                duration: const Duration(
-                                                    milliseconds: 220),
-                                                curve: Curves.easeOut);
-                                          }
-                                        },
-                                        child: Text(e.value.title),
-                                      ))
-                                  .toList(),
-                              cancelButton: CupertinoActionSheetAction(
-                                onPressed: () => Navigator.of(ctx).pop(),
-                                isDefaultAction: true,
-                                child: Text(L10n.of(context).cancel),
-                              ),
-                            ),
-                          );
-                        },
-                        child: Icon(CupertinoIcons.list_bullet,
-                            size: 22, color: txtColor),
                       ),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: () {
-                        app.setUpcomingAssignedOnly(
-                            !app.upcomingAssignedOnly);
-                      },
-                      child: Icon(
-                          app.upcomingAssignedOnly
-                              ? CupertinoIcons.person_fill
-                              : CupertinoIcons.person,
-                          size: 22,
-                          color: txtColor),
-                    ),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: () {
-                        final next = !app.boardArchivedOnly;
-                        app.setBoardArchivedOnly(next);
-                        final boardId = app.activeBoard?.id;
-                        if (next && boardId != null) {
-                          app.refreshArchivedCardsForBoard(boardId);
-                        }
-                      },
-                      child: Icon(
-                          app.boardArchivedOnly
-                              ? CupertinoIcons.archivebox_fill
-                              : CupertinoIcons.archivebox,
-                          size: 22,
-                          color: txtColor),
-                    ),
-                    CupertinoButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: app.isSyncing
-                          ? null
-                          : () async {
-                              await app.runWithSyncing(() async {
-                                final b = app.activeBoard;
-                                if (b != null) {
-                                  await app.refreshBoards(forceNetwork: true);
-                                  // Use new sync system instead of old refreshColumnsFor
-                                  await app.refreshSingleBoard(b.id);
-                                }
+                    )
+                  else
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final mq = MediaQuery.of(context);
+                        final isTablet =
+                            mq.size.shortestSide >= 600; // iPad/tablet heuristic
+                        final isWide = constraints.maxWidth >= 900 || isTablet;
+                        if (isWide) {
+                          return _WideColumnsView(
+                              columns: columns,
+                              boardId: board.id,
+                              onCreateCard: (colId) async {
+                                await _showCreateCard(context, board.id, colId);
                               });
+                        }
+                        // Preload neighbors for smoother swiping
+                        _preloadNeighbors(
+                            context, board.id, columns, _page.round());
+                        return PageView.builder(
+                          controller: _pageController,
+                          itemCount: columns.length,
+                          itemBuilder: (context, index) => _ColumnView(
+                            column: columns[index],
+                            columnIndex: index,
+                            requestPrevPage: () {
+                              final target =
+                                  (_pageController.page ?? 0).floor() - 1;
+                              if (target >= 0) {
+                                _pageController.animateToPage(target,
+                                    duration:
+                                        const Duration(milliseconds: 220),
+                                    curve: Curves.easeOut);
+                              }
                             },
-                      child: (app.isSyncing)
-                          ? const CupertinoActivityIndicator()
-                          : const Icon(CupertinoIcons.refresh),
+                            requestNextPage: () {
+                              final target =
+                                  (_pageController.page ?? 0).ceil() + 1;
+                              if (target < columns.length) {
+                                _pageController.animateToPage(target,
+                                    duration:
+                                        const Duration(milliseconds: 220),
+                                    curve: Curves.easeOut);
+                              }
+                            },
+                            onTapCard: (cardId) {
+                              final app = context.read<AppState>();
+                              final stack = columns[index];
+                              final archived =
+                                  app.archivedCardsForBoard(board.id)[stack.id] ??
+                                      const <CardItem>[];
+                              final list =
+                                  app.boardArchivedOnly ? archived : stack.cards;
+                              if (list.isEmpty) return;
+                              final card = list.firstWhere(
+                                (c) => c.id == cardId,
+                                orElse: () => list.first,
+                              );
+                              final colIdx = index;
+                              final cardIdx = list.indexOf(card);
+                              final bg = AppTheme.cardBg(
+                                  app, card.labels, colIdx, cardIdx);
+                              Navigator.of(context).push(
+                                CupertinoPageRoute(
+                                  builder: (_) => CardDetailPage(
+                                    cardId: cardId,
+                                    boardId: board.id,
+                                    stackId: stack.id,
+                                    bgColor: bg,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        );
+                      },
                     ),
-                    // Add-list button removed for v1; planned for v2.0
-                  ],
-                );
-              }),
-      ),
-      child: Stack(
-        children: [
-          // Gradient under transparent navbar
-          if (showBoardBand) ...[
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Builder(builder: (context) {
-                final topPad = MediaQuery.of(context).padding.top;
-                final base = boardBaseColor!;
-                final topColor = app.isDarkMode
-                    ? AppTheme.blend(base, const Color(0xFF000000), 0.25)
-                    : AppTheme.blend(base, const Color(0xFF000000), 0.15);
-                final bottomColor = base;
-                return Container(
-                  height: topPad + 44,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [topColor, bottomColor],
-                    ),
-                  ),
-                );
-              }),
-            ),
-            // Title row now provided by navigationBar.middle; keep only gradient background
-          ],
-          SafeArea(
-            top: true,
-            child: Stack(
-              children: [
-                if (board == null)
-                  Center(child: Text(L10n.of(context).pleaseSelectBoard))
-                else if ((app.bootSyncing && columns.isEmpty) ||
-                    (columns.isEmpty && (app.lastError == null)))
-                  const Center(child: CupertinoActivityIndicator())
-                else if (app.lastError != null)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Text(
-                        app.lastError!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: CupertinoColors.destructiveRed),
+                  if (board != null &&
+                      columns.isNotEmpty &&
+                      !(MediaQuery.of(context).size.width >= 900 || isTablet))
+                    _EdgeIndicators(
+                        currentPage: _page,
+                        total: columns.length,
+                        onPrev: () {
+                          final target =
+                              (_pageController.page ?? 0).floor() - 1;
+                          if (target >= 0) {
+                            _pageController.animateToPage(target,
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeOut);
+                          }
+                        },
+                        onNext: () {
+                          final target = (_pageController.page ?? 0).ceil() + 1;
+                          if (target < columns.length) {
+                            _pageController.animateToPage(target,
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeOut);
+                          }
+                        }),
+                  if (!isTablet)
+                    Positioned(
+                      right: 16,
+                      bottom: 16,
+                      child: CupertinoButton.filled(
+                        color: addButtonColor,
+                        padding: const EdgeInsets.all(12),
+                        child: Icon(
+                          CupertinoIcons.add,
+                          color: addButtonColor == null
+                              ? null
+                              : AppTheme.textOn(addButtonColor),
+                        ),
+                        onPressed: () async {
+                          if (board == null || columns.isEmpty) return;
+                          final currentPage = _pageController.hasClients
+                              ? _pageController.page?.round() ?? 0
+                              : 0;
+                          final columnId = columns[currentPage].id;
+                          await _showCreateCard(context, board.id, columnId);
+                        },
                       ),
                     ),
-                  )
-                else
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      final mq = MediaQuery.of(context);
-                      final isTablet =
-                          mq.size.shortestSide >= 600; // iPad/tablet heuristic
-                      final isWide = constraints.maxWidth >= 900 || isTablet;
-                      if (isWide) {
-                        return _WideColumnsView(
-                            columns: columns,
-                            boardId: board.id,
-                            onCreateCard: (colId) async {
-                              await _showCreateCard(context, board.id, colId);
-                            });
-                      }
-                      // Preload neighbors for smoother swiping
-                      _preloadNeighbors(
-                          context, board.id, columns, _page.round());
-                      return PageView.builder(
-                        controller: _pageController,
-                        itemCount: columns.length,
-                        itemBuilder: (context, index) => _ColumnView(
-                          column: columns[index],
-                          columnIndex: index,
-                          requestPrevPage: () {
-                            final target =
-                                (_pageController.page ?? 0).floor() - 1;
-                            if (target >= 0) {
-                              _pageController.animateToPage(target,
-                                  duration: const Duration(milliseconds: 220),
-                                  curve: Curves.easeOut);
-                            }
-                          },
-                          requestNextPage: () {
-                            final target =
-                                (_pageController.page ?? 0).ceil() + 1;
-                            if (target < columns.length) {
-                              _pageController.animateToPage(target,
-                                  duration: const Duration(milliseconds: 220),
-                                  curve: Curves.easeOut);
-                            }
-                          },
-                          onTapCard: (cardId) {
-                            final app = context.read<AppState>();
-                            final stack = columns[index];
-                            final archived = app.archivedCardsForBoard(board.id)[stack.id] ?? const <CardItem>[];
-                            final list = app.boardArchivedOnly ? archived : stack.cards;
-                            if (list.isEmpty) return;
-                            final card = list.firstWhere(
-                              (c) => c.id == cardId,
-                              orElse: () => list.first,
-                            );
-                            final colIdx = index;
-                            final cardIdx = list.indexOf(card);
-                            final bg = AppTheme.cardBg(
-                                app, card.labels, colIdx, cardIdx);
-                            Navigator.of(context).push(
-                              CupertinoPageRoute(
-                                builder: (_) => CardDetailPage(
-                                  cardId: cardId,
-                                  boardId: board.id,
-                                  stackId: stack.id,
-                                  bgColor: bg,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                if (board != null &&
-                    columns.isNotEmpty &&
-                    !(MediaQuery.of(context).size.width >= 900 || isTablet))
-                  _EdgeIndicators(
-                      currentPage: _page,
-                      total: columns.length,
-                      onPrev: () {
-                        final target = (_pageController.page ?? 0).floor() - 1;
-                        if (target >= 0) {
-                          _pageController.animateToPage(target,
-                              duration: const Duration(milliseconds: 220),
-                              curve: Curves.easeOut);
-                        }
-                      },
-                      onNext: () {
-                        final target = (_pageController.page ?? 0).ceil() + 1;
-                        if (target < columns.length) {
-                          _pageController.animateToPage(target,
-                              duration: const Duration(milliseconds: 220),
-                              curve: Curves.easeOut);
-                        }
-                      }),
-                if (!isTablet)
-                  Positioned(
-                    right: 16,
-                    bottom: 16,
-                    child: CupertinoButton.filled(
-                      padding: const EdgeInsets.all(12),
-                      child: const Icon(CupertinoIcons.add),
-                      onPressed: () async {
-                        if (board == null || columns.isEmpty) return;
-                        final currentPage = _pageController.hasClients
-                            ? _pageController.page?.round() ?? 0
-                            : 0;
-                        final columnId = columns[currentPage].id;
-                        await _showCreateCard(context, board.id, columnId);
-                      },
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBoardHeader(BuildContext context, AppState app, Board board,
+      Color baseColor, bool showBoardBand) {
+    final topColor = app.isDarkMode
+        ? AppTheme.blend(baseColor, const Color(0xFF000000), 0.25)
+        : AppTheme.blend(baseColor, const Color(0xFF000000), 0.15);
+    final txtColor = app.isDarkMode ? AppTheme.textOn(topColor) : CupertinoColors.black;
+    final l10n = L10n.of(context);
+    return Container(
+      width: double.infinity,
+      decoration: showBoardBand
+          ? BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [topColor, baseColor],
+              ),
+            )
+          : null,
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: CupertinoButton(
+              padding: EdgeInsets.zero,
+              alignment: Alignment.centerLeft,
+              onPressed: () => _showVisibleBoards(context),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 16,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: topColor,
+                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-              ],
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      board.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 18,
+                          color: txtColor),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(CupertinoIcons.chevron_down, size: 14, color: txtColor),
+                ],
+              ),
             ),
+          ),
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            onPressed: () {
+              app.setUpcomingAssignedOnly(!app.upcomingAssignedOnly);
+            },
+            child: Icon(
+                app.upcomingAssignedOnly
+                    ? CupertinoIcons.person_fill
+                    : CupertinoIcons.person,
+                size: 22,
+                color: txtColor),
+          ),
+          CupertinoButton(
+            padding: EdgeInsets.zero,
+            onPressed: () => _showBoardMenu(context, l10n),
+            child: Icon(CupertinoIcons.bars,
+                size: 22, color: txtColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showBoardMenu(BuildContext context, L10n l10n) async {
+    final app = context.read<AppState>();
+    final board = app.activeBoard;
+    if (board == null) return;
+    final columns = app.columnsForActiveBoard();
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(l10n.boardActions),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              if (app.isSyncing) return;
+              Navigator.of(ctx).pop();
+              app.runWithSyncing(() async {
+                await app.refreshBoards(forceNetwork: true);
+                await app.refreshSingleBoard(board.id);
+              });
+            },
+            child: Text(l10n.refresh),
+          ),
+          if (columns.isNotEmpty)
+            CupertinoActionSheetAction(
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                await showCupertinoModalPopup(
+                  context: context,
+                  builder: (sheetCtx) => CupertinoActionSheet(
+                    title: Text(l10n.selectColumn),
+                    actions: columns
+                        .asMap()
+                        .entries
+                        .map((e) => CupertinoActionSheetAction(
+                              onPressed: () {
+                                Navigator.of(sheetCtx).pop();
+                                final target = e.key;
+                                if (_pageController.hasClients) {
+                                  _pageController.animateToPage(target,
+                                      duration:
+                                          const Duration(milliseconds: 220),
+                                      curve: Curves.easeOut);
+                                }
+                              },
+                              child: Text(e.value.title),
+                            ))
+                        .toList(),
+                    cancelButton: CupertinoActionSheetAction(
+                      onPressed: () => Navigator.of(sheetCtx).pop(),
+                      isDefaultAction: true,
+                      child: Text(l10n.cancel),
+                    ),
+                  ),
+                );
+              },
+              child: Text(l10n.selectColumn),
+            ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              Navigator.of(context).push(CupertinoPageRoute(
+                  builder: (_) => const BoardSearchPage()));
+            },
+            child: Text(l10n.search),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              final next = !app.boardArchivedOnly;
+              app.setBoardArchivedOnly(next);
+              if (next) {
+                app.refreshArchivedCardsForBoard(board.id);
+              }
+            },
+            child: Text(app.boardArchivedOnly
+                ? l10n.showActiveCards
+                : l10n.showArchivedCards),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _createColumnForBoard(context, board);
+            },
+            child: Text(l10n.newColumn),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _reorderColumnsForBoard(context, board);
+            },
+            child: Text(l10n.reorderColumns),
+          ),
+          CupertinoActionSheetAction(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _changeBoardColorForBoard(context, board);
+            },
+            child: Text(l10n.changeBoardColor),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(ctx).pop(),
+          isDefaultAction: true,
+          child: Text(l10n.cancel),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _createColumnForBoard(
+      BuildContext context, Board board) async {
+    final l10n = L10n.of(context);
+    final title = await _promptForText(
+      context,
+      title: l10n.newColumn,
+      placeholder: l10n.columnTitlePlaceholder,
+    );
+    if (title == null) return;
+    final app = context.read<AppState>();
+    final ok = await app.createStack(boardId: board.id, title: title);
+    if (ok) {
+      await app.refreshSingleBoard(board.id);
+    } else {
+      _showInfoDialog(context,
+          title: l10n.errorMsg(l10n.columnCreateFailed));
+    }
+  }
+
+  void _reorderColumnsForBoard(BuildContext context, Board board) {
+    Navigator.of(context).push(CupertinoPageRoute(
+        builder: (_) =>
+            StackReorderPage(boardId: board.id, boardTitle: board.title)));
+  }
+
+  Future<void> _changeBoardColorForBoard(
+      BuildContext context, Board board) async {
+    final l10n = L10n.of(context);
+    final color = await _pickBoardColor(context);
+    if (color == null) return;
+    final app = context.read<AppState>();
+    final ok =
+        await app.updateBoardColor(boardId: board.id, color: color);
+    if (!ok) {
+      _showInfoDialog(context,
+          title: l10n.errorMsg(l10n.boardUpdateFailed));
+    }
+  }
+
+  Future<String?> _promptForText(BuildContext context,
+      {required String title, String? placeholder}) async {
+    final controller = TextEditingController();
+    final l10n = L10n.of(context);
+    return showCupertinoModalPopup<String>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(title),
+        message: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: CupertinoTextField(
+            controller: controller,
+            placeholder: placeholder ?? l10n.title,
+            autofocus: true,
+          ),
+        ),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () {
+              final text = controller.text.trim();
+              if (text.isEmpty) return;
+              Navigator.of(ctx).pop(text);
+            },
+            child: Text(l10n.create),
+          ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(ctx).pop(),
+          isDefaultAction: true,
+          child: Text(l10n.cancel),
+        ),
+      ),
+    );
+  }
+
+  Future<String?> _pickBoardColor(BuildContext context) async {
+    final l10n = L10n.of(context);
+    return showCupertinoModalPopup<String>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(l10n.pickColor),
+        actions: [
+          for (final hex in _boardColors)
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(ctx).pop(hex),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 14,
+                    height: 14,
+                    decoration: BoxDecoration(
+                      color: Color(int.parse('FF$hex', radix: 16)),
+                      borderRadius: BorderRadius.circular(7),
+                      border: Border.all(color: CupertinoColors.separator),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text('#$hex'),
+                ],
+              ),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(ctx).pop(),
+          isDefaultAction: true,
+          child: Text(l10n.cancel),
+        ),
+      ),
+    );
+  }
+
+  void _showInfoDialog(BuildContext context, {required String title}) {
+    final l10n = L10n.of(context);
+    showCupertinoDialog<void>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text(title),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(l10n.ok),
           ),
         ],
       ),

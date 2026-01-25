@@ -774,10 +774,11 @@ class AppState extends ChangeNotifier {
     // Build a simple default local board with three columns if missing
     final existing = _columnsByBoard[localBoardId];
     if (existing == null || existing.isEmpty) {
+      final titles = _defaultStackTitlesForLocale();
       final initCols = [
-        deck.Column(id: -101, title: 'To Do', cards: const []),
-        deck.Column(id: -102, title: 'In Arbeit', cards: const []),
-        deck.Column(id: -103, title: 'Erledigt', cards: const []),
+        deck.Column(id: -101, title: titles[0], cards: const []),
+        deck.Column(id: -102, title: titles[1], cards: const []),
+        deck.Column(id: -103, title: titles[2], cards: const []),
       ];
       _columnsByBoard[localBoardId] = initCols;
       cache.put('columns_$localBoardId', _serializeColumnsForCache(initCols));
@@ -1583,6 +1584,9 @@ class AppState extends ChangeNotifier {
               : color);
       final created = await api.createBoard(_baseUrl!, _username!, _password!,
           title: title, color: normalizedColor);
+      if (created != null) {
+        await _ensureDefaultStacksForBoard(created.id);
+      }
       await refreshBoards();
       if (created != null && activate) {
         final found = _boards.firstWhere((b) => b.id == created.id,
@@ -1593,6 +1597,36 @@ class AppState extends ChangeNotifier {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<void> _ensureDefaultStacksForBoard(int boardId) async {
+    if (_baseUrl == null || _username == null || _password == null) return;
+    try {
+      final res = await api.fetchStacksWithEtag(
+          _baseUrl!, _username!, _password!, boardId,
+          priority: true);
+      if (res.columns.isNotEmpty) return;
+    } catch (_) {}
+    for (final title in _defaultStackTitlesForLocale()) {
+      try {
+        await createStack(boardId: boardId, title: title);
+      } catch (_) {}
+    }
+  }
+
+  List<String> _defaultStackTitlesForLocale() {
+    String code = _localeCode ?? '';
+    if (code.isEmpty) {
+      code = WidgetsBinding
+          .instance.platformDispatcher.locale.languageCode.toLowerCase();
+    }
+    if (code == 'de') {
+      return const ['To Do', 'In Arbeit', 'Erledigt'];
+    }
+    if (code == 'es') {
+      return const ['Por hacer', 'En curso', 'Hecho'];
+    }
+    return const ['To Do', 'In Progress', 'Done'];
   }
 
   Future<bool> updateBoardColor(

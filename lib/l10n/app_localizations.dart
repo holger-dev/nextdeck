@@ -63,6 +63,21 @@ class L10n {
       : _isEs
           ? 'Seleccionar columna'
           : 'Select column';
+  String get refresh => _isDe
+      ? 'Aktualisieren'
+      : _isEs
+          ? 'Actualizar'
+          : 'Refresh';
+  String get showArchivedCards => _isDe
+      ? 'Archivierte Karten anzeigen'
+      : _isEs
+          ? 'Mostrar tarjetas archivadas'
+          : 'Show archived cards';
+  String get showActiveCards => _isDe
+      ? 'Aktive Karten anzeigen'
+      : _isEs
+          ? 'Mostrar tarjetas activas'
+          : 'Show active cards';
   String get pleaseSelectBoard => _isDe
       ? 'Bitte Board in den Einstellungen auswählen.'
       : _isEs
@@ -1059,6 +1074,31 @@ class L10n {
       : _isEs
           ? 'Para preguntas, problemas o ideas de tus propios proyectos, envía un correo a holger@heidkamp.dev'
           : 'For questions, problems or your own project ideas, feel free to email holger@heidkamp.dev';
+  String get help => _isDe
+      ? 'Hilfe'
+      : _isEs
+          ? 'Ayuda'
+          : 'Help';
+  String get helpQuickStartTitle => _isDe
+      ? 'Schnellstart'
+      : _isEs
+          ? 'Inicio rapido'
+          : 'Quick start';
+  String get helpQuickStartBody => _isDe
+      ? 'Serveradresse, Benutzername und App-Passwort eingeben und auf "Login & Boards laden" tippen. Die Boards werden aus Nextcloud Deck geladen.'
+      : _isEs
+          ? 'Introduce servidor, usuario y contrasena de app y toca "Iniciar sesion y cargar tableros". Los tableros se cargan desde Nextcloud Deck.'
+          : 'Enter server, username, and app password, then tap "Login & load boards". Boards are loaded from Nextcloud Deck.';
+  String get helpTipsTitle => _isDe
+      ? 'Tipps'
+      : _isEs
+          ? 'Consejos'
+          : 'Tips';
+  String get helpTipsBody => _isDe
+      ? 'Im Board kannst du Spalten und Aktionen ueber das Burger-Menue verwalten. Benachrichtigungen findest du weiter unten in den Einstellungen.'
+      : _isEs
+          ? 'En el tablero puedes gestionar listas y acciones desde el menu hamburguesa. Las notificaciones estan mas abajo en ajustes.'
+          : 'In boards you can manage lists and actions from the burger menu. Notifications are further down in settings.';
   String get upcomingSingleColumnLabel => _isDe
       ? 'Anstehend einspaltig anzeigen'
       : _isEs
@@ -1111,6 +1151,11 @@ class L10n {
       : _isEs
           ? 'Idioma'
           : 'Language';
+  String get supportAndData => _isDe
+      ? 'Support & Daten'
+      : _isEs
+          ? 'Soporte y datos'
+          : 'Support & Data';
   String get systemLanguage => _isDe
       ? 'System'
       : _isEs
