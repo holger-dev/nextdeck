@@ -61,3 +61,5 @@ windows/flutter/ephemeral/
 
 # External repos (local analysis only)
 nextcloud-deck/
+.flutter-sdk/
+.gem-home/
