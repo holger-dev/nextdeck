@@ -1,0 +1,21 @@
+# fastlane lanes for Nextdeck
+
+default_platform(:ios)
+
+platform :ios do
+  desc "Preflight checks for snapshot (simulator/runtime/scheme/XCTest boot)"
+  lane :preflight do
+    sh "bash #{File.join(__dir__, "preflight.sh")}"
+  end
+
+  desc "Capture App Store screenshots"
+  lane :screenshots do
+    capture_screenshots
+  end
+
+  desc "Capture screenshots and resize to 1242x2688 without distortion"
+  lane :screenshots_store do
+    capture_screenshots
+    sh "bash #{File.join(__dir__, "resize_screenshots.sh")} 1242 2688"
+  end
+end

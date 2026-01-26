@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+POD_HOME="/opt/homebrew/Cellar/cocoapods/1.16.2_2/libexec"
+RUBY_BIN="/opt/homebrew/opt/ruby/bin"
+
+export GEM_HOME="$POD_HOME"
+DEFAULT_GEM_PATH="$($RUBY_BIN/ruby -e 'print Gem.default_path.join(":")' 2>/dev/null || true)"
+if [[ -n "$DEFAULT_GEM_PATH" ]]; then
+  export GEM_PATH="$POD_HOME:$DEFAULT_GEM_PATH"
+else
+  export GEM_PATH="$POD_HOME"
+fi
+export PATH="$RUBY_BIN:/opt/homebrew/bin:$PATH"
+
+exec "$RUBY_BIN/ruby" "$POD_HOME/bin/pod" "$@"
