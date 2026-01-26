@@ -7,5 +7,6 @@ struct NextDeckWidgetBundle: WidgetBundle {
     NextDeckWidget()
     NewCardWidget()
     UpcomingLargeWidget()
+    UpcomingLockWidget()
   }
 }

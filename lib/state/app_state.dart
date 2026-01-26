@@ -716,6 +716,8 @@ class AppState extends ChangeNotifier {
     } else {
       storage.write(key: 'locale', value: code);
     }
+    // Reschedule to refresh notification language when the locale changes.
+    unawaited(_rescheduleDueNotificationsFromMemory());
     notifyListeners();
   }
 

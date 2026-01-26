@@ -138,3 +138,20 @@ struct UpcomingLargeWidgetIntent: WidgetConfigurationIntent {
     .result()
   }
 }
+
+struct UpcomingLockWidgetIntent: WidgetConfigurationIntent {
+  static var title: LocalizedStringResource = "upcomingLock.widgetTitle"
+  static var description = IntentDescription(LocalizedStringResource("upcomingLock.intentDescription"))
+  static var isWidgetConfiguration = true
+
+  @Parameter(title: LocalizedStringResource("parameter.assignment"), default: .assigned)
+  var assignment: AssignmentFilterOption
+
+  static var parameterSummary: some ParameterSummary {
+    Summary("Show \(\.$assignment) cards")
+  }
+
+  func perform() async throws -> some IntentResult {
+    .result()
+  }
+}

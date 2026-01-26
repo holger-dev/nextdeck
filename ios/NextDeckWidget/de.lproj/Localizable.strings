@@ -6,6 +6,8 @@
 "upcomingLarge.displayName" = "Anstehend (Gross)";
 "upcomingLarge.description" = "Zweispaltige Ansicht der anstehenden Karten.";
 "upcomingLarge.header" = "Anstehend";
+"upcomingLock.displayName" = "Anstehend (Sperrbildschirm)";
+"upcomingLock.description" = "Anstehende Karten fuer den Sperrbildschirm.";
 "assignment.assigned" = "Zugewiesen";
 "assignment.all" = "Alle Karten";
 "parameter.assignment" = "Filter";

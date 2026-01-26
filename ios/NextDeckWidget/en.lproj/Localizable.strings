@@ -6,6 +6,8 @@
 "upcomingLarge.displayName" = "Upcoming (Large)";
 "upcomingLarge.description" = "Two-column view of upcoming cards.";
 "upcomingLarge.header" = "Upcoming";
+"upcomingLock.displayName" = "Upcoming (Lock Screen)";
+"upcomingLock.description" = "Upcoming cards for the lock screen.";
 "assignment.assigned" = "Assigned";
 "assignment.all" = "All cards";
 "parameter.assignment" = "Filter";

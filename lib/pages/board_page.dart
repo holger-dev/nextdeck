@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/animation.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart'
@@ -597,30 +598,39 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
     final l10n = L10n.of(context);
     return showCupertinoModalPopup<String>(
       context: context,
-      builder: (ctx) => CupertinoActionSheet(
-        title: Text(title),
-        message: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: CupertinoTextField(
-            controller: controller,
-            placeholder: placeholder ?? l10n.title,
-            autofocus: true,
-          ),
+      builder: (ctx) => AnimatedPadding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(ctx).viewInsets.bottom,
         ),
-        actions: [
-          CupertinoActionSheetAction(
-            onPressed: () {
-              final text = controller.text.trim();
-              if (text.isEmpty) return;
-              Navigator.of(ctx).pop(text);
-            },
-            child: Text(l10n.create),
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        child: SafeArea(
+          child: CupertinoActionSheet(
+            title: Text(title),
+            message: Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: CupertinoTextField(
+                controller: controller,
+                placeholder: placeholder ?? l10n.title,
+                autofocus: true,
+              ),
+            ),
+            actions: [
+              CupertinoActionSheetAction(
+                onPressed: () {
+                  final text = controller.text.trim();
+                  if (text.isEmpty) return;
+                  Navigator.of(ctx).pop(text);
+                },
+                child: Text(l10n.create),
+              ),
+            ],
+            cancelButton: CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(ctx).pop(),
+              isDefaultAction: true,
+              child: Text(l10n.cancel),
+            ),
           ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.of(ctx).pop(),
-          isDefaultAction: true,
-          child: Text(l10n.cancel),
         ),
       ),
     );

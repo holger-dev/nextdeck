@@ -5,7 +5,7 @@
   "packages": [
     {
       "name": "nextdeck",
-      "version": "1.7.0+4",
+      "version": "1.7.0+7",
       "dependencies": [
         "cupertino_icons",
         "file_picker",

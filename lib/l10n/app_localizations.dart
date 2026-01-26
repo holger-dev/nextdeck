@@ -210,7 +210,7 @@ class L10n {
           ? 'Carga no posible'
           : 'Upload not possible';
   String get missingIds => _isDe
-      ? 'Board- oder Spalten-ID nicht verfügbar.'
+      ? 'Board- oder Listen-ID nicht verfügbar.'
       : _isEs
           ? 'ID de tablero o columna no disponible.'
           : 'Board or column ID not available.';
@@ -476,17 +476,17 @@ class L10n {
           ? 'Nuevo tablero'
           : 'New board';
   String get newColumn => _isDe
-      ? 'Neue Spalte'
+      ? 'Neue Liste'
       : _isEs
           ? 'Nueva columna'
           : 'New column';
   String get reorderColumns => _isDe
-      ? 'Spalten sortieren'
+      ? 'Listen sortieren'
       : _isEs
           ? 'Ordenar columnas'
           : 'Reorder columns';
   String reorderColumnsFor(String title) => _isDe
-      ? 'Spalten: $title'
+      ? 'Listen: $title'
       : _isEs
           ? 'Columnas: $title'
           : 'Columns: $title';
@@ -501,22 +501,22 @@ class L10n {
           ? 'Título del tablero'
           : 'Board title';
   String get columnTitlePlaceholder => _isDe
-      ? 'Spalten-Titel'
+      ? 'Listen-Titel'
       : _isEs
           ? 'Título de columna'
           : 'Column title';
   String get deleteColumn => _isDe
-      ? 'Spalte löschen'
+      ? 'Liste löschen'
       : _isEs
           ? 'Eliminar columna'
           : 'Delete column';
   String deleteColumnQuestion(String title) => _isDe
-      ? 'Spalte "$title" wirklich löschen?'
+      ? 'Liste "$title" wirklich löschen?'
       : _isEs
           ? '¿Eliminar la columna "$title"?'
           : 'Delete column "$title"?';
   String get columnDeleteFailed => _isDe
-      ? 'Spalte konnte nicht gelöscht werden'
+      ? 'Liste konnte nicht gelöscht werden'
       : _isEs
           ? 'No se pudo eliminar la columna'
           : 'Column could not be deleted';
@@ -531,12 +531,12 @@ class L10n {
           ? 'No se pudo actualizar el tablero'
           : 'Board could not be updated';
   String get columnCreateFailed => _isDe
-      ? 'Spalte konnte nicht erstellt werden'
+      ? 'Liste konnte nicht erstellt werden'
       : _isEs
           ? 'No se pudo crear la columna'
           : 'Column could not be created';
   String get noColumnsLoaded => _isDe
-      ? 'Keine Spalten geladen.'
+      ? 'Keine Listen geladen.'
       : _isEs
           ? 'No hay columnas cargadas.'
           : 'No columns loaded.';
@@ -571,7 +571,7 @@ class L10n {
           ? 'Cargando "$title"'
           : 'Loading "$title"';
   String get columnsLabel => _isDe
-      ? 'Spalten'
+      ? 'Listen'
       : _isEs
           ? 'Columnas'
           : 'Columns';
@@ -909,7 +909,7 @@ class L10n {
           ? 'Sistema'
           : 'System';
   String get boardBandMode => _isDe
-      ? 'Hintergrundband zwischen Spalten'
+      ? 'Hintergrundband zwischen Listen'
       : _isEs
           ? 'Banda de fondo entre columnas'
           : 'Background band between columns';
@@ -934,7 +934,7 @@ class L10n {
           ? 'Colores inteligentes'
           : 'Smart colors';
   String get smartColorsHelp => _isDe
-      ? 'Wenn aktiviert, passen sich Spaltenhintergründe automatisch der Spaltenbezeichnung an (z. B. "Done" → grün). Wenn deaktiviert, sind Spaltenhintergründe neutral. Kartenfarben werden separat eingestellt.'
+      ? 'Wenn aktiviert, passen sich Listenhintergründe automatisch der Listenbezeichnung an (z. B. "Done" → grün). Wenn deaktiviert, sind Listenhintergründe neutral. Kartenfarben werden separat eingestellt.'
       : _isEs
           ? 'Si está activado, los fondos de las columnas se ajustan automáticamente al nombre de la columna (p. ej., "Done" → verde). Si está desactivado, los fondos son neutros. Los colores de las tarjetas se configuran por separado.'
           : 'If enabled, column backgrounds adapt to status keywords (e.g., "Done" → green). If disabled, backgrounds are neutral. Card colors are configured separately.';
@@ -1015,22 +1015,22 @@ class L10n {
           ? 'Página de inicio'
           : 'Startup page';
   String get bgPreloadLabel => _isDe
-      ? 'Hintergrund: Spalten vorladen (schont Server, lädt ohne Karten)'
+      ? 'Hintergrund: Listen vorladen (schont Server, lädt ohne Karten)'
       : _isEs
           ? 'Segundo plano: precargar columnas (ahorra servidor, sin tarjetas)'
           : 'Background: preload columns (saves server, no cards)';
   String get bgPreloadShort => _isDe
-      ? 'Spalten vorladen'
+      ? 'Listen vorladen'
       : _isEs
           ? 'Precargar columnas'
           : 'Preload columns';
   String get bgPreloadHelp => _isDe
-      ? 'Lädt im Hintergrund nur die Spalten (Stacks) aller Boards in den Cache. Karten werden weiterhin nur bei Bedarf geladen.'
+      ? 'Lädt im Hintergrund nur die Listen (Stacks) aller Boards in den Cache. Karten werden weiterhin nur bei Bedarf geladen.'
       : _isEs
           ? 'Carga en segundo plano solo las columnas (stacks) de todos los tableros en caché. Las tarjetas se cargan bajo demanda.'
           : 'Preloads only columns (stacks) of all boards into cache. Cards still load on demand.';
   String get bgPreloadHelpShort => _isDe
-      ? 'Hintergrund: nur Spalten laden.'
+      ? 'Hintergrund: nur Listen laden.'
       : _isEs
           ? 'Segundo plano: solo columnas.'
           : 'Background: columns only.';
@@ -1095,7 +1095,7 @@ class L10n {
           ? 'Consejos'
           : 'Tips';
   String get helpTipsBody => _isDe
-      ? 'Im Board kannst du Spalten und Aktionen ueber das Burger-Menue verwalten. Benachrichtigungen findest du weiter unten in den Einstellungen.'
+      ? 'Im Board kannst du Listen und Aktionen ueber das Burger-Menue verwalten. Benachrichtigungen findest du weiter unten in den Einstellungen.'
       : _isEs
           ? 'En el tablero puedes gestionar listas y acciones desde el menu hamburguesa. Las notificaciones estan mas abajo en ajustes.'
           : 'In boards you can manage lists and actions from the burger menu. Notifications are further down in settings.';

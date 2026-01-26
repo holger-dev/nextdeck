@@ -25,11 +25,14 @@
 "assignment.all" = "Alle Karten";
 "upcomingLarge.widgetTitle" = "Anstehend-Gross-Widget";
 "upcomingLarge.intentDescription" = "Anstehende Karten nach Zuweisung filtern.";
+"upcomingLock.widgetTitle" = "Anstehend-Sperrbildschirm-Widget";
+"upcomingLock.intentDescription" = "Anstehende Karten fuer den Sperrbildschirm.";
 "newcard.widgetTitle" = "Neue-Karte-Widget";
 "newcard.intentDescription" = "Board fuer Schnellzugriff waehlen.";
 
 "Next Deck Widget" = "Next Deck-Widget";
 "Show %@ for %@" = "Zeige %@ fuer %@";
 "Show %@ for %@ with %@" = "Zeige %@ fuer %@ mit %@";
+"Show upcoming cards" = "Zeige anstehende Karten";
 "Create card in %@" = "Karte erstellen in %@";
 "Show %@ cards" = "Zeige %@ Karten";

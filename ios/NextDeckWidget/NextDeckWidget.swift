@@ -116,6 +116,44 @@ struct UpcomingLargeWidget: Widget {
   }
 }
 
+struct UpcomingLockEntry: TimelineEntry {
+  let date: Date
+  let configuration: UpcomingLockWidgetIntent
+  let payload: WidgetPayload?
+}
+
+struct UpcomingLockProvider: AppIntentTimelineProvider {
+  typealias Intent = UpcomingLockWidgetIntent
+  typealias Entry = UpcomingLockEntry
+
+  func placeholder(in context: Context) -> UpcomingLockEntry {
+    UpcomingLockEntry(date: Date(), configuration: UpcomingLockWidgetIntent(), payload: nil)
+  }
+
+  func snapshot(for configuration: UpcomingLockWidgetIntent, in context: Context) async -> UpcomingLockEntry {
+    UpcomingLockEntry(date: Date(), configuration: configuration, payload: WidgetDataStore.load())
+  }
+
+  func timeline(for configuration: UpcomingLockWidgetIntent, in context: Context) async -> Timeline<UpcomingLockEntry> {
+    let entry = UpcomingLockEntry(date: Date(), configuration: configuration, payload: WidgetDataStore.load())
+    let next = Date().addingTimeInterval(60 * 15)
+    return Timeline(entries: [entry], policy: .after(next))
+  }
+}
+
+struct UpcomingLockWidget: Widget {
+  let kind: String = "UpcomingLockWidget"
+
+  var body: some WidgetConfiguration {
+    AppIntentConfiguration(kind: kind, intent: UpcomingLockWidgetIntent.self, provider: UpcomingLockProvider()) { entry in
+      UpcomingLockWidgetView(entry: entry)
+    }
+    .configurationDisplayName(String(localized: "upcomingLock.displayName"))
+    .description(String(localized: "upcomingLock.description"))
+    .supportedFamilies([.accessoryRectangular])
+  }
+}
+
 
 struct NextDeckWidgetView: View {
   let entry: NextDeckEntry
@@ -486,5 +524,111 @@ struct UpcomingRow: View {
   private func formatDue(_ due: Int64) -> String {
     let date = Date(timeIntervalSince1970: TimeInterval(due) / 1000)
     return DateFormatter.localizedString(from: date, dateStyle: .short, timeStyle: .short)
+  }
+}
+
+struct UpcomingLockWidgetView: View {
+  let entry: UpcomingLockEntry
+
+  var body: some View {
+    let cards = upcomingCards(from: entry.payload)
+
+    ZStack {
+      VStack(alignment: .leading, spacing: 4) {
+        if cards.isEmpty {
+          Text(String(localized: "widget.noCards"))
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        } else {
+          ForEach(cards) { card in
+            if let url = deepLink(
+              action: "card",
+              boardId: card.boardId,
+              cardId: card.id,
+              stackId: card.columnId,
+              edit: true
+            ) {
+              Link(destination: url) {
+                UpcomingLockRow(card: card)
+              }
+            } else {
+              UpcomingLockRow(card: card)
+            }
+          }
+        }
+      }
+      .padding(.horizontal, 6)
+      .padding(.vertical, 4)
+    }
+    .containerBackground(.background, for: .widget)
+  }
+
+  private func upcomingCards(from payload: WidgetPayload?) -> [WidgetCard] {
+    guard let payload else { return [] }
+    let filtered = payload.cards.filter { card in
+      guard card.due != nil else { return false }
+      switch entry.configuration.assignment {
+      case .assigned:
+        return card.assignedToMe
+      case .all:
+        return true
+      }
+    }
+    let sorted = filtered.sorted(by: sortCards(_:_:))
+    return Array(sorted.prefix(3))
+  }
+
+  private func sortCards(_ a: WidgetCard, _ b: WidgetCard) -> Bool {
+    switch (a.due, b.due) {
+    case let (lhs?, rhs?):
+      return lhs < rhs
+    case (.some, .none):
+      return true
+    case (.none, .some):
+      return false
+    default:
+      return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+    }
+  }
+
+  private func deepLink(action: String, boardId: Int?, cardId: Int? = nil, stackId: Int? = nil, edit: Bool = false) -> URL? {
+    var components = URLComponents()
+    components.scheme = "nextdeck"
+    components.host = action
+    var items: [URLQueryItem] = []
+    if let boardId { items.append(URLQueryItem(name: "board", value: "\(boardId)")) }
+    if let cardId { items.append(URLQueryItem(name: "card", value: "\(cardId)")) }
+    if let stackId { items.append(URLQueryItem(name: "stack", value: "\(stackId)")) }
+    if edit { items.append(URLQueryItem(name: "edit", value: "1")) }
+    if !items.isEmpty {
+      components.queryItems = items
+    }
+    return components.url
+  }
+}
+
+struct UpcomingLockRow: View {
+  let card: WidgetCard
+
+  var body: some View {
+    HStack(spacing: 6) {
+      Text(card.title)
+        .font(.caption)
+        .lineLimit(1)
+      Spacer(minLength: 4)
+      if let due = card.due {
+        Text(formatDue(due))
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+      }
+    }
+  }
+
+  private func formatDue(_ due: Int64) -> String {
+    let date = Date(timeIntervalSince1970: TimeInterval(due) / 1000)
+    if Calendar.current.isDateInToday(date) {
+      return DateFormatter.localizedString(from: date, dateStyle: .none, timeStyle: .short)
+    }
+    return DateFormatter.localizedString(from: date, dateStyle: .short, timeStyle: .none)
   }
 }

@@ -25,11 +25,14 @@
 "assignment.all" = "All cards";
 "upcomingLarge.widgetTitle" = "Upcoming Large Widget";
 "upcomingLarge.intentDescription" = "Upcoming cards with assignment filter.";
+"upcomingLock.widgetTitle" = "Upcoming Lock Widget";
+"upcomingLock.intentDescription" = "Upcoming cards for the lock screen.";
 "newcard.widgetTitle" = "New Card Widget";
 "newcard.intentDescription" = "Choose a board for quick add.";
 
 "Next Deck Widget" = "Next Deck Widget";
 "Show %@ for %@" = "Show %@ for %@";
 "Show %@ for %@ with %@" = "Show %@ for %@ with %@";
+"Show upcoming cards" = "Show upcoming cards";
 "Create card in %@" = "Create card in %@";
 "Show %@ cards" = "Show %@ cards";

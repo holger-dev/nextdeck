@@ -689,7 +689,7 @@ class NextcloudDeckApi {
         }
       }
       if (res == null || !_isOk(res!)) {
-        _ensureOk(res, 'Spalten laden fehlgeschlagen');
+        _ensureOk(res, 'Listen laden fehlgeschlagen');
         return const <deck.Column>[];
       }
       final List<deck.Column> columns = [];
@@ -929,7 +929,7 @@ class NextcloudDeckApi {
         }
       }
       if (res == null || !_isOk(res!)) {
-        _ensureOk(res, 'Spalten laden fehlgeschlagen');
+        _ensureOk(res, 'Listen laden fehlgeschlagen');
         return const FetchStacksResult(
             columns: [], etag: null, notModified: false);
       }
