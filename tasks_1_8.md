@@ -5,3 +5,5 @@ Die gesamte App muss auf das Aktuelle SDK aktualisiert werden:
 
 # Update Flutterpakete
 Alle Flutter-Pakete müssen aktualisiert werden!
+
+# Infos
