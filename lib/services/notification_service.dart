@@ -20,8 +20,8 @@ class NotificationService {
     if (!_tzInitialized) {
       tz.initializeTimeZones();
       try {
-        final name = await FlutterTimezone.getLocalTimezone();
-        tz.setLocalLocation(tz.getLocation(name));
+        final timezone = await FlutterTimezone.getLocalTimezone();
+        tz.setLocalLocation(tz.getLocation(timezone.identifier));
       } catch (_) {
         tz.setLocalLocation(tz.UTC);
       }
@@ -34,7 +34,7 @@ class NotificationService {
         requestSoundPermission: false,
       );
       const settings = InitializationSettings(iOS: ios);
-      await _plugin.initialize(settings);
+      await _plugin.initialize(settings: settings);
       _initialized = true;
     }
     if (requestPermissions) {
@@ -55,7 +55,7 @@ class NotificationService {
     if (!Platform.isIOS) return;
     await init();
     for (final id in _idsForCard(cardId)) {
-      await _plugin.cancel(id);
+      await _plugin.cancel(id: id);
     }
   }
 
@@ -76,14 +76,13 @@ class NotificationService {
     );
     for (final c in candidates) {
       await _plugin.zonedSchedule(
-        c.id,
-        c.title,
-        c.body,
-        c.when,
-        const NotificationDetails(iOS: DarwinNotificationDetails()),
-        androidAllowWhileIdle: true,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
+        id: c.id,
+        title: c.title,
+        body: c.body,
+        scheduledDate: c.when,
+        notificationDetails:
+            const NotificationDetails(iOS: DarwinNotificationDetails()),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
     }
   }
@@ -105,20 +104,36 @@ class NotificationService {
       localeCode: localeCode,
     );
     candidates.sort((a, b) => a.when.compareTo(b.when));
-    final limited =
-        candidates.length <= maxScheduled ? candidates : candidates.sublist(0, maxScheduled);
+    final limited = candidates.length <= maxScheduled
+        ? candidates
+        : candidates.sublist(0, maxScheduled);
     for (final c in limited) {
       await _plugin.zonedSchedule(
-        c.id,
-        c.title,
-        c.body,
-        c.when,
-        const NotificationDetails(iOS: DarwinNotificationDetails()),
-        androidAllowWhileIdle: true,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
+        id: c.id,
+        title: c.title,
+        body: c.body,
+        scheduledDate: c.when,
+        notificationDetails:
+            const NotificationDetails(iOS: DarwinNotificationDetails()),
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
       );
     }
+  }
+
+  Future<void> showActivityNotification({
+    required int id,
+    required String title,
+    required String body,
+  }) async {
+    if (!Platform.isIOS) return;
+    await init();
+    await _plugin.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails:
+          const NotificationDetails(iOS: DarwinNotificationDetails()),
+    );
   }
 
   List<int> _idsForCard(int cardId) => [
@@ -185,8 +200,8 @@ class NotificationService {
   String _resolveLocaleCode(String? localeCode) {
     var code = localeCode?.toLowerCase().trim();
     if (code == null || code.isEmpty) {
-      code = WidgetsBinding
-          .instance.platformDispatcher.locale.languageCode.toLowerCase();
+      code = WidgetsBinding.instance.platformDispatcher.locale.languageCode
+          .toLowerCase();
     }
     if (code == 'de' || code == 'es' || code == 'en') return code;
     return 'en';

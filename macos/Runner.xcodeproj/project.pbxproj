@@ -476,9 +476,9 @@
 			baseConfigurationReference = 65A26216CB4608D891D039AF /* Pods-RunnerTests.debug.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 8;
 				GENERATE_INFOPLIST_FILE = YES;
-                MARKETING_VERSION = 1.5.1;
+                MARKETING_VERSION = 1.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.nextdeck.RunnerTests;
         PRODUCT_NAME = "Next Deck";
 				SWIFT_VERSION = 5.0;
@@ -491,9 +491,9 @@
 			baseConfigurationReference = 7E1190B2720DD4204AC584B8 /* Pods-RunnerTests.release.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 8;
 				GENERATE_INFOPLIST_FILE = YES;
-                MARKETING_VERSION = 1.5.1;
+                MARKETING_VERSION = 1.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.nextdeck.RunnerTests;
         PRODUCT_NAME = "Next Deck";
 				SWIFT_VERSION = 5.0;
@@ -506,9 +506,9 @@
 			baseConfigurationReference = 912A792A957C6D8DF2C933BF /* Pods-RunnerTests.profile.xcconfig */;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 8;
 				GENERATE_INFOPLIST_FILE = YES;
-                MARKETING_VERSION = 1.5.1;
+                MARKETING_VERSION = 1.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.nextdeck.RunnerTests;
         PRODUCT_NAME = "Next Deck";
 				SWIFT_VERSION = 5.0;

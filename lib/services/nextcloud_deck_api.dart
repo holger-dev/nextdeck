@@ -326,7 +326,8 @@ class NextcloudDeckApi {
                   .toList()
               : const <Map<String, dynamic>>[];
           final cards = cardsRaw.map(CardItem.fromJson).toList();
-          columns.add(deck.Column(id: sid, title: title, cards: cards, order: ord));
+          columns.add(
+              deck.Column(id: sid, title: title, cards: cards, order: ord));
         } catch (e) {
           // Silently skip invalid columns
         }
@@ -409,7 +410,8 @@ class NextcloudDeckApi {
                 .toList()
             : const <Map<String, dynamic>>[];
         final cards = cardsRaw.map(CardItem.fromJson).toList();
-        columns.add(deck.Column(id: sid, title: title, cards: cards, order: ord));
+        columns
+            .add(deck.Column(id: sid, title: title, cards: cards, order: ord));
       } catch (_) {}
     }
     columns.sort((a, b) {
@@ -427,6 +429,7 @@ class NextcloudDeckApi {
     final headers = {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
+      'OCS-APIRequest': 'true',
       'authorization': _basicAuth(user, pass)
     };
     http.Response? last;
@@ -446,13 +449,17 @@ class NextcloudDeckApi {
     return null;
   }
 
-  Future<bool> updateBoard(String baseUrl, String user, String pass, int boardId,
-      {required String title, required String color, required bool archived}) async {
-    final body = jsonEncode(
-        {'title': title, 'color': color, 'archived': archived});
+  Future<bool> updateBoard(
+      String baseUrl, String user, String pass, int boardId,
+      {required String title,
+      required String color,
+      required bool archived}) async {
+    final body =
+        jsonEncode({'title': title, 'color': color, 'archived': archived});
     final headers = {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
+      'OCS-APIRequest': 'true',
       'authorization': _basicAuth(user, pass)
     };
     final paths = <String>[
@@ -463,10 +470,41 @@ class NextcloudDeckApi {
     for (final p in paths) {
       for (final withIndex in [false, true]) {
         try {
-          last = await _send(
-              'PUT', _buildUri(baseUrl, p, withIndex), headers,
+          last = await _send('PUT', _buildUri(baseUrl, p, withIndex), headers,
               body: body);
           if (_isOk(last!)) return true;
+        } catch (_) {}
+      }
+    }
+    return false;
+  }
+
+  Future<bool> deleteBoard(
+      String baseUrl, String user, String pass, int boardId) async {
+    final headers = {
+      'Accept': 'application/json',
+      'OCS-APIRequest': 'true',
+      'authorization': _basicAuth(user, pass)
+    };
+    final paths = <String>[
+      '/apps/deck/api/v1.1/boards/$boardId',
+      '/apps/deck/api/v1.0/boards/$boardId',
+      '/ocs/v2.php/apps/deck/api/v1.1/boards/$boardId',
+      '/ocs/v2.php/apps/deck/api/v1.0/boards/$boardId',
+      '/ocs/v1.php/apps/deck/api/v1.1/boards/$boardId',
+      '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId',
+    ];
+    for (final p in paths) {
+      for (final withIndex in [false, true]) {
+        try {
+          final res =
+              await _send('DELETE', _buildUri(baseUrl, p, withIndex), headers);
+          if (_isOk(res)) {
+            final isOcs = p.startsWith('/ocs/');
+            if (!isOcs) return true;
+            final data = _parseBodyOk(res);
+            if (_isOcsOk(data)) return true;
+          }
         } catch (_) {}
       }
     }
@@ -791,8 +829,8 @@ class NextcloudDeckApi {
                 final current = columns[i];
                 final det = detailMap[current.id];
                 if (det != null && det.cards.isNotEmpty) {
-                  columns[i] =
-                      deck.Column(id: current.id, title: current.title, cards: det.cards);
+                  columns[i] = deck.Column(
+                      id: current.id, title: current.title, cards: det.cards);
                   filled = true;
                 }
               }
@@ -840,7 +878,6 @@ class NextcloudDeckApi {
         final ob = orderMap[b.id] ?? 999999;
         return oa.compareTo(ob);
       });
-
 
       // Memoize + cooldown
       _stacksMemo[cdKey] = columns;
@@ -984,7 +1021,6 @@ class NextcloudDeckApi {
         return oa.compareTo(ob);
       });
 
-
       // Memoize + cooldown
       _stacksMemo[cdKey] = columns;
       _stacksCooldown[cdKey] = DateTime.now();
@@ -1058,8 +1094,9 @@ class NextcloudDeckApi {
     return null;
   }
 
-  Future<bool> updateStack(String baseUrl, String user, String pass, int boardId,
-      int stackId, {required String title, int? order}) async {
+  Future<bool> updateStack(
+      String baseUrl, String user, String pass, int boardId, int stackId,
+      {required String title, int? order}) async {
     final payload = {
       'title': title,
       if (order != null) 'order': order,
@@ -1138,8 +1175,8 @@ class NextcloudDeckApi {
     return true;
   }
 
-  Future<bool> deleteStack(
-      String baseUrl, String user, String pass, int boardId, int stackId) async {
+  Future<bool> deleteStack(String baseUrl, String user, String pass,
+      int boardId, int stackId) async {
     final headers = {
       'Accept': 'application/json',
       'Content-Type': 'application/json',
@@ -1825,19 +1862,49 @@ class NextcloudDeckApi {
     ];
     for (final p in candidates) {
       for (final withIndex in [false, true]) {
-        try {
-          final uri = _buildUri(baseUrl, p, withIndex);
-          final req = http.MultipartRequest('POST', uri);
-          req.headers['authorization'] = _basicAuth(user, pass);
-          req.headers['Accept'] = 'application/json';
-          // Try type=file (v1.1). For v1.0, server may accept default.
-          req.fields['type'] = 'file';
-          req.files.add(
-              http.MultipartFile.fromBytes('file', bytes, filename: filename));
-          final streamed = await req.send();
-          final res = await http.Response.fromStream(streamed);
-          if (_isOk(res)) return true;
-        } catch (_) {}
+        for (final includeType in [true, false]) {
+          try {
+            final uri = _buildUri(baseUrl, p, withIndex);
+            final t0 = DateTime.now();
+            final req = http.MultipartRequest('POST', uri);
+            req.headers['authorization'] = _basicAuth(user, pass);
+            req.headers['Accept'] = 'application/json';
+            req.headers['OCS-APIRequest'] = 'true';
+            if (includeType) {
+              req.fields['type'] = 'file';
+            }
+            req.files.add(http.MultipartFile.fromBytes('file', bytes,
+                filename: filename));
+            final streamed = await req.send();
+            final res = await http.Response.fromStream(streamed);
+            final dur = DateTime.now().difference(t0).inMilliseconds;
+            final snippet = (res.body.length > 400)
+                ? '${res.body.substring(0, 400)}…'
+                : res.body;
+            LogService().add(LogEntry(
+              at: t0,
+              method: 'POST',
+              url: uri.toString(),
+              status: res.statusCode,
+              durationMs: dur,
+              requestBody:
+                  'multipart attachment filename=$filename bytes=${bytes.length} type=${includeType ? 'file' : 'none'}',
+              responseSnippet: snippet,
+            ));
+            if (_isOk(res)) return true;
+          } catch (e) {
+            LogService().add(LogEntry(
+              at: DateTime.now(),
+              method: 'POST',
+              url: _buildUri(baseUrl, p, withIndex).toString(),
+              status: null,
+              durationMs: 0,
+              requestBody:
+                  'multipart attachment filename=$filename bytes=${bytes.length} type=${includeType ? 'file' : 'none'}',
+              error: e.toString(),
+            ));
+          }
+        }
       }
     }
     return false;
@@ -2158,8 +2225,9 @@ class NextcloudDeckApi {
         payload['done'] = v.toUtc().toIso8601String();
       } else if (v is int) {
         final ts = v > 100000000000 ? v ~/ 1000 : v;
-        payload['done'] = DateTime.fromMillisecondsSinceEpoch(ts * 1000, isUtc: true)
-            .toIso8601String();
+        payload['done'] =
+            DateTime.fromMillisecondsSinceEpoch(ts * 1000, isUtc: true)
+                .toIso8601String();
       } else if (v == null) {
         payload['done'] = null;
       }
@@ -2565,8 +2633,9 @@ class NextcloudDeckApi {
         payload['done'] = v.toUtc().toIso8601String();
       } else if (v is int) {
         final ts = v > 100000000000 ? v ~/ 1000 : v;
-        payload['done'] = DateTime.fromMillisecondsSinceEpoch(ts * 1000, isUtc: true)
-            .toIso8601String();
+        payload['done'] =
+            DateTime.fromMillisecondsSinceEpoch(ts * 1000, isUtc: true)
+                .toIso8601String();
       } else if (v == null) {
         payload['done'] = null;
       }

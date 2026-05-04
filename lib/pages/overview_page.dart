@@ -47,7 +47,9 @@ class _OverviewPageState extends State<OverviewPage> {
       navigationBar: CupertinoNavigationBar(
         leading: CupertinoButton(
           padding: EdgeInsets.zero,
-          onPressed: () => Navigator.of(context).push(CupertinoPageRoute(builder: (_) => const BoardSearchPage(initialScope: SearchScope.all))),
+          onPressed: () => Navigator.of(context).push(CupertinoPageRoute(
+              builder: (_) =>
+                  const BoardSearchPage(initialScope: SearchScope.all))),
           child: const Icon(CupertinoIcons.search),
         ),
         middle: Text(L10n.of(context).overview),
@@ -82,7 +84,10 @@ class _OverviewPageState extends State<OverviewPage> {
               }
             }
             // Hide only after user scrolls down a bit, no query, and not focusing the field
-            if (_showSearch && _query.isEmpty && n.metrics.pixels > 60 && !_searchFocus.hasFocus) {
+            if (_showSearch &&
+                _query.isEmpty &&
+                n.metrics.pixels > 60 &&
+                !_searchFocus.hasFocus) {
               setState(() => _showSearch = false);
             }
             return false;
@@ -105,101 +110,147 @@ class _OverviewPageState extends State<OverviewPage> {
                 label: L10n.of(context).newBoard,
                 onTap: () => _createBoard(context),
               ),
-            if (app.boards.isEmpty) ...[
-              Text(L10n.of(context).noBoardsLoaded),
-            ] else if (app.activeBoard != null) ...[
-              const SizedBox(height: 8),
-              if (_query.isEmpty || app.activeBoard!.title.toLowerCase().contains(_query.toLowerCase())) ...[
-                Text(L10n.of(context).activeBoard, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              if (app.boards.isEmpty) ...[
+                Text(L10n.of(context).noBoardsLoaded),
+              ] else if (app.activeBoard != null) ...[
+                const SizedBox(height: 8),
+                if (_query.isEmpty ||
+                    app.activeBoard!.title
+                        .toLowerCase()
+                        .contains(_query.toLowerCase())) ...[
+                  Text(L10n.of(context).activeBoard,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 12),
+                  _BoardSummary(
+                    index: app.boards
+                        .indexWhere((b) => b.id == app.activeBoard!.id),
+                    boardId: app.activeBoard!.id,
+                    title: app.activeBoard!.title,
+                    isActive: true,
+                  ),
+                  const SizedBox(height: 16),
+                  Container(height: 1, color: CupertinoColors.separator),
+                  const SizedBox(height: 16),
+                ],
+                Text(L10n.of(context).moreBoards,
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: CupertinoColors.systemGrey)),
                 const SizedBox(height: 12),
-                _BoardSummary(
-                  index: app.boards.indexWhere((b) => b.id == app.activeBoard!.id),
-                  boardId: app.activeBoard!.id,
-                  title: app.activeBoard!.title,
-                  isActive: true,
+                LayoutBuilder(
+                  builder: (ctx, cns) {
+                    final isTablet =
+                        MediaQuery.of(ctx).size.shortestSide >= 600;
+                    final visibleBoards = app.boards
+                        .where((b) => !b.archived)
+                        .where((b) =>
+                            b.id != app.activeBoard!.id &&
+                            !app.isBoardHidden(b.id))
+                        .where((b) =>
+                            _query.isEmpty ||
+                            b.title
+                                .toLowerCase()
+                                .contains(_query.toLowerCase()))
+                        .toList()
+                      ..sort((a, b) => a.title
+                          .toLowerCase()
+                          .compareTo(b.title.toLowerCase()));
+                    if (!isTablet) {
+                      return Column(
+                        children: visibleBoards
+                            .asMap()
+                            .entries
+                            .map((e) => _BoardSummary(
+                                index: e.key,
+                                boardId: e.value.id,
+                                title: e.value.title,
+                                isActive: false))
+                            .toList(),
+                      );
+                    }
+                    final boards = visibleBoards;
+                    final cross = cns.maxWidth >= 1000 ? 3 : 2;
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: cross,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        mainAxisExtent: 190,
+                      ),
+                      itemCount: boards.length,
+                      itemBuilder: (ctx, i) => _BoardSummary(
+                          index: i,
+                          boardId: boards[i].id,
+                          title: boards[i].title,
+                          isActive: false),
+                    );
+                  },
                 ),
-                const SizedBox(height: 16),
-                Container(height: 1, color: CupertinoColors.separator),
-                const SizedBox(height: 16),
+                ..._buildHiddenSection(context, app, excludeActive: true),
+                ..._buildArchivedSection(context, app, excludeActive: true),
+              ] else ...[
+                Text(L10n.of(context).yourBoards,
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 12),
+                LayoutBuilder(
+                  builder: (ctx, cns) {
+                    final isTablet =
+                        MediaQuery.of(ctx).size.shortestSide >= 600;
+                    final visibleBoards = app.boards
+                        .where((b) => !b.archived && !app.isBoardHidden(b.id))
+                        .where((b) =>
+                            _query.isEmpty ||
+                            b.title
+                                .toLowerCase()
+                                .contains(_query.toLowerCase()))
+                        .toList()
+                      ..sort((a, b) => a.title
+                          .toLowerCase()
+                          .compareTo(b.title.toLowerCase()));
+                    if (!isTablet) {
+                      return Column(
+                        children: visibleBoards
+                            .asMap()
+                            .entries
+                            .map((e) => _BoardSummary(
+                                index: e.key,
+                                boardId: e.value.id,
+                                title: e.value.title,
+                                isActive: false))
+                            .toList(),
+                      );
+                    }
+                    final cross = cns.maxWidth >= 1000 ? 3 : 2;
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: cross,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        mainAxisExtent: 190,
+                      ),
+                      itemCount: visibleBoards.length,
+                      itemBuilder: (ctx, i) => _BoardSummary(
+                          index: i,
+                          boardId: visibleBoards[i].id,
+                          title: visibleBoards[i].title,
+                          isActive: false),
+                    );
+                  },
+                ),
+                ..._buildHiddenSection(context, app, excludeActive: false),
+                ..._buildArchivedSection(context, app, excludeActive: false),
               ],
-              Text(L10n.of(context).moreBoards, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: CupertinoColors.systemGrey)),
-              const SizedBox(height: 12),
-              LayoutBuilder(
-                builder: (ctx, cns) {
-                  final isTablet = MediaQuery.of(ctx).size.shortestSide >= 600;
-                  final visibleBoards = app.boards
-                      .where((b) => !b.archived)
-                      .where((b) => b.id != app.activeBoard!.id && !app.isBoardHidden(b.id))
-                      .where((b) => _query.isEmpty || b.title.toLowerCase().contains(_query.toLowerCase()))
-                      .toList()
-                    ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-                  if (!isTablet) {
-                    return Column(
-                      children: visibleBoards
-                          .asMap()
-                          .entries
-                          .map((e) => _BoardSummary(index: e.key, boardId: e.value.id, title: e.value.title, isActive: false))
-                          .toList(),
-                    );
-                  }
-                  final boards = visibleBoards;
-                  final cross = cns.maxWidth >= 1000 ? 3 : 2;
-                  return GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: cross,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 2.2,
-                    ),
-                    itemCount: boards.length,
-                    itemBuilder: (ctx, i) => _BoardSummary(index: i, boardId: boards[i].id, title: boards[i].title, isActive: false),
-                  );
-                },
-              ),
-              ..._buildHiddenSection(context, app, excludeActive: true),
-              ..._buildArchivedSection(context, app, excludeActive: true),
-            ] else ...[
-              Text(L10n.of(context).yourBoards, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-              const SizedBox(height: 12),
-              LayoutBuilder(
-                builder: (ctx, cns) {
-                  final isTablet = MediaQuery.of(ctx).size.shortestSide >= 600;
-                  final visibleBoards = app.boards
-                      .where((b) => !b.archived && !app.isBoardHidden(b.id))
-                      .where((b) => _query.isEmpty || b.title.toLowerCase().contains(_query.toLowerCase()))
-                      .toList()
-                    ..sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
-                  if (!isTablet) {
-                    return Column(
-                      children: visibleBoards.asMap().entries
-                          .map((e) => _BoardSummary(index: e.key, boardId: e.value.id, title: e.value.title, isActive: false))
-                          .toList(),
-                    );
-                  }
-                  final cross = cns.maxWidth >= 1000 ? 3 : 2;
-                  return GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: cross,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 2.2,
-                    ),
-                    itemCount: visibleBoards.length,
-                    itemBuilder: (ctx, i) => _BoardSummary(index: i, boardId: visibleBoards[i].id, title: visibleBoards[i].title, isActive: false),
-                  );
-                },
-              ),
-              ..._buildHiddenSection(context, app, excludeActive: false),
-              ..._buildArchivedSection(context, app, excludeActive: false),
             ],
-          ],
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -214,11 +265,10 @@ class _OverviewPageState extends State<OverviewPage> {
     final color = await _pickBoardColor(context, allowSkip: true);
     if (color == null) return;
     final app = context.read<AppState>();
-    final created =
-        await app.createBoard(title: title, color: color.isEmpty ? null : color);
+    final created = await app.createBoard(
+        title: title, color: color.isEmpty ? null : color);
     if (created == null) {
-      _showInfoDialog(context,
-          title: l10n.errorMsg(l10n.boardCreateFailed));
+      _showInfoDialog(context, title: l10n.errorMsg(l10n.boardCreateFailed));
     }
   }
 
@@ -237,8 +287,7 @@ class _OverviewPageState extends State<OverviewPage> {
     if (ok) {
       await app.refreshSingleBoard(board.id);
     } else {
-      _showInfoDialog(context,
-          title: l10n.errorMsg(l10n.columnCreateFailed));
+      _showInfoDialog(context, title: l10n.errorMsg(l10n.columnCreateFailed));
     }
   }
 
@@ -260,11 +309,9 @@ class _OverviewPageState extends State<OverviewPage> {
     final color = await _pickBoardColor(context, allowSkip: false);
     if (color == null) return;
     final app = context.read<AppState>();
-    final ok =
-        await app.updateBoardColor(boardId: board.id, color: color);
+    final ok = await app.updateBoardColor(boardId: board.id, color: color);
     if (!ok) {
-      _showInfoDialog(context,
-          title: l10n.errorMsg(l10n.boardUpdateFailed));
+      _showInfoDialog(context, title: l10n.errorMsg(l10n.boardUpdateFailed));
     }
   }
 
@@ -316,11 +363,9 @@ class _OverviewPageState extends State<OverviewPage> {
       {required String title}) async {
     final app = context.read<AppState>();
     final l10n = L10n.of(context);
-    final boards =
-        app.boards.where((b) => !b.archived).toList(growable: false);
+    final boards = app.boards.where((b) => !b.archived).toList(growable: false);
     if (boards.isEmpty) {
-      _showInfoDialog(context,
-          title: l10n.errorMsg(l10n.noBoardsLoaded));
+      _showInfoDialog(context, title: l10n.errorMsg(l10n.noBoardsLoaded));
       return null;
     }
     return showCupertinoModalPopup<Board>(
@@ -401,7 +446,8 @@ class _OverviewPageState extends State<OverviewPage> {
     );
   }
 
-  List<Widget> _buildHiddenSection(BuildContext context, AppState app, {required bool excludeActive}) {
+  List<Widget> _buildHiddenSection(BuildContext context, AppState app,
+      {required bool excludeActive}) {
     final hiddenBoards = app.boards
         .where((b) => !b.archived)
         .where((b) => app.isBoardHidden(b.id))
@@ -417,9 +463,18 @@ class _OverviewPageState extends State<OverviewPage> {
         behavior: HitTestBehavior.opaque,
         child: Row(
           children: [
-            Icon(_hiddenExpanded ? CupertinoIcons.chevron_down : CupertinoIcons.chevron_right, size: 16, color: CupertinoColors.systemGrey),
+            Icon(
+                _hiddenExpanded
+                    ? CupertinoIcons.chevron_down
+                    : CupertinoIcons.chevron_right,
+                size: 16,
+                color: CupertinoColors.systemGrey),
             const SizedBox(width: 6),
-            Text(L10n.of(context).hiddenBoards, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: CupertinoColors.systemGrey)),
+            Text(L10n.of(context).hiddenBoards,
+                style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: CupertinoColors.systemGrey)),
           ],
         ),
       ),
@@ -433,7 +488,11 @@ class _OverviewPageState extends State<OverviewPage> {
                 children: hiddenBoards
                     .asMap()
                     .entries
-                    .map((e) => _BoardSummary(index: e.key, boardId: e.value.id, title: e.value.title, isActive: false))
+                    .map((e) => _BoardSummary(
+                        index: e.key,
+                        boardId: e.value.id,
+                        title: e.value.title,
+                        isActive: false))
                     .toList(),
               );
             }
@@ -445,10 +504,14 @@ class _OverviewPageState extends State<OverviewPage> {
                 crossAxisCount: cross,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                childAspectRatio: 2.2,
+                mainAxisExtent: 190,
               ),
               itemCount: hiddenBoards.length,
-              itemBuilder: (ctx, i) => _BoardSummary(index: i, boardId: hiddenBoards[i].id, title: hiddenBoards[i].title, isActive: false),
+              itemBuilder: (ctx, i) => _BoardSummary(
+                  index: i,
+                  boardId: hiddenBoards[i].id,
+                  title: hiddenBoards[i].title,
+                  isActive: false),
             );
           },
         ),
@@ -456,7 +519,8 @@ class _OverviewPageState extends State<OverviewPage> {
     ];
   }
 
-  List<Widget> _buildArchivedSection(BuildContext context, AppState app, {required bool excludeActive}) {
+  List<Widget> _buildArchivedSection(BuildContext context, AppState app,
+      {required bool excludeActive}) {
     final archivedBoards = app.boards
         .where((b) => b.archived)
         .where((b) => excludeActive ? b.id != app.activeBoard?.id : true)
@@ -471,15 +535,26 @@ class _OverviewPageState extends State<OverviewPage> {
         behavior: HitTestBehavior.opaque,
         child: Row(
           children: [
-            Icon(_archivedExpanded ? CupertinoIcons.chevron_down : CupertinoIcons.chevron_right, size: 16, color: CupertinoColors.systemGrey),
+            Icon(
+                _archivedExpanded
+                    ? CupertinoIcons.chevron_down
+                    : CupertinoIcons.chevron_right,
+                size: 16,
+                color: CupertinoColors.systemGrey),
             const SizedBox(width: 6),
-            Text(L10n.of(context).archivedBoards, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: CupertinoColors.systemGrey)),
+            Text(L10n.of(context).archivedBoards,
+                style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: CupertinoColors.systemGrey)),
           ],
         ),
       ),
       if (_archivedExpanded) ...[
         const SizedBox(height: 6),
-        Text(L10n.of(context).archivedBoardsInfo, style: const TextStyle(fontSize: 12, color: CupertinoColors.systemGrey)),
+        Text(L10n.of(context).archivedBoardsInfo,
+            style: const TextStyle(
+                fontSize: 12, color: CupertinoColors.systemGrey)),
         const SizedBox(height: 12),
         LayoutBuilder(
           builder: (ctx, cns) {
@@ -489,7 +564,14 @@ class _OverviewPageState extends State<OverviewPage> {
                 children: archivedBoards
                     .asMap()
                     .entries
-                    .map((e) => Opacity(opacity: 0.6, child: AbsorbPointer(child: _BoardSummary(index: e.key, boardId: e.value.id, title: e.value.title, isActive: false))))
+                    .map((e) => Opacity(
+                        opacity: 0.6,
+                        child: AbsorbPointer(
+                            child: _BoardSummary(
+                                index: e.key,
+                                boardId: e.value.id,
+                                title: e.value.title,
+                                isActive: false))))
                     .toList(),
               );
             }
@@ -501,10 +583,17 @@ class _OverviewPageState extends State<OverviewPage> {
                 crossAxisCount: cross,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                childAspectRatio: 2.2,
+                mainAxisExtent: 190,
               ),
               itemCount: archivedBoards.length,
-              itemBuilder: (ctx, i) => Opacity(opacity: 0.6, child: AbsorbPointer(child: _BoardSummary(index: i, boardId: archivedBoards[i].id, title: archivedBoards[i].title, isActive: false))),
+              itemBuilder: (ctx, i) => Opacity(
+                  opacity: 0.6,
+                  child: AbsorbPointer(
+                      child: _BoardSummary(
+                          index: i,
+                          boardId: archivedBoards[i].id,
+                          title: archivedBoards[i].title,
+                          isActive: false))),
             );
           },
         ),
@@ -559,19 +648,25 @@ class _BoardSummary extends StatelessWidget {
   final int boardId;
   final String title;
   final bool isActive;
-  const _BoardSummary({required this.index, required this.boardId, required this.title, required this.isActive});
+  const _BoardSummary(
+      {required this.index,
+      required this.boardId,
+      required this.title,
+      required this.isActive});
 
   @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     if (app.boardMemberCount(boardId) == null) {
       if (app.overviewShowBoardInfo) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => app.ensureBoardMemberCount(boardId));
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => app.ensureBoardMemberCount(boardId));
       }
     }
     final showInfo = app.overviewShowBoardInfo;
     final List<deck.Column> cols = showInfo
-        ? (app.activeBoard?.id == boardId && app.columnsForActiveBoard().isNotEmpty
+        ? (app.activeBoard?.id == boardId &&
+                app.columnsForActiveBoard().isNotEmpty
             ? app.columnsForActiveBoard()
             : app.columnsForBoard(boardId))
         : const <deck.Column>[];
@@ -589,7 +684,8 @@ class _BoardSummary extends StatelessWidget {
         cards += c.cards.length;
         for (final k in c.cards) {
           if (k.due != null) {
-            if (k.due!.isBefore(now)) overdue++;
+            if (k.due!.isBefore(now))
+              overdue++;
             else if (k.due!.difference(now).inHours <= 24) dueSoon++;
           }
         }
@@ -600,8 +696,10 @@ class _BoardSummary extends StatelessWidget {
     }
 
     // Use Nextcloud board color when available; fallback to app palette
-    final b = app.boards.firstWhere((x) => x.id == boardId, orElse: () => Board(id: boardId, title: title));
-    final strong = AppTheme.boardColorFrom(b.color) ?? AppTheme.boardStrongColor(index);
+    final b = app.boards.firstWhere((x) => x.id == boardId,
+        orElse: () => Board(id: boardId, title: title));
+    final strong =
+        AppTheme.boardColorFrom(b.color) ?? AppTheme.boardStrongColor(index);
     // Much softer background colors for overview cards
     final bg = app.isDarkMode
         ? AppTheme.blend(strong, const Color(0xFF000000), 0.8)
@@ -609,7 +707,8 @@ class _BoardSummary extends StatelessWidget {
 
     return GestureDetector(
       onTap: () async {
-        final board = app.boards.firstWhere((b) => b.id == boardId, orElse: () => app.boards.first);
+        final board = app.boards
+            .firstWhere((b) => b.id == boardId, orElse: () => app.boards.first);
         // Use root navigator context to avoid using a disposed context after tab switch
         final rootNav = Navigator.of(context, rootNavigator: true);
         showCupertinoDialog(
@@ -619,7 +718,9 @@ class _BoardSummary extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: CupertinoTheme.of(context).barBackgroundColor.withOpacity(0.9),
+                color: CupertinoTheme.of(context)
+                    .barBackgroundColor
+                    .withOpacity(0.9),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -627,7 +728,8 @@ class _BoardSummary extends StatelessWidget {
                 children: [
                   const CupertinoActivityIndicator(),
                   const SizedBox(height: 8),
-                  Text(L10n.of(context).loadingBoard(title), textAlign: TextAlign.center),
+                  Text(L10n.of(context).loadingBoard(title),
+                      textAlign: TextAlign.center),
                 ],
               ),
             ),
@@ -649,7 +751,11 @@ class _BoardSummary extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: isActive ? CupertinoColors.activeGreen : CupertinoColors.separator, width: isActive ? 2 : 1),
+          border: Border.all(
+              color: isActive
+                  ? CupertinoColors.activeGreen
+                  : CupertinoColors.separator,
+              width: isActive ? 2 : 1),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -657,24 +763,35 @@ class _BoardSummary extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Subtle header accent (half strength)
-                    Container(height: 6, decoration: BoxDecoration(color: strong.withOpacity(0.25), borderRadius: BorderRadius.circular(6))),
+                    Container(
+                        height: 6,
+                        decoration: BoxDecoration(
+                            color: strong.withOpacity(0.25),
+                            borderRadius: BorderRadius.circular(6))),
                     const SizedBox(height: 6),
                     Row(
                       children: [
                         Expanded(
-                          child: Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textOn(bg))),
+                          child: Text(title,
+                              style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.textOn(bg))),
                         ),
                         CupertinoButton(
                           padding: EdgeInsets.zero,
                           onPressed: () => app.toggleBoardHidden(boardId),
                           child: Icon(
-                            app.isBoardHidden(boardId) ? CupertinoIcons.eye_slash : CupertinoIcons.eye,
+                            app.isBoardHidden(boardId)
+                                ? CupertinoIcons.eye_slash
+                                : CupertinoIcons.eye,
                             size: 18,
                             color: AppTheme.textOn(bg).withOpacity(0.9),
                           ),
@@ -682,24 +799,53 @@ class _BoardSummary extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: 6),
-                    if (showInfo) Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _StatChip(icon: CupertinoIcons.rectangle_grid_2x2, label: L10n.of(context).columnsLabel, value: stacks.toString()),
-                        _StatChip(icon: CupertinoIcons.list_bullet, label: L10n.of(context).cardsLabel, value: cards.toString()),
-                        _StatChip(icon: CupertinoIcons.time, label: L10n.of(context).dueSoonLabel, value: dueSoon.toString(), color: CupertinoColors.activeOrange, emphasize: true),
-                        _StatChip(icon: CupertinoIcons.exclamationmark_triangle, label: L10n.of(context).overdueLabel, value: overdue.toString(), color: CupertinoColors.destructiveRed),
-                        _StatChip(
-                          icon: CupertinoIcons.cloud_download,
-                          label: L10n.of(context).cacheLabel,
-                          value: hasAnyCards ? L10n.of(context).cardsLabel : (hasStacks ? L10n.of(context).columnsLabel : '—'),
-                          color: hasAnyCards ? CupertinoColors.activeGreen : (hasStacks ? CupertinoColors.activeBlue : CupertinoColors.systemGrey),
-                        ),
-                        if (app.boardMemberCount(boardId) != null)
-                          _StatChip(icon: CupertinoIcons.person_2, label: L10n.of(context).membersLabel, value: app.boardMemberCount(boardId)!.toString(), color: CupertinoColors.activeGreen),
-                      ],
-                    ),
+                    if (showInfo)
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _StatChip(
+                              icon: CupertinoIcons.rectangle_grid_2x2,
+                              label: L10n.of(context).columnsLabel,
+                              value: stacks.toString()),
+                          _StatChip(
+                              icon: CupertinoIcons.list_bullet,
+                              label: L10n.of(context).cardsLabel,
+                              value: cards.toString()),
+                          _StatChip(
+                              icon: CupertinoIcons.time,
+                              label: L10n.of(context).dueSoonLabel,
+                              value: dueSoon.toString(),
+                              color: CupertinoColors.activeOrange,
+                              emphasize: true),
+                          _StatChip(
+                              icon: CupertinoIcons.exclamationmark_triangle,
+                              label: L10n.of(context).overdueLabel,
+                              value: overdue.toString(),
+                              color: CupertinoColors.destructiveRed),
+                          _StatChip(
+                            icon: CupertinoIcons.cloud_download,
+                            label: L10n.of(context).cacheLabel,
+                            value: hasAnyCards
+                                ? L10n.of(context).cardsLabel
+                                : (hasStacks
+                                    ? L10n.of(context).columnsLabel
+                                    : '—'),
+                            color: hasAnyCards
+                                ? CupertinoColors.activeGreen
+                                : (hasStacks
+                                    ? CupertinoColors.activeBlue
+                                    : CupertinoColors.systemGrey),
+                          ),
+                          if (app.boardMemberCount(boardId) != null)
+                            _StatChip(
+                                icon: CupertinoIcons.person_2,
+                                label: L10n.of(context).membersLabel,
+                                value:
+                                    app.boardMemberCount(boardId)!.toString(),
+                                color: CupertinoColors.activeGreen),
+                        ],
+                      ),
                   ],
                 ),
               ),
@@ -717,25 +863,44 @@ class _StatChip extends StatelessWidget {
   final String value;
   final Color? color;
   final bool emphasize;
-  const _StatChip({required this.icon, required this.label, required this.value, this.color, this.emphasize = false});
+  const _StatChip(
+      {required this.icon,
+      required this.label,
+      required this.value,
+      this.color,
+      this.emphasize = false});
 
   @override
   Widget build(BuildContext context) {
-    final bg = (color ?? CupertinoColors.systemGrey).withOpacity(emphasize ? 0.2 : 0.12);
+    final bg = (color ?? CupertinoColors.systemGrey)
+        .withOpacity(emphasize ? 0.2 : 0.12);
     final fg = color ?? CupertinoColors.systemGrey;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: fg),
-          const SizedBox(width: 6),
-          Text('$label: $value', style: TextStyle(color: fg, fontSize: 12, fontWeight: emphasize ? FontWeight.w800 : FontWeight.w600)),
-        ],
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 170, minHeight: 34),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: fg),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                '$label: $value',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: fg,
+                    fontSize: 12,
+                    fontWeight: emphasize ? FontWeight.w800 : FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

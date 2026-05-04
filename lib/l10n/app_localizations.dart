@@ -485,6 +485,11 @@ class L10n {
       : _isEs
           ? 'Ordenar columnas'
           : 'Reorder columns';
+  String get renameColumn => _isDe
+      ? 'Liste umbenennen'
+      : _isEs
+          ? 'Renombrar columna'
+          : 'Rename column';
   String reorderColumnsFor(String title) => _isDe
       ? 'Listen: $title'
       : _isEs
@@ -520,6 +525,26 @@ class L10n {
       : _isEs
           ? 'No se pudo eliminar la columna'
           : 'Column could not be deleted';
+  String get columnRenameFailed => _isDe
+      ? 'Liste konnte nicht umbenannt werden'
+      : _isEs
+          ? 'No se pudo renombrar la columna'
+          : 'Column could not be renamed';
+  String get deleteBoard => _isDe
+      ? 'Board löschen'
+      : _isEs
+          ? 'Eliminar tablero'
+          : 'Delete board';
+  String deleteBoardQuestion(String title) => _isDe
+      ? 'Board "$title" wirklich löschen?'
+      : _isEs
+          ? '¿Eliminar el tablero "$title"?'
+          : 'Delete board "$title"?';
+  String get boardDeleteFailed => _isDe
+      ? 'Board konnte nicht gelöscht werden'
+      : _isEs
+          ? 'No se pudo eliminar el tablero'
+          : 'Board could not be deleted';
   String get boardCreateFailed => _isDe
       ? 'Board konnte nicht erstellt werden'
       : _isEs
@@ -625,6 +650,26 @@ class L10n {
       : _isEs
           ? 'Recordatorio de atraso'
           : 'Overdue reminder';
+  String get activityNotificationsEnable => _isDe
+      ? 'Zuweisungen und Erwähnungen'
+      : _isEs
+          ? 'Asignaciones y menciones'
+          : 'Assignments and mentions';
+  String get activityNotificationsHelp => _isDe
+      ? 'Erzeugt lokale Benachrichtigungen beim Synchronisieren, wenn neue Karten dir zugewiesen sind oder dich erwähnen.'
+      : _isEs
+          ? 'Crea notificaciones locales al sincronizar cuando nuevas tarjetas se asignan a ti o te mencionan.'
+          : 'Creates local notifications during sync when new cards are assigned to you or mention you.';
+  String get assignedToYouNotificationTitle => _isDe
+      ? 'Neue Zuweisung'
+      : _isEs
+          ? 'Nueva asignación'
+          : 'New assignment';
+  String get mentionedNotificationTitle => _isDe
+      ? 'Neue Erwähnung'
+      : _isEs
+          ? 'Nueva mención'
+          : 'New mention';
   String get reminderIn1Hour => _isDe
       ? 'in 1 Stunde'
       : _isEs
@@ -1039,6 +1084,21 @@ class L10n {
       : _isEs
           ? 'Aviso: La sincronización completa de todos los tableros solo se ejecuta manualmente desde “Próximas” → Actualizar. No se inicia automáticamente durante el trabajo normal.'
           : 'Note: Full sync across all boards runs only when manually triggered from “Upcoming” → Refresh. Nothing runs automatically during normal work.';
+  String get perBoardSyncInterval => _isDe
+      ? 'Sync-Intervall für aktives Board'
+      : _isEs
+          ? 'Intervalo de sincronización del tablero activo'
+          : 'Sync interval for active board';
+  String get perBoardSyncIntervalHelp => _isDe
+      ? 'Speichert ein Intervall pro Board. Der große Hintergrundsync bleibt deaktiviert; gezielte Board-Syncs können diese Vorgabe nutzen.'
+      : _isEs
+          ? 'Guarda un intervalo por tablero. La sincronización grande en segundo plano permanece desactivada; las sincronizaciones específicas pueden usar este valor.'
+          : 'Stores an interval per board. The large background sync remains disabled; targeted board syncs can use this preference.';
+  String get syncIntervalManual => _isDe
+      ? 'Manuell'
+      : _isEs
+          ? 'Manual'
+          : 'Manual';
   String get upcomingProgressHelp => _isDe
       ? 'Hinweis zu „Anstehende Karten“: Die Anzeige neben dem Titel (z. B. 4 / 12) zeigt den Fortschritt eines Hintergrund-Scans über alle Boards. Mit langem Druck auf den Aktualisieren-Button wird ein vollständiger Scan gestartet.'
       : _isEs

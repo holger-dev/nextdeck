@@ -193,18 +193,20 @@ class _SettingsPageState extends State<SettingsPage> {
             });
           }
         }
-        
+
         app.addListener(syncListener);
-        
+
         await app.configureSyncForCurrentAccount();
-        
+
         app.removeListener(syncListener);
-        
+
         if (!mounted) return;
         final count = app.boards.length;
         setState(() {
           _testing = false;
-          _testMsg = count == 0 ? l10n.loginOkNoBoards : 'Login OK - $count Boards gefunden, alle Stacks und Karten synchronisiert';
+          _testMsg = count == 0
+              ? l10n.loginOkNoBoards
+              : 'Login OK - $count Boards gefunden, alle Stacks und Karten synchronisiert';
           _testOk = true;
         });
       } catch (e) {
@@ -453,8 +455,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 title: l10n.notifications,
                 expanded: _sectionNotificationsOpen,
                 isDarkMode: app.isDarkMode,
-                onToggle: () => setState(
-                    () => _sectionNotificationsOpen = !_sectionNotificationsOpen),
+                onToggle: () => setState(() =>
+                    _sectionNotificationsOpen = !_sectionNotificationsOpen),
                 children: [
                   Row(children: [
                     Expanded(child: Text(l10n.dueNotificationsEnable)),
@@ -495,6 +497,18 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ]),
                   ],
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    Expanded(child: Text(l10n.activityNotificationsEnable)),
+                    CupertinoSwitch(
+                      value: app.activityNotificationsEnabled,
+                      onChanged: (v) => app.setActivityNotificationsEnabled(v),
+                    ),
+                  ]),
+                  const SizedBox(height: 6),
+                  Text(l10n.activityNotificationsHelp,
+                      style: const TextStyle(
+                          color: CupertinoColors.systemGrey, fontSize: 12)),
                 ],
               ),
             ],
@@ -503,8 +517,8 @@ class _SettingsPageState extends State<SettingsPage> {
               title: l10n.appearance,
               expanded: _sectionAppearanceOpen,
               isDarkMode: app.isDarkMode,
-              onToggle: () =>
-                  setState(() => _sectionAppearanceOpen = !_sectionAppearanceOpen),
+              onToggle: () => setState(
+                  () => _sectionAppearanceOpen = !_sectionAppearanceOpen),
               children: [
                 Text(l10n.themeMode,
                     style: const TextStyle(
@@ -731,6 +745,47 @@ class _SettingsPageState extends State<SettingsPage> {
                 Text(L10n.of(context).upcomingProgressHelp,
                     style: const TextStyle(
                         color: CupertinoColors.systemGrey, fontSize: 12)),
+                if (app.activeBoard != null) ...[
+                  const SizedBox(height: 12),
+                  Text(l10n.perBoardSyncInterval,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  CupertinoSlidingSegmentedControl<int>(
+                    groupValue: app.syncIntervalForBoard(app.activeBoard!.id),
+                    children: {
+                      0: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(l10n.syncIntervalManual),
+                      ),
+                      1: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Text('1 min'),
+                      ),
+                      5: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Text('5 min'),
+                      ),
+                      15: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Text('15 min'),
+                      ),
+                      30: const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Text('30 min'),
+                      ),
+                    },
+                    onValueChanged: (v) {
+                      if (v != null) {
+                        app.setBoardSyncInterval(app.activeBoard!.id, v);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 6),
+                  Text(l10n.perBoardSyncIntervalHelp,
+                      style: const TextStyle(
+                          color: CupertinoColors.systemGrey, fontSize: 12)),
+                ],
               ],
             ),
             const SizedBox(height: 16),

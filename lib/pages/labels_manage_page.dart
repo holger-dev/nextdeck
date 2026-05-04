@@ -107,6 +107,7 @@ class _LabelsManagePageState extends State<LabelsManagePage> {
   }
 
   Future<bool> _confirmDelete(BuildContext context, Label l) async {
+    final l10n = L10n.of(context);
     bool? ok = await showCupertinoDialog<bool>(
       context: context,
       builder: (ctx) => CupertinoAlertDialog(
@@ -150,6 +151,7 @@ class _LabelsManagePageState extends State<LabelsManagePage> {
   }
 
   Future<void> _showEditSheet({Label? existing}) async {
+    final l10n = L10n.of(context);
     final titleCtrl = TextEditingController(text: existing?.title ?? '');
     final colorCtrl =
         TextEditingController(text: _normColor(existing?.color ?? '3794ac'));

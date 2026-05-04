@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../l10n/app_localizations.dart';
 import 'package:markdown/markdown.dart' as md;
 
@@ -52,11 +53,14 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
           CupertinoTextField(
             controller: widget.controller,
             focusNode: widget.focusNode,
-            placeholder: widget.placeholder ?? L10n.of(context).descriptionMarkdown,
+            placeholder:
+                widget.placeholder ?? L10n.of(context).descriptionMarkdown,
             maxLines: 8,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
             placeholderStyle: TextStyle(
-              color: (CupertinoTheme.of(context).textTheme.textStyle.color ?? CupertinoColors.label).withOpacity(0.6),
+              color: (CupertinoTheme.of(context).textTheme.textStyle.color ??
+                      CupertinoColors.label)
+                  .withOpacity(0.6),
             ),
             onSubmitted: widget.onSubmitted,
           )
@@ -70,7 +74,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
                 decoration: BoxDecoration(
                   color: theme.scaffoldBackgroundColor.withOpacity(0.9),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: CupertinoColors.separator.resolveFrom(context)),
+                  border: Border.all(
+                      color: CupertinoColors.separator.resolveFrom(context)),
                 ),
                 child: _PreviewWithTasks(
                   text: widget.controller.text,
@@ -90,10 +95,17 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         title: Text(L10n.of(context).formatTemplates),
         actions: [
           CupertinoActionSheetAction(
-            onPressed: () { Navigator.of(ctx).pop(); _insertTaskTemplate(); },
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _insertTaskTemplate();
+            },
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: [const Icon(CupertinoIcons.square_list), const SizedBox(width: 8), Text(L10n.of(context).taskList)],
+              children: [
+                const Icon(CupertinoIcons.square_list),
+                const SizedBox(width: 8),
+                Text(L10n.of(context).taskList)
+              ],
             ),
           ),
         ],
@@ -149,12 +161,18 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
       final after = text.substring(sel.end);
       final newText = before + tpl + after;
       final newOffset = (before + tpl).length;
-      widget.controller.value = TextEditingValue(text: newText, selection: TextSelection.collapsed(offset: newOffset));
+      widget.controller.value = TextEditingValue(
+          text: newText, selection: TextSelection.collapsed(offset: newOffset));
     } else {
-      widget.controller.text = (text.isEmpty ? tpl : (text.trimRight() + '\n\n' + tpl));
-      widget.controller.selection = TextSelection.collapsed(offset: widget.controller.text.length);
+      widget.controller.text =
+          (text.isEmpty ? tpl : (text.trimRight() + '\n\n' + tpl));
+      widget.controller.selection =
+          TextSelection.collapsed(offset: widget.controller.text.length);
     }
-    if (mounted) setState(() { _preview = false; });
+    if (mounted)
+      setState(() {
+        _preview = false;
+      });
   }
 
   void _applyAction(_MdAction a) {
@@ -169,15 +187,18 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
     int cursorOffset = 0;
     switch (a) {
       case _MdAction.bold:
-        replace = '**${selected.isEmpty ? L10n.of(context).mdBold : selected}**';
+        replace =
+            '**${selected.isEmpty ? L10n.of(context).mdBold : selected}**';
         cursorOffset = selected.isEmpty ? 2 : replace.length;
         break;
       case _MdAction.italic:
-        replace = '*${selected.isEmpty ? L10n.of(context).mdItalic : selected}*';
+        replace =
+            '*${selected.isEmpty ? L10n.of(context).mdItalic : selected}*';
         cursorOffset = selected.isEmpty ? 1 : replace.length;
         break;
       case _MdAction.strike:
-        replace = '~~${selected.isEmpty ? L10n.of(context).mdStrike : selected}~~';
+        replace =
+            '~~${selected.isEmpty ? L10n.of(context).mdStrike : selected}~~';
         cursorOffset = selected.isEmpty ? 2 : replace.length;
         break;
       case _MdAction.code:
@@ -190,7 +211,12 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         cursorOffset = replace.length - 1; // place before )
         break;
       case _MdAction.ul:
-        replace = selected.isEmpty ? '- ${L10n.of(context).mdListItem}' : selected.split('\n').map((l) => l.isEmpty ? '- ' : '- $l').join('\n');
+        replace = selected.isEmpty
+            ? '- ${L10n.of(context).mdListItem}'
+            : selected
+                .split('\n')
+                .map((l) => l.isEmpty ? '- ' : '- $l')
+                .join('\n');
         cursorOffset = replace.length;
         break;
       case _MdAction.ol:
@@ -204,11 +230,21 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         cursorOffset = replace.length;
         break;
       case _MdAction.task:
-        replace = selected.isEmpty ? '- [ ] ${L10n.of(context).mdTask}' : selected.split('\n').map((l) => l.isEmpty ? '- [ ] ' : '- [ ] $l').join('\n');
+        replace = selected.isEmpty
+            ? '- [ ] ${L10n.of(context).mdTask}'
+            : selected
+                .split('\n')
+                .map((l) => l.isEmpty ? '- [ ] ' : '- [ ] $l')
+                .join('\n');
         cursorOffset = replace.length;
         break;
       case _MdAction.quote:
-        replace = selected.isEmpty ? '> ${L10n.of(context).mdQuote}' : selected.split('\n').map((l) => l.isEmpty ? '> ' : '> $l').join('\n');
+        replace = selected.isEmpty
+            ? '> ${L10n.of(context).mdQuote}'
+            : selected
+                .split('\n')
+                .map((l) => l.isEmpty ? '> ' : '> $l')
+                .join('\n');
         cursorOffset = replace.length;
         break;
     }
@@ -274,7 +310,8 @@ class _PreviewWithTasks extends StatelessWidget {
     // Build markdown data with checkboxes stripped to avoid duplicate boxes
     String mdData = _withSoftBreaks(
       text
-          .replaceAllMapped(taskRe, (m) => '${m.group(1) ?? ''}- ${m.group(3) ?? ''}')
+          .replaceAllMapped(
+              taskRe, (m) => '${m.group(1) ?? ''}- ${m.group(3) ?? ''}')
           .trimRight(),
     );
 
@@ -295,6 +332,7 @@ class _PreviewWithTasks extends StatelessWidget {
         MarkdownBody(
           data: mdData,
           extensionSet: md.ExtensionSet.gitHubFlavored,
+          onTapLink: (text, href, title) => _openMarkdownLink(href),
           styleSheet: MarkdownStyleSheet(
             p: theme.textTheme.textStyle,
             code: theme.textTheme.textStyle.copyWith(
@@ -306,7 +344,19 @@ class _PreviewWithTasks extends StatelessWidget {
       ],
     );
   }
-  
+
+  Future<void> _openMarkdownLink(String? href) async {
+    final raw = href?.trim();
+    if (raw == null || raw.isEmpty) return;
+    final uri = Uri.tryParse(raw);
+    if (uri == null) return;
+    final scheme = uri.scheme.toLowerCase();
+    if (scheme != 'http' && scheme != 'https' && scheme != 'mailto') return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
   String _withSoftBreaks(String input) {
     final lines = input.split('\n');
     final out = <String>[];
@@ -319,7 +369,8 @@ class _PreviewWithTasks extends StatelessWidget {
         out.add(line);
         continue;
       }
-      final isPara = line.isNotEmpty && !RegExp(r'^\s*([#>]|[-*+]\s|\d+\.\s)').hasMatch(line);
+      final isPara = line.isNotEmpty &&
+          !RegExp(r'^\s*([#>]|[-*+]\s|\d+\.\s)').hasMatch(line);
       final nextExists = i < lines.length - 1 && lines[i + 1].isNotEmpty;
       out.add((!inCode && isPara && nextExists) ? (line + '  ') : line);
     }
@@ -345,16 +396,22 @@ class _TaskRow extends StatelessWidget {
         child: Row(
           children: [
             Icon(
-              checked ? CupertinoIcons.check_mark_circled_solid : CupertinoIcons.circle,
+              checked
+                  ? CupertinoIcons.check_mark_circled_solid
+                  : CupertinoIcons.circle,
               size: 20,
-              color: checked ? CupertinoColors.activeGreen : CupertinoColors.inactiveGray,
+              color: checked
+                  ? CupertinoColors.activeGreen
+                  : CupertinoColors.inactiveGray,
             ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 text,
                 style: TextStyle(
-                  decoration: checked ? TextDecoration.lineThrough : TextDecoration.none,
+                  decoration: checked
+                      ? TextDecoration.lineThrough
+                      : TextDecoration.none,
                 ),
               ),
             ),
@@ -374,7 +431,13 @@ class _Toolbar extends StatelessWidget {
   final bool preview;
   final VoidCallback onEnterEdit;
   final VoidCallback onSave;
-  const _Toolbar({required this.onAction, required this.onShowTemplates, this.onShowHelp, required this.preview, required this.onEnterEdit, required this.onSave});
+  const _Toolbar(
+      {required this.onAction,
+      required this.onShowTemplates,
+      this.onShowHelp,
+      required this.preview,
+      required this.onEnterEdit,
+      required this.onSave});
 
   @override
   Widget build(BuildContext context) {
@@ -384,6 +447,8 @@ class _Toolbar extends StatelessWidget {
       _txt('S', () => onAction(_MdAction.strike)),
       _txt('`', () => onAction(_MdAction.code)),
       _icon(CupertinoIcons.link, () => onAction(_MdAction.link)),
+      _icon(CupertinoIcons.list_bullet, () => onAction(_MdAction.ul)),
+      _icon(CupertinoIcons.checkmark_square, () => onAction(_MdAction.task)),
       if (onShowHelp != null) _icon(CupertinoIcons.question, onShowHelp!),
     ];
     return Container(
@@ -403,7 +468,9 @@ class _Toolbar extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
             onPressed: preview ? onEnterEdit : onSave,
             child: Icon(
-              preview ? CupertinoIcons.pencil_circle_fill : CupertinoIcons.check_mark_circled_solid,
+              preview
+                  ? CupertinoIcons.pencil_circle_fill
+                  : CupertinoIcons.check_mark_circled_solid,
               size: 24,
             ),
           ),

@@ -240,8 +240,8 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                     LayoutBuilder(
                       builder: (context, constraints) {
                         final mq = MediaQuery.of(context);
-                        final isTablet =
-                            mq.size.shortestSide >= 600; // iPad/tablet heuristic
+                        final isTablet = mq.size.shortestSide >=
+                            600; // iPad/tablet heuristic
                         final isWide = constraints.maxWidth >= 900 || isTablet;
                         if (isWide) {
                           return _WideColumnsView(
@@ -265,8 +265,7 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                                   (_pageController.page ?? 0).floor() - 1;
                               if (target >= 0) {
                                 _pageController.animateToPage(target,
-                                    duration:
-                                        const Duration(milliseconds: 220),
+                                    duration: const Duration(milliseconds: 220),
                                     curve: Curves.easeOut);
                               }
                             },
@@ -275,19 +274,19 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                                   (_pageController.page ?? 0).ceil() + 1;
                               if (target < columns.length) {
                                 _pageController.animateToPage(target,
-                                    duration:
-                                        const Duration(milliseconds: 220),
+                                    duration: const Duration(milliseconds: 220),
                                     curve: Curves.easeOut);
                               }
                             },
                             onTapCard: (cardId) {
                               final app = context.read<AppState>();
                               final stack = columns[index];
-                              final archived =
-                                  app.archivedCardsForBoard(board.id)[stack.id] ??
-                                      const <CardItem>[];
-                              final list =
-                                  app.boardArchivedOnly ? archived : stack.cards;
+                              final archived = app.archivedCardsForBoard(
+                                      board.id)[stack.id] ??
+                                  const <CardItem>[];
+                              final list = app.boardArchivedOnly
+                                  ? archived
+                                  : stack.cards;
                               if (list.isEmpty) return;
                               final card = list.firstWhere(
                                 (c) => c.id == cardId,
@@ -372,7 +371,8 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
     final topColor = app.isDarkMode
         ? AppTheme.blend(baseColor, const Color(0xFF000000), 0.25)
         : AppTheme.blend(baseColor, const Color(0xFF000000), 0.15);
-    final txtColor = app.isDarkMode ? AppTheme.textOn(topColor) : CupertinoColors.black;
+    final txtColor =
+        app.isDarkMode ? AppTheme.textOn(topColor) : CupertinoColors.black;
     final l10n = L10n.of(context);
     return Container(
       width: double.infinity,
@@ -437,8 +437,7 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
           CupertinoButton(
             padding: EdgeInsets.zero,
             onPressed: () => _showBoardMenu(context, l10n),
-            child: Icon(CupertinoIcons.bars,
-                size: 22, color: txtColor),
+            child: Icon(CupertinoIcons.bars, size: 22, color: txtColor),
           ),
         ],
       ),
@@ -504,8 +503,8 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.of(ctx).pop();
-              Navigator.of(context).push(CupertinoPageRoute(
-                  builder: (_) => const BoardSearchPage()));
+              Navigator.of(context).push(
+                  CupertinoPageRoute(builder: (_) => const BoardSearchPage()));
             },
             child: Text(l10n.search),
           ),
@@ -529,6 +528,14 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
             },
             child: Text(l10n.newColumn),
           ),
+          if (columns.isNotEmpty)
+            CupertinoActionSheetAction(
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                await _renameColumnForBoard(context, board, columns);
+              },
+              child: Text(l10n.renameColumn),
+            ),
           CupertinoActionSheetAction(
             onPressed: () {
               Navigator.of(ctx).pop();
@@ -543,6 +550,14 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
             },
             child: Text(l10n.changeBoardColor),
           ),
+          CupertinoActionSheetAction(
+            isDestructiveAction: true,
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              await _deleteBoard(context, board);
+            },
+            child: Text(l10n.deleteBoard),
+          ),
         ],
         cancelButton: CupertinoActionSheetAction(
           onPressed: () => Navigator.of(ctx).pop(),
@@ -553,8 +568,7 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
     );
   }
 
-  Future<void> _createColumnForBoard(
-      BuildContext context, Board board) async {
+  Future<void> _createColumnForBoard(BuildContext context, Board board) async {
     final l10n = L10n.of(context);
     final title = await _promptForText(
       context,
@@ -567,8 +581,7 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
     if (ok) {
       await app.refreshSingleBoard(board.id);
     } else {
-      _showInfoDialog(context,
-          title: l10n.errorMsg(l10n.columnCreateFailed));
+      _showInfoDialog(context, title: l10n.errorMsg(l10n.columnCreateFailed));
     }
   }
 
@@ -578,23 +591,63 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
             StackReorderPage(boardId: board.id, boardTitle: board.title)));
   }
 
+  Future<void> _renameColumnForBoard(
+      BuildContext context, Board board, List<deck.Column> columns) async {
+    final l10n = L10n.of(context);
+    final selected = await showCupertinoModalPopup<deck.Column>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(l10n.renameColumn),
+        actions: columns
+            .map((c) => CupertinoActionSheetAction(
+                  onPressed: () => Navigator.of(ctx).pop(c),
+                  child: Text(c.title),
+                ))
+            .toList(),
+        cancelButton: CupertinoActionSheetAction(
+          onPressed: () => Navigator.of(ctx).pop(),
+          isDefaultAction: true,
+          child: Text(l10n.cancel),
+        ),
+      ),
+    );
+    if (selected == null) return;
+    if (!context.mounted) return;
+    final title = await _promptForText(
+      context,
+      title: l10n.renameColumn,
+      placeholder: l10n.columnTitlePlaceholder,
+      initialValue: selected.title,
+      actionLabel: l10n.save,
+    );
+    if (title == null || title.trim() == selected.title) return;
+    if (!context.mounted) return;
+    final ok = await context
+        .read<AppState>()
+        .renameStack(boardId: board.id, stackId: selected.id, title: title);
+    if (!ok && context.mounted) {
+      _showInfoDialog(context, title: l10n.errorMsg(l10n.columnRenameFailed));
+    }
+  }
+
   Future<void> _changeBoardColorForBoard(
       BuildContext context, Board board) async {
     final l10n = L10n.of(context);
     final color = await _pickBoardColor(context);
     if (color == null) return;
     final app = context.read<AppState>();
-    final ok =
-        await app.updateBoardColor(boardId: board.id, color: color);
+    final ok = await app.updateBoardColor(boardId: board.id, color: color);
     if (!ok) {
-      _showInfoDialog(context,
-          title: l10n.errorMsg(l10n.boardUpdateFailed));
+      _showInfoDialog(context, title: l10n.errorMsg(l10n.boardUpdateFailed));
     }
   }
 
   Future<String?> _promptForText(BuildContext context,
-      {required String title, String? placeholder}) async {
-    final controller = TextEditingController();
+      {required String title,
+      String? placeholder,
+      String? initialValue,
+      String? actionLabel}) async {
+    final controller = TextEditingController(text: initialValue ?? '');
     final l10n = L10n.of(context);
     return showCupertinoModalPopup<String>(
       context: context,
@@ -622,7 +675,7 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                   if (text.isEmpty) return;
                   Navigator.of(ctx).pop(text);
                 },
-                child: Text(l10n.create),
+                child: Text(actionLabel ?? l10n.create),
               ),
             ],
             cancelButton: CupertinoActionSheetAction(
@@ -634,6 +687,33 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
         ),
       ),
     );
+  }
+
+  Future<void> _deleteBoard(BuildContext context, Board board) async {
+    final l10n = L10n.of(context);
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text(l10n.deleteBoard),
+        content: Text(l10n.deleteBoardQuestion(board.title)),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.delete),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+    final ok = await context.read<AppState>().deleteBoard(boardId: board.id);
+    if (!ok && context.mounted) {
+      _showInfoDialog(context, title: l10n.errorMsg(l10n.boardDeleteFailed));
+    }
   }
 
   Future<String?> _pickBoardColor(BuildContext context) async {
@@ -694,7 +774,8 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
     final app = _appRef;
     if (app == null) return;
     final board = app.activeBoard;
-    final columns = board == null ? <deck.Column>[] : app.columnsForBoard(board.id);
+    final columns =
+        board == null ? <deck.Column>[] : app.columnsForBoard(board.id);
     if (board == null || columns.isEmpty) return;
     if (app.hasPendingOpenCardFor(board.id) && !_openCardInFlight) {
       _tryOpenPendingCard(app, board, columns);
@@ -754,7 +835,9 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
     if (pending.stackId != null) {
       return columns.firstWhere(
         (c) => c.id == pending.stackId,
-        orElse: () => columns.isNotEmpty ? columns.first : deck.Column(id: -1, title: '—', cards: const []),
+        orElse: () => columns.isNotEmpty
+            ? columns.first
+            : deck.Column(id: -1, title: '—', cards: const []),
       );
     }
     for (final col in columns) {
@@ -924,9 +1007,8 @@ class _ColumnViewState extends State<_ColumnView> {
         .where((c) => showArchivedOnly ? true : !c.archived)
         .where((c) => !filterAssigned || app.shouldIncludeAssignedCard(c))
         .toList();
-    final showArchivedLoading = showArchivedOnly &&
-        isArchivedLoading &&
-        archivedByStack.isEmpty;
+    final showArchivedLoading =
+        showArchivedOnly && isArchivedLoading && archivedByStack.isEmpty;
 
     Future<void> _handleAccept(_DragCard d) async {
       final app = context.read<AppState>();
@@ -1253,7 +1335,8 @@ class _ColumnViewState extends State<_ColumnView> {
                                                                   stackId: widget
                                                                       .column
                                                                       .id,
-                                                                  cardId: card.id,
+                                                                  cardId:
+                                                                      card.id,
                                                                   patch: {
                                                                 'title':
                                                                     card.title,
@@ -1295,7 +1378,8 @@ class _ColumnViewState extends State<_ColumnView> {
                                                                   stackId: widget
                                                                       .column
                                                                       .id,
-                                                                  cardId: card.id,
+                                                                  cardId:
+                                                                      card.id,
                                                                   patch: {
                                                                 'title':
                                                                     card.title,
@@ -1312,8 +1396,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                                     CupertinoActionSheetAction(
                                                   onPressed: () async {
                                                     Navigator.of(ctx).pop();
-                                                    if (boardId == null)
-                                                      return;
+                                                    if (boardId == null) return;
                                                     final nextArchived =
                                                         !isArchived;
                                                     app.updateLocalCard(
@@ -1321,8 +1404,7 @@ class _ColumnViewState extends State<_ColumnView> {
                                                         stackId:
                                                             widget.column.id,
                                                         cardId: card.id,
-                                                        archived:
-                                                            nextArchived);
+                                                        archived: nextArchived);
                                                     final base = app.baseUrl;
                                                     final user = app.username;
                                                     final pass = await app
@@ -1337,10 +1419,8 @@ class _ColumnViewState extends State<_ColumnView> {
                                                                 boardId:
                                                                     boardId,
                                                                 stackId: widget
-                                                                    .column
-                                                                    .id,
-                                                                cardId:
-                                                                    card.id,
+                                                                    .column.id,
+                                                                cardId: card.id,
                                                                 patch: {
                                                               'title':
                                                                   card.title,
@@ -1469,47 +1549,46 @@ class _ColumnViewState extends State<_ColumnView> {
           children: [
             header,
             Expanded(
-                child: (isLoading && cards.isNotEmpty)
-                    ? const Center(child: CupertinoActivityIndicator())
-                    : (showArchivedLoading && cards.isEmpty)
-                        ? const Center(child: CupertinoActivityIndicator())
-                        : CupertinoScrollbar(
-                            controller: _listCtrl.hasClients ? _listCtrl : null,
-                            child: ListView.builder(
-                              controller: _listCtrl,
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 8, 16, 80),
-                              itemCount: cards.length,
-                              itemBuilder: (context, idx) {
-                                final card = cards[idx];
-                                final bg = AppTheme.cardBgFromBase(
-                                    app, card.labels, baseForCards, idx);
-                                return Padding(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 6),
-                                  child: _CardTile(
-                                    title: card.title,
-                                    subtitle: _markdownPreviewLine(
-                                        card.description ?? ''),
-                                    labels: card.labels,
-                                    assignees: card.assignees,
-                                    onTap: widget.onTapCard == null
-                                        ? null
-                                        : () => widget.onTapCard!(card.id),
-                                    background: bg,
-                                    due: card.due,
-                                    done: card.done,
-                                    footer: _CardMetaRow(
-                                        boardId: app.activeBoard?.id,
-                                        stackId: widget.column.id,
-                                        cardId: card.id,
-                                        textColor: AppTheme.textOn(bg),
-                                        description: card.description),
-                                  ),
-                                );
-                              },
-                            ),
+              child: (isLoading && cards.isNotEmpty)
+                  ? const Center(child: CupertinoActivityIndicator())
+                  : (showArchivedLoading && cards.isEmpty)
+                      ? const Center(child: CupertinoActivityIndicator())
+                      : CupertinoScrollbar(
+                          controller: _listCtrl.hasClients ? _listCtrl : null,
+                          child: ListView.builder(
+                            controller: _listCtrl,
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                            itemCount: cards.length,
+                            itemBuilder: (context, idx) {
+                              final card = cards[idx];
+                              final bg = AppTheme.cardBgFromBase(
+                                  app, card.labels, baseForCards, idx);
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 6),
+                                child: _CardTile(
+                                  title: card.title,
+                                  subtitle: _markdownPreviewLine(
+                                      card.description ?? ''),
+                                  labels: card.labels,
+                                  assignees: card.assignees,
+                                  onTap: widget.onTapCard == null
+                                      ? null
+                                      : () => widget.onTapCard!(card.id),
+                                  background: bg,
+                                  due: card.due,
+                                  done: card.done,
+                                  footer: _CardMetaRow(
+                                      boardId: app.activeBoard?.id,
+                                      stackId: widget.column.id,
+                                      cardId: card.id,
+                                      textColor: AppTheme.textOn(bg),
+                                      description: card.description),
+                                ),
+                              );
+                            },
                           ),
+                        ),
             ),
           ],
         ),
@@ -1545,8 +1624,7 @@ class _ColumnViewState extends State<_ColumnView> {
                           controller: _listCtrl.hasClients ? _listCtrl : null,
                           child: ReorderableListView.builder(
                             buildDefaultDragHandles: false,
-                            padding:
-                                const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
                             itemCount: cards.length,
                             onReorder: (oldIndex, newIndex) async {
                               if (showArchivedOnly) return;
@@ -1585,7 +1663,8 @@ class _ColumnViewState extends State<_ColumnView> {
                                         moveToStackId: widget.column.id,
                                         insertIndex: insertIndex);
                                     CardItem? cur;
-                                    for (final x in app.columnsForActiveBoard()) {
+                                    for (final x
+                                        in app.columnsForActiveBoard()) {
                                       final hit = x.cards
                                           .where((c) => c.id == d.cardId)
                                           .toList();
@@ -1601,9 +1680,8 @@ class _ColumnViewState extends State<_ColumnView> {
                                       if (cur?.description != null)
                                         'description': cur!.description,
                                       if (cur?.due != null)
-                                        'duedate': cur!.due!
-                                            .toUtc()
-                                            .toIso8601String(),
+                                        'duedate':
+                                            cur!.due!.toUtc().toIso8601String(),
                                       if (cur != null && cur!.labels.isNotEmpty)
                                         'labels': cur!.labels
                                             .map((l) => l.id)
@@ -1644,429 +1722,485 @@ class _ColumnViewState extends State<_ColumnView> {
                                 );
                               }
 
-                          return Padding(
-                            key: key,
-                            padding: const EdgeInsets.symmetric(vertical: 6),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                buildInsertTarget(idx),
-                                Stack(
+                              return Padding(
+                                key: key,
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 6),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
                                   children: [
-                                    _CardDragWrapper(
-                                      data: _DragCard(
-                                          cardId: card.id,
-                                          fromStackId: widget.column.id,
-                                          title: card.title),
-                                      feedback: ConstrainedBox(
-                                        constraints:
-                                            const BoxConstraints(maxWidth: 300),
-                                        child: Opacity(
-                                          opacity: 0.95,
-                                          child: Container(
-                                            decoration: BoxDecoration(
-                                              color: bg,
-                                              borderRadius:
-                                                  BorderRadius.circular(14),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                    color: CupertinoColors.black
-                                                        .withOpacity(0.2),
-                                                    blurRadius: 12,
-                                                    offset: const Offset(0, 6))
-                                              ],
-                                              border: Border.all(
-                                                  color: CupertinoColors
-                                                      .separator
-                                                      .withOpacity(0.6)),
+                                    buildInsertTarget(idx),
+                                    Stack(
+                                      children: [
+                                        _CardDragWrapper(
+                                          data: _DragCard(
+                                              cardId: card.id,
+                                              fromStackId: widget.column.id,
+                                              title: card.title),
+                                          feedback: ConstrainedBox(
+                                            constraints: const BoxConstraints(
+                                                maxWidth: 300),
+                                            child: Opacity(
+                                              opacity: 0.95,
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  color: bg,
+                                                  borderRadius:
+                                                      BorderRadius.circular(14),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                        color: CupertinoColors
+                                                            .black
+                                                            .withOpacity(0.2),
+                                                        blurRadius: 12,
+                                                        offset:
+                                                            const Offset(0, 6))
+                                                  ],
+                                                  border: Border.all(
+                                                      color: CupertinoColors
+                                                          .separator
+                                                          .withOpacity(0.6)),
+                                                ),
+                                                padding:
+                                                    const EdgeInsets.all(12),
+                                                child: Text(card.title,
+                                                    style: TextStyle(
+                                                        fontSize: 16,
+                                                        fontWeight:
+                                                            FontWeight.w700,
+                                                        color: AppTheme.textOn(
+                                                            bg))),
+                                              ),
                                             ),
-                                            padding: const EdgeInsets.all(12),
-                                            child: Text(card.title,
-                                                style: TextStyle(
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.w700,
-                                                    color:
-                                                        AppTheme.textOn(bg))),
+                                          ),
+                                          childWhenDragging: Opacity(
+                                            opacity: 0.4,
+                                            child: _CardTile(
+                                              title: card.title,
+                                              subtitle: _markdownPreviewLine(
+                                                  card.description ?? ''),
+                                              labels: card.labels,
+                                              assignees: card.assignees,
+                                              onTap: null,
+                                              background: bg,
+                                              due: card.due,
+                                              done: card.done,
+                                              footer: _CardMetaRow(
+                                                  boardId: app.activeBoard?.id,
+                                                  stackId: widget.column.id,
+                                                  cardId: card.id,
+                                                  textColor:
+                                                      AppTheme.textOn(bg),
+                                                  description:
+                                                      card.description),
+                                            ),
+                                          ),
+                                          onDragUpdate: (details) {
+                                            final now = DateTime.now();
+                                            if (_edgeLastNav != null &&
+                                                now
+                                                        .difference(
+                                                            _edgeLastNav!)
+                                                        .inMilliseconds <
+                                                    350) return;
+                                            final w = MediaQuery.of(context)
+                                                .size
+                                                .width;
+                                            final x = details.globalPosition.dx;
+                                            if (x <= 24) {
+                                              widget.requestPrevPage?.call();
+                                              _edgeLastNav = now;
+                                            } else if (x >= w - 24) {
+                                              widget.requestNextPage?.call();
+                                              _edgeLastNav = now;
+                                            }
+                                          },
+                                          child: _CardTile(
+                                            title: card.title,
+                                            subtitle: _markdownPreviewLine(
+                                                card.description ?? ''),
+                                            labels: card.labels,
+                                            assignees: card.assignees,
+                                            onTap: widget.onTapCard == null
+                                                ? null
+                                                : () =>
+                                                    widget.onTapCard!(card.id),
+                                            background: bg,
+                                            due: card.due,
+                                            done: card.done,
+                                            footer: _CardMetaRow(
+                                                boardId: app.activeBoard?.id,
+                                                stackId: widget.column.id,
+                                                cardId: card.id,
+                                                textColor: AppTheme.textOn(bg),
+                                                description: card.description),
+                                            onMore: () async {
+                                              final l10n = L10n.of(context);
+                                              final rootNav = Navigator.of(
+                                                  context,
+                                                  rootNavigator: true);
+                                              await showCupertinoModalPopup(
+                                                context: rootNav.context,
+                                                builder: (ctx) =>
+                                                    CupertinoActionSheet(
+                                                  actions: [
+                                                    ...() {
+                                                      final app = context
+                                                          .read<AppState>();
+                                                      final isDone =
+                                                          card.done != null;
+                                                      final isArchived =
+                                                          card.archived;
+                                                      if (!isDone) {
+                                                        return [
+                                                          CupertinoActionSheetAction(
+                                                            onPressed:
+                                                                () async {
+                                                              Navigator.of(ctx)
+                                                                  .pop();
+                                                              final boardId = app
+                                                                  .activeBoard
+                                                                  ?.id;
+                                                              if (boardId ==
+                                                                  null) return;
+                                                              final doneAt =
+                                                                  DateTime.now()
+                                                                      .toUtc();
+                                                              app.updateLocalCard(
+                                                                  boardId:
+                                                                      boardId,
+                                                                  stackId: widget
+                                                                      .column
+                                                                      .id,
+                                                                  cardId:
+                                                                      card.id,
+                                                                  done: doneAt);
+                                                              final base =
+                                                                  app.baseUrl;
+                                                              final user =
+                                                                  app.username;
+                                                              final pass = await app
+                                                                  .storage
+                                                                  .read(
+                                                                      key:
+                                                                          'password');
+                                                              if (base != null &&
+                                                                  user !=
+                                                                      null &&
+                                                                  pass !=
+                                                                      null) {
+                                                                try {
+                                                                  await app.updateCardAndRefresh(
+                                                                      boardId:
+                                                                          boardId,
+                                                                      stackId: widget
+                                                                          .column
+                                                                          .id,
+                                                                      cardId:
+                                                                          card.id,
+                                                                      patch: {
+                                                                        'title':
+                                                                            card.title,
+                                                                        'done':
+                                                                            doneAt,
+                                                                      });
+                                                                } catch (_) {}
+                                                              }
+                                                            },
+                                                            child: Text(
+                                                                l10n.markDone),
+                                                          ),
+                                                          CupertinoActionSheetAction(
+                                                            onPressed:
+                                                                () async {
+                                                              Navigator.of(ctx)
+                                                                  .pop();
+                                                              final boardId = app
+                                                                  .activeBoard
+                                                                  ?.id;
+                                                              if (boardId ==
+                                                                  null) return;
+                                                              final nextArchived =
+                                                                  !isArchived;
+                                                              app.updateLocalCard(
+                                                                  boardId:
+                                                                      boardId,
+                                                                  stackId: widget
+                                                                      .column
+                                                                      .id,
+                                                                  cardId:
+                                                                      card.id,
+                                                                  archived:
+                                                                      nextArchived);
+                                                              final base =
+                                                                  app.baseUrl;
+                                                              final user =
+                                                                  app.username;
+                                                              final pass = await app
+                                                                  .storage
+                                                                  .read(
+                                                                      key:
+                                                                          'password');
+                                                              if (base != null &&
+                                                                  user !=
+                                                                      null &&
+                                                                  pass !=
+                                                                      null) {
+                                                                try {
+                                                                  await app.updateCardAndRefresh(
+                                                                      boardId:
+                                                                          boardId,
+                                                                      stackId: widget
+                                                                          .column
+                                                                          .id,
+                                                                      cardId:
+                                                                          card.id,
+                                                                      patch: {
+                                                                        'title':
+                                                                            card.title,
+                                                                        'archived':
+                                                                            nextArchived,
+                                                                      });
+                                                                } catch (_) {}
+                                                              }
+                                                              if (app
+                                                                  .boardArchivedOnly) {
+                                                                await app
+                                                                    .refreshArchivedCardsForBoard(
+                                                                        boardId);
+                                                              }
+                                                            },
+                                                            child: Text(isArchived
+                                                                ? l10n
+                                                                    .unarchiveCard
+                                                                : l10n
+                                                                    .archiveCard),
+                                                          ),
+                                                        ];
+                                                      } else {
+                                                        return [
+                                                          CupertinoActionSheetAction(
+                                                            onPressed:
+                                                                () async {
+                                                              Navigator.of(ctx)
+                                                                  .pop();
+                                                              final boardId = app
+                                                                  .activeBoard
+                                                                  ?.id;
+                                                              if (boardId ==
+                                                                  null) return;
+                                                              app.updateLocalCard(
+                                                                  boardId:
+                                                                      boardId,
+                                                                  stackId: widget
+                                                                      .column
+                                                                      .id,
+                                                                  cardId:
+                                                                      card.id,
+                                                                  clearDone:
+                                                                      true);
+                                                              final base =
+                                                                  app.baseUrl;
+                                                              final user =
+                                                                  app.username;
+                                                              final pass = await app
+                                                                  .storage
+                                                                  .read(
+                                                                      key:
+                                                                          'password');
+                                                              if (base != null &&
+                                                                  user !=
+                                                                      null &&
+                                                                  pass !=
+                                                                      null) {
+                                                                try {
+                                                                  await app.updateCardAndRefresh(
+                                                                      boardId:
+                                                                          boardId,
+                                                                      stackId: widget
+                                                                          .column
+                                                                          .id,
+                                                                      cardId:
+                                                                          card.id,
+                                                                      patch: {
+                                                                        'title':
+                                                                            card.title,
+                                                                        'done':
+                                                                            null,
+                                                                      });
+                                                                } catch (_) {}
+                                                              }
+                                                            },
+                                                            child: Text(l10n
+                                                                .markUndone),
+                                                          ),
+                                                          CupertinoActionSheetAction(
+                                                            onPressed:
+                                                                () async {
+                                                              Navigator.of(ctx)
+                                                                  .pop();
+                                                              final boardId = app
+                                                                  .activeBoard
+                                                                  ?.id;
+                                                              if (boardId ==
+                                                                  null) return;
+                                                              final nextArchived =
+                                                                  !isArchived;
+                                                              app.updateLocalCard(
+                                                                  boardId:
+                                                                      boardId,
+                                                                  stackId: widget
+                                                                      .column
+                                                                      .id,
+                                                                  cardId:
+                                                                      card.id,
+                                                                  archived:
+                                                                      nextArchived);
+                                                              final base =
+                                                                  app.baseUrl;
+                                                              final user =
+                                                                  app.username;
+                                                              final pass = await app
+                                                                  .storage
+                                                                  .read(
+                                                                      key:
+                                                                          'password');
+                                                              if (base != null &&
+                                                                  user !=
+                                                                      null &&
+                                                                  pass !=
+                                                                      null) {
+                                                                try {
+                                                                  await app.updateCardAndRefresh(
+                                                                      boardId:
+                                                                          boardId,
+                                                                      stackId: widget
+                                                                          .column
+                                                                          .id,
+                                                                      cardId:
+                                                                          card.id,
+                                                                      patch: {
+                                                                        'title':
+                                                                            card.title,
+                                                                        'archived':
+                                                                            nextArchived,
+                                                                      });
+                                                                } catch (_) {}
+                                                              }
+                                                              if (app
+                                                                  .boardArchivedOnly) {
+                                                                await app
+                                                                    .refreshArchivedCardsForBoard(
+                                                                        boardId);
+                                                              }
+                                                            },
+                                                            child: Text(isArchived
+                                                                ? l10n
+                                                                    .unarchiveCard
+                                                                : l10n
+                                                                    .archiveCard),
+                                                          ),
+                                                        ];
+                                                      }
+                                                    }(),
+                                                    CupertinoActionSheetAction(
+                                                      isDestructiveAction: true,
+                                                      onPressed: () async {
+                                                        Navigator.of(ctx).pop();
+                                                        final app = context
+                                                            .read<AppState>();
+                                                        final bId =
+                                                            app.activeBoard?.id;
+                                                        if (bId == null) return;
+                                                        final confirmed =
+                                                            await showCupertinoDialog<
+                                                                bool>(
+                                                          context:
+                                                              rootNav.context,
+                                                          builder: (dCtx) =>
+                                                              CupertinoAlertDialog(
+                                                            title: Text(l10n
+                                                                .deleteCard),
+                                                            content: Text(l10n
+                                                                .confirmDeleteCard),
+                                                            actions: [
+                                                              CupertinoDialogAction(
+                                                                  onPressed: () =>
+                                                                      Navigator.of(
+                                                                              dCtx)
+                                                                          .pop(
+                                                                              false),
+                                                                  child: Text(l10n
+                                                                      .cancel)),
+                                                              CupertinoDialogAction(
+                                                                isDestructiveAction:
+                                                                    true,
+                                                                onPressed: () =>
+                                                                    Navigator.of(
+                                                                            dCtx)
+                                                                        .pop(
+                                                                            true),
+                                                                child: Text(
+                                                                    l10n.delete,
+                                                                    style:
+                                                                        _destructiveActionTextStyle),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        );
+                                                        if (confirmed == true) {
+                                                          await context
+                                                              .read<AppState>()
+                                                              .deleteCard(
+                                                                  boardId: bId,
+                                                                  stackId: widget
+                                                                      .column
+                                                                      .id,
+                                                                  cardId:
+                                                                      card.id);
+                                                        }
+                                                      },
+                                                      child: Text(
+                                                          l10n.deleteCard,
+                                                          style:
+                                                              _destructiveActionTextStyle),
+                                                    ),
+                                                  ],
+                                                  cancelButton:
+                                                      CupertinoActionSheetAction(
+                                                          onPressed: () =>
+                                                              Navigator.of(ctx)
+                                                                  .pop(),
+                                                          isDefaultAction: true,
+                                                          child: Text(
+                                                              l10n.cancel)),
+                                                ),
+                                              );
+                                            },
                                           ),
                                         ),
-                                      ),
-                                      childWhenDragging: Opacity(
-                                        opacity: 0.4,
-                                        child: _CardTile(
-                                          title: card.title,
-                                          subtitle: _markdownPreviewLine(
-                                              card.description ?? ''),
-                                          labels: card.labels,
-                                          assignees: card.assignees,
-                                          onTap: null,
-                                          background: bg,
-                                          due: card.due,
-                                          done: card.done,
-                                          footer: _CardMetaRow(
-                                              boardId: app.activeBoard?.id,
-                                              stackId: widget.column.id,
-                                              cardId: card.id,
-                                              textColor: AppTheme.textOn(bg),
-                                              description: card.description),
+                                        Positioned(
+                                          right: 6,
+                                          top: 6,
+                                          child: ReorderableDragStartListener(
+                                            index: idx,
+                                            child: const Icon(
+                                                CupertinoIcons
+                                                    .arrow_up_arrow_down,
+                                                size: 18,
+                                                color:
+                                                    CupertinoColors.systemGrey),
+                                          ),
                                         ),
-                                      ),
-                                      onDragUpdate: (details) {
-                                        final now = DateTime.now();
-                                        if (_edgeLastNav != null &&
-                                            now
-                                                    .difference(_edgeLastNav!)
-                                                    .inMilliseconds <
-                                                350) return;
-                                        final w =
-                                            MediaQuery.of(context).size.width;
-                                        final x = details.globalPosition.dx;
-                                        if (x <= 24) {
-                                          widget.requestPrevPage?.call();
-                                          _edgeLastNav = now;
-                                        } else if (x >= w - 24) {
-                                          widget.requestNextPage?.call();
-                                          _edgeLastNav = now;
-                                        }
-                                      },
-                                      child: _CardTile(
-                                        title: card.title,
-                                        subtitle: _markdownPreviewLine(
-                                            card.description ?? ''),
-                                        labels: card.labels,
-                                        assignees: card.assignees,
-                                        onTap: widget.onTapCard == null
-                                            ? null
-                                            : () => widget.onTapCard!(card.id),
-                                        background: bg,
-                                        due: card.due,
-                                        done: card.done,
-                                        footer: _CardMetaRow(
-                                            boardId: app.activeBoard?.id,
-                                            stackId: widget.column.id,
-                                            cardId: card.id,
-                                            textColor: AppTheme.textOn(bg),
-                                            description: card.description),
-                                        onMore: () async {
-                                          final l10n = L10n.of(context);
-                                          final rootNav = Navigator.of(context,
-                                              rootNavigator: true);
-                                          await showCupertinoModalPopup(
-                                            context: rootNav.context,
-                                            builder: (ctx) =>
-                                                CupertinoActionSheet(
-                                              actions: [
-                                                ...() {
-                                                  final app =
-                                                      context.read<AppState>();
-                                                  final isDone =
-                                                      card.done != null;
-                                                  final isArchived =
-                                                      card.archived;
-                                                  if (!isDone) {
-                                                    return [
-                                                      CupertinoActionSheetAction(
-                                                        onPressed: () async {
-                                                          Navigator.of(ctx)
-                                                              .pop();
-                                                          final boardId = app
-                                                              .activeBoard?.id;
-                                                          if (boardId == null)
-                                                            return;
-                                                          final doneAt =
-                                                              DateTime.now()
-                                                                  .toUtc();
-                                                          app.updateLocalCard(
-                                                              boardId: boardId,
-                                                              stackId: widget
-                                                                  .column.id,
-                                                              cardId: card.id,
-                                                              done: doneAt);
-                                                          final base =
-                                                              app.baseUrl;
-                                                          final user =
-                                                              app.username;
-                                                          final pass = await app
-                                                              .storage
-                                                              .read(
-                                                                  key:
-                                                                      'password');
-                                                          if (base != null &&
-                                                              user != null &&
-                                                              pass != null) {
-                                                            try {
-                                                              await app.updateCardAndRefresh(
-                                                                  boardId:
-                                                                      boardId,
-                                                                  stackId: widget
-                                                                      .column
-                                                                      .id,
-                                                                  cardId: card.id,
-                                                                  patch: {
-                                                                    'title': card
-                                                                        .title,
-                                                                    'done':
-                                                                        doneAt,
-                                                                  });
-                                                            } catch (_) {}
-                                                          }
-                                                        },
-                                                        child:
-                                                            Text(l10n.markDone),
-                                                      ),
-                                                      CupertinoActionSheetAction(
-                                                        onPressed: () async {
-                                                          Navigator.of(ctx)
-                                                              .pop();
-                                                          final boardId = app
-                                                              .activeBoard?.id;
-                                                          if (boardId == null)
-                                                            return;
-                                                          final nextArchived =
-                                                              !isArchived;
-                                                          app.updateLocalCard(
-                                                              boardId: boardId,
-                                                              stackId: widget
-                                                                  .column.id,
-                                                              cardId: card.id,
-                                                              archived:
-                                                                  nextArchived);
-                                                          final base =
-                                                              app.baseUrl;
-                                                          final user =
-                                                              app.username;
-                                                          final pass = await app
-                                                              .storage
-                                                              .read(
-                                                                  key:
-                                                                      'password');
-                                                          if (base != null &&
-                                                              user != null &&
-                                                              pass != null) {
-                                                            try {
-                                                              await app.updateCardAndRefresh(
-                                                                  boardId:
-                                                                      boardId,
-                                                                  stackId: widget
-                                                                      .column
-                                                                      .id,
-                                                                  cardId: card.id,
-                                                                  patch: {
-                                                                    'title': card
-                                                                        .title,
-                                                                    'archived':
-                                                                        nextArchived,
-                                                                  });
-                                                            } catch (_) {}
-                                                          }
-                                                          if (app.boardArchivedOnly) {
-                                                            await app
-                                                                .refreshArchivedCardsForBoard(
-                                                                    boardId);
-                                                          }
-                                                        },
-                                                        child: Text(isArchived
-                                                            ? l10n
-                                                                .unarchiveCard
-                                                            : l10n
-                                                                .archiveCard),
-                                                      ),
-                                                    ];
-                                                  } else {
-                                                    return [
-                                                      CupertinoActionSheetAction(
-                                                        onPressed: () async {
-                                                          Navigator.of(ctx)
-                                                              .pop();
-                                                          final boardId = app
-                                                              .activeBoard?.id;
-                                                          if (boardId == null)
-                                                            return;
-                                                          app.updateLocalCard(
-                                                              boardId: boardId,
-                                                              stackId: widget
-                                                                  .column.id,
-                                                              cardId: card.id,
-                                                              clearDone: true);
-                                                          final base =
-                                                              app.baseUrl;
-                                                          final user =
-                                                              app.username;
-                                                          final pass = await app
-                                                              .storage
-                                                              .read(
-                                                                  key:
-                                                                      'password');
-                                                          if (base != null &&
-                                                              user != null &&
-                                                              pass != null) {
-                                                            try {
-                                                              await app.updateCardAndRefresh(
-                                                                  boardId:
-                                                                      boardId,
-                                                                  stackId: widget
-                                                                      .column
-                                                                      .id,
-                                                                  cardId: card.id,
-                                                                  patch: {
-                                                                    'title': card
-                                                                        .title,
-                                                                    'done': null,
-                                                                  });
-                                                            } catch (_) {}
-                                                          }
-                                                        },
-                                                        child: Text(
-                                                            l10n.markUndone),
-                                                      ),
-                                                      CupertinoActionSheetAction(
-                                                        onPressed: () async {
-                                                          Navigator.of(ctx)
-                                                              .pop();
-                                                          final boardId = app
-                                                              .activeBoard?.id;
-                                                          if (boardId == null)
-                                                            return;
-                                                          final nextArchived =
-                                                              !isArchived;
-                                                          app.updateLocalCard(
-                                                              boardId: boardId,
-                                                              stackId: widget
-                                                                  .column.id,
-                                                              cardId: card.id,
-                                                              archived:
-                                                                  nextArchived);
-                                                          final base =
-                                                              app.baseUrl;
-                                                          final user =
-                                                              app.username;
-                                                          final pass = await app
-                                                              .storage
-                                                              .read(
-                                                                  key:
-                                                                      'password');
-                                                          if (base != null &&
-                                                              user != null &&
-                                                              pass != null) {
-                                                            try {
-                                                              await app.updateCardAndRefresh(
-                                                                  boardId:
-                                                                      boardId,
-                                                                  stackId: widget
-                                                                      .column
-                                                                      .id,
-                                                                  cardId: card.id,
-                                                                  patch: {
-                                                                    'title': card
-                                                                        .title,
-                                                                    'archived':
-                                                                        nextArchived,
-                                                                  });
-                                                            } catch (_) {}
-                                                          }
-                                                          if (app.boardArchivedOnly) {
-                                                            await app
-                                                                .refreshArchivedCardsForBoard(
-                                                                    boardId);
-                                                          }
-                                                        },
-                                                        child: Text(isArchived
-                                                            ? l10n
-                                                                .unarchiveCard
-                                                            : l10n
-                                                                .archiveCard),
-                                                      ),
-                                                    ];
-                                                  }
-                                                }(),
-                                                CupertinoActionSheetAction(
-                                                  isDestructiveAction: true,
-                                                  onPressed: () async {
-                                                    Navigator.of(ctx).pop();
-                                                    final app = context
-                                                        .read<AppState>();
-                                                    final bId =
-                                                        app.activeBoard?.id;
-                                                    if (bId == null) return;
-                                                    final confirmed =
-                                                        await showCupertinoDialog<
-                                                            bool>(
-                                                      context: rootNav.context,
-                                                      builder: (dCtx) =>
-                                                          CupertinoAlertDialog(
-                                                        title: Text(
-                                                            l10n.deleteCard),
-                                                        content: Text(l10n
-                                                            .confirmDeleteCard),
-                                                        actions: [
-                                                          CupertinoDialogAction(
-                                                              onPressed: () =>
-                                                                  Navigator.of(
-                                                                          dCtx)
-                                                                      .pop(
-                                                                          false),
-                                                              child: Text(
-                                                                  l10n.cancel)),
-                                                          CupertinoDialogAction(
-                                                            isDestructiveAction:
-                                                                true,
-                                                            onPressed: () =>
-                                                                Navigator.of(
-                                                                        dCtx)
-                                                                    .pop(true),
-                                                            child: Text(
-                                                                l10n.delete,
-                                                                style:
-                                                                    _destructiveActionTextStyle),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    );
-                                                    if (confirmed == true) {
-                                                      await context
-                                                          .read<AppState>()
-                                                          .deleteCard(
-                                                              boardId: bId,
-                                                              stackId: widget
-                                                                  .column.id,
-                                                              cardId: card.id);
-                                                    }
-                                                  },
-                                                  child: Text(l10n.deleteCard,
-                                                      style:
-                                                          _destructiveActionTextStyle),
-                                                ),
-                                              ],
-                                              cancelButton:
-                                                  CupertinoActionSheetAction(
-                                                      onPressed: () =>
-                                                          Navigator.of(ctx)
-                                                              .pop(),
-                                                      isDefaultAction: true,
-                                                      child: Text(l10n.cancel)),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                    Positioned(
-                                      right: 6,
-                                      top: 6,
-                                      child: ReorderableDragStartListener(
-                                        index: idx,
-                                        child: const Icon(
-                                            CupertinoIcons.arrow_up_arrow_down,
-                                            size: 18,
-                                            color: CupertinoColors.systemGrey),
-                                      ),
+                                      ],
                                     ),
                                   ],
                                 ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                              );
+                            },
+                          ),
+                        ),
             ),
           ],
         ),
@@ -2634,8 +2768,7 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Padding(
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 16, 8, 8),
+                              padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
                               child: Row(
                                 children: [
                                   Expanded(
@@ -2648,7 +2781,8 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                     padding: EdgeInsets.zero,
                                     onPressed: () => widget.onCreateCard(c.id),
                                     child: const Icon(
-                                        CupertinoIcons.add_circled, size: 24),
+                                        CupertinoIcons.add_circled,
+                                        size: 24),
                                   ),
                                 ],
                               ),
@@ -2697,8 +2831,9 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                   ? CupertinoColors.systemGrey5
                                                   : CupertinoColors
                                                       .systemGrey6);
-                                          final tileBg = AppTheme.cardBgFromBase(
-                                              app, card.labels, base, idx);
+                                          final tileBg =
+                                              AppTheme.cardBgFromBase(
+                                                  app, card.labels, base, idx);
                                           final textOn =
                                               AppTheme.textOn(tileBg);
                                           Widget buildInsertTarget(
@@ -2743,8 +2878,8 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                         .toUtc()
                                                         .toIso8601String(),
                                                   if (current != null &&
-                                                      current!.labels
-                                                          .isNotEmpty)
+                                                      current!
+                                                          .labels.isNotEmpty)
                                                     'labels': current!.labels
                                                         .map((l) => l.id)
                                                         .toList(),
@@ -2757,11 +2892,13 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                         .toList(),
                                                 };
                                                 try {
-                                                  await app.updateCardAndRefresh(
-                                                      boardId: boardId,
-                                                      stackId: d.fromStackId,
-                                                      cardId: d.cardId,
-                                                      patch: patch);
+                                                  await app
+                                                      .updateCardAndRefresh(
+                                                          boardId: boardId,
+                                                          stackId:
+                                                              d.fromStackId,
+                                                          cardId: d.cardId,
+                                                          patch: patch);
                                                   await app.syncStackOrder(
                                                       boardId: boardId,
                                                       stackId: c.id);
@@ -2831,7 +2968,8 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                         12,
                                                                     offset:
                                                                         const Offset(
-                                                                            0, 6))
+                                                                            0,
+                                                                            6))
                                                               ],
                                                               border: Border.all(
                                                                   color: CupertinoColors
@@ -2845,7 +2983,8 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                             child: Text(
                                                                 card.title,
                                                                 style: TextStyle(
-                                                                    fontSize: 16,
+                                                                    fontSize:
+                                                                        16,
                                                                     fontWeight:
                                                                         FontWeight
                                                                             .w700,
@@ -2871,9 +3010,8 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                               CardDetailPage(
                                                                   cardId:
                                                                       card.id,
-                                                                  boardId:
-                                                                      widget
-                                                                          .boardId,
+                                                                  boardId: widget
+                                                                      .boardId,
                                                                   stackId: c.id,
                                                                   bgColor:
                                                                       tileBg),
@@ -2915,15 +3053,17 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                           DateTime.now()
                                                                               .toUtc();
                                                                       final app =
-                                                                          context.read<AppState>();
+                                                                          context
+                                                                              .read<AppState>();
                                                                       app.updateLocalCard(
-                                                                          boardId:
-                                                                              widget.boardId,
+                                                                          boardId: widget
+                                                                              .boardId,
                                                                           stackId: c
                                                                               .id,
                                                                           cardId: card
                                                                               .id,
-                                                                          done: doneAt);
+                                                                          done:
+                                                                              doneAt);
                                                                       final base =
                                                                           app.baseUrl;
                                                                       final user =
@@ -2931,8 +3071,7 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                       final pass = await app
                                                                           .storage
                                                                           .read(
-                                                                              key:
-                                                                                  'password');
+                                                                              key: 'password');
                                                                       if (base != null &&
                                                                           user !=
                                                                               null &&
@@ -2940,8 +3079,7 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                               null) {
                                                                         try {
                                                                           await app.updateCardAndRefresh(
-                                                                              boardId:
-                                                                                  widget.boardId,
+                                                                              boardId: widget.boardId,
                                                                               stackId: c.id,
                                                                               cardId: card.id,
                                                                               patch: {
@@ -2962,10 +3100,11 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                               ctx)
                                                                           .pop();
                                                                       final app =
-                                                                          context.read<AppState>();
+                                                                          context
+                                                                              .read<AppState>();
                                                                       app.updateLocalCard(
-                                                                          boardId:
-                                                                              widget.boardId,
+                                                                          boardId: widget
+                                                                              .boardId,
                                                                           stackId: c
                                                                               .id,
                                                                           cardId: card
@@ -2979,8 +3118,7 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                       final pass = await app
                                                                           .storage
                                                                           .read(
-                                                                              key:
-                                                                                  'password');
+                                                                              key: 'password');
                                                                       if (base != null &&
                                                                           user !=
                                                                               null &&
@@ -2988,8 +3126,7 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                               null) {
                                                                         try {
                                                                           await app.updateCardAndRefresh(
-                                                                              boardId:
-                                                                                  widget.boardId,
+                                                                              boardId: widget.boardId,
                                                                               stackId: c.id,
                                                                               cardId: card.id,
                                                                               patch: {
@@ -3009,12 +3146,15 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                             ctx)
                                                                         .pop();
                                                                     final app =
-                                                                        context.read<AppState>();
+                                                                        context.read<
+                                                                            AppState>();
                                                                     final nextArchived =
-                                                                        !card.archived;
+                                                                        !card
+                                                                            .archived;
                                                                     app.updateLocalCard(
                                                                         boardId:
-                                                                            widget.boardId,
+                                                                            widget
+                                                                                .boardId,
                                                                         stackId: c
                                                                             .id,
                                                                         cardId: card
@@ -3039,29 +3179,27 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                                         await app.updateCardAndRefresh(
                                                                             boardId:
                                                                                 widget.boardId,
-                                                                            stackId:
-                                                                                c.id,
-                                                                            cardId:
-                                                                                card.id,
+                                                                            stackId: c.id,
+                                                                            cardId: card.id,
                                                                             patch: {
                                                                               'title': card.title,
-                                                                              'archived':
-                                                                                  nextArchived,
+                                                                              'archived': nextArchived,
                                                                             });
                                                                       } catch (_) {}
                                                                     }
-                                                                    if (app.boardArchivedOnly) {
-                                                                      await app
-                                                                          .refreshArchivedCardsForBoard(
-                                                                              widget.boardId);
+                                                                    if (app
+                                                                        .boardArchivedOnly) {
+                                                                      await app.refreshArchivedCardsForBoard(
+                                                                          widget
+                                                                              .boardId);
                                                                     }
                                                                   },
-                                                                  child: Text(
-                                                                      card.archived
-                                                                          ? l10n
-                                                                              .unarchiveCard
-                                                                          : l10n
-                                                                              .archiveCard),
+                                                                  child: Text(card
+                                                                          .archived
+                                                                      ? l10n
+                                                                          .unarchiveCard
+                                                                      : l10n
+                                                                          .archiveCard),
                                                                 ),
                                                                 CupertinoActionSheetAction(
                                                                   isDestructiveAction:
@@ -3140,8 +3278,9 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                             CupertinoIcons
                                                                 .arrow_up_arrow_down,
                                                             size: 18,
-                                                            color: CupertinoColors
-                                                                .systemGrey),
+                                                            color:
+                                                                CupertinoColors
+                                                                    .systemGrey),
                                                       ),
                                                     ),
                                                   ],
@@ -3185,7 +3324,6 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
       ],
     );
   }
-
 }
 
 class _LabelChip extends StatelessWidget {
