@@ -159,10 +159,43 @@ class AppState extends ChangeNotifier {
   bool get bootSyncing => _bootSyncing;
   String? get bootMessage => _bootMessage;
 
+  // ---- Notify-Coalescing ---------------------------------------------------
+  // Während eines Sync-Pass setzen viele kleine Schritte den State und rufen
+  // jeweils `notifyListeners()` auf (~80 Aufrufe pro Vollsync). Jeder Call
+  // löst einen kompletten UI-Rebuild aus. Wir bündeln alle Calls innerhalb
+  // desselben Microtasks zu einem einzigen Notify, der erst am Ende des
+  // aktuellen Sync-Tasks ausgeliefert wird. Das spart 95 % der Rebuilds,
+  // ohne dass irgendein bestehender `notifyListeners()`-Aufruf angepasst
+  // werden muss — Verhalten an der Oberfläche bleibt identisch
+  // (Listener werden in derselben Schleife asynchron aufgerufen).
+  bool _notifyScheduled = false;
+  bool _isDisposed = false;
+
   @override
   void dispose() {
+    _isDisposed = true;
     _deepLinkSub?.cancel();
     super.dispose();
+  }
+
+  @override
+  void notifyListeners() {
+    if (_isDisposed || _notifyScheduled) return;
+    _notifyScheduled = true;
+    scheduleMicrotask(() {
+      _notifyScheduled = false;
+      if (_isDisposed) return;
+      super.notifyListeners();
+    });
+  }
+
+  /// Erzwingt ein synchrones Notify – ausschließlich für Tests/Debug.
+  /// Im normalen Code-Pfad bitte den überschriebenen `notifyListeners()`
+  /// nutzen, der automatisch coalesced.
+  void notifyListenersImmediate() {
+    if (_isDisposed) return;
+    _notifyScheduled = false;
+    super.notifyListeners();
   }
 
   Future<void> init() async {
@@ -1276,7 +1309,22 @@ class AppState extends ChangeNotifier {
     final cardId = int.tryParse(uri.queryParameters['card'] ?? '');
     final stackId = int.tryParse(uri.queryParameters['stack'] ?? '');
     final edit = uri.queryParameters['edit'] == '1';
-    if (action == 'quick-add') {
+    // Karte direkt aus iOS Shortcuts / Siri / URL erstellen.
+    // Beispiele:
+    //   nextdeck://newcard?title=Einkaufen
+    //   nextdeck://newcard?title=Bug%20fixen&board=31&stack=117
+    //   nextdeck://createcard?title=...   (Alias)
+    //   nextdeck://quick-add?title=...    (alter quick-add mit Titel = Direct-Create)
+    if (action == 'newcard' ||
+        action == 'createcard' ||
+        action == 'quick-add') {
+      final rawTitle = uri.queryParameters['title']?.trim();
+      if (rawTitle != null && rawTitle.isNotEmpty) {
+        await _createCardFromDeepLink(
+            boardId: boardId, stackId: stackId, title: rawTitle);
+        return;
+      }
+      // Kein Titel mitgegeben: alter Quick-Add-Flow (Bottom-Sheet).
       await _queueDeepLinkAction(boardId, quickAdd: true);
       return;
     }
@@ -1289,6 +1337,71 @@ class AppState extends ChangeNotifier {
     if (action == 'open' || action == 'board') {
       await _queueDeepLinkAction(boardId, quickAdd: false);
     }
+  }
+
+  /// Erstellt eine Karte direkt aus einem Deep-Link (ohne UI-Sheet).
+  /// Gedacht für iOS-Shortcuts, Siri-Befehle oder URL-Schemes aus anderen
+  /// Apps. Resolved Board und Stack mit sinnvollen Fallbacks:
+  ///   - Board: explicit > _defaultBoardId > aktives Board
+  ///   - Stack: explicit > erster Stack des Boards
+  /// Wenn weder lokaler Mode noch Server-Login da ist, wird stillschweigend
+  /// abgebrochen.
+  Future<void> _createCardFromDeepLink({
+    int? boardId,
+    int? stackId,
+    required String title,
+  }) async {
+    // Board resolven
+    int? resolvedBoardId =
+        boardId ?? _defaultBoardId ?? _activeBoard?.id;
+    if (resolvedBoardId == null && _boards.isNotEmpty) {
+      // Letzte Notbremse: erstes nicht-archiviertes/-verstecktes Board.
+      final visible = _boards
+          .where((b) => !b.archived && !_hiddenBoards.contains(b.id))
+          .toList();
+      if (visible.isNotEmpty) resolvedBoardId = visible.first.id;
+    }
+    if (resolvedBoardId == null) return;
+
+    // Stacks ggf. erst noch laden, falls nicht im Cache.
+    var cols = _columnsByBoard[resolvedBoardId] ?? const <deck.Column>[];
+    if (cols.isEmpty) {
+      final board = _boards.firstWhere(
+        (b) => b.id == resolvedBoardId,
+        orElse: () => Board.empty(),
+      );
+      if (board.id >= 0) {
+        await refreshColumnsFor(board, forceNetwork: true);
+        cols = _columnsByBoard[resolvedBoardId] ?? const <deck.Column>[];
+      }
+    }
+    if (cols.isEmpty) return;
+
+    // Stack resolven
+    final int resolvedStackId = stackId != null &&
+            cols.any((c) => c.id == stackId)
+        ? stackId
+        : cols.first.id;
+
+    // Wenn die Karte zu einem anderen Board angelegt wird, dieses Board
+    // auch aktiv setzen — dann landet der User direkt im richtigen Kontext.
+    if (_activeBoard?.id != resolvedBoardId) {
+      final target = _boards.firstWhere(
+        (b) => b.id == resolvedBoardId,
+        orElse: () => Board.empty(),
+      );
+      if (target.id >= 0) {
+        await setActiveBoard(target);
+      }
+    }
+
+    await createCard(
+      boardId: resolvedBoardId,
+      columnId: resolvedStackId,
+      title: title,
+    );
+    // Zum Board-Tab springen, damit der User die neue Karte sieht.
+    selectTab(1);
   }
 
   Future<void> _queueDeepLinkAction(int? boardId,

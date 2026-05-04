@@ -8,6 +8,7 @@ import '../models/board.dart';
 import '../models/card_item.dart';
 import '../models/column.dart' as deck;
 import '../theme/app_theme.dart';
+import '../theme/design_tokens.dart';
 import '../l10n/app_localizations.dart';
 import 'board_search_page.dart';
 import 'stack_reorder_page.dart';
@@ -700,10 +701,13 @@ class _BoardSummary extends StatelessWidget {
         orElse: () => Board(id: boardId, title: title));
     final strong =
         AppTheme.boardColorFrom(b.color) ?? AppTheme.boardStrongColor(index);
-    // Much softer background colors for overview cards
+    // Issue #51: Board-Palette in der Übersicht war zu dunkel.
+    // Light-Mode: mehr Weiß-Anteil → pastelliger, freundlicher.
+    // Dark-Mode: weniger Schwarz-Anteil → Boards bleiben farbig erkennbar
+    // statt fast schwarz zu wirken.
     final bg = app.isDarkMode
-        ? AppTheme.blend(strong, const Color(0xFF000000), 0.8)
-        : AppTheme.blend(strong, const Color(0xFFFFFFFF), 0.7);
+        ? AppTheme.blend(strong, const Color(0xFF000000), 0.65)
+        : AppTheme.blend(strong, const Color(0xFFFFFFFF), 0.82);
 
     return GestureDetector(
       onTap: () async {
@@ -747,15 +751,19 @@ class _BoardSummary extends StatelessWidget {
         }
       },
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
+        margin: const EdgeInsets.only(bottom: DT.spaceM),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-              color: isActive
-                  ? CupertinoColors.activeGreen
-                  : CupertinoColors.separator,
-              width: isActive ? 2 : 1),
+          borderRadius: BorderRadius.circular(DT.radiusL),
+          // Modernerer Look: Soft-Shadow statt 1-px-Border. Der aktive Status
+          // bleibt durch einen kräftigen grünen Border deutlich sichtbar.
+          border: isActive
+              ? Border.all(
+                  color: CupertinoColors.activeGreen,
+                  width: 2,
+                )
+              : null,
+          boxShadow: DT.shadowS(app.isDarkMode),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,

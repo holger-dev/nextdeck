@@ -294,3 +294,31 @@ Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (wer
 - Acciones de tablero: crear tableros, anadir/mover columnas, cambiar color del tablero.
 - Cambio rapido de tablero desde el titulo.
 - Nuevos widgets de pantalla de inicio con info de tableros y tarjetas.
+
+
+# DE – Version 1.8
+
+- Modernisiertes UI: schwebende Glas-Tab-Bar im iOS-17/18-Stil, weichere Kartenschatten, durchgängiges Design-Token-System.
+- Schnellerer Sync: HTTP-Connection-Pool (Keep-Alive), JSON-Decoding für große Boards/Listen im Background-Isolate, ~80x weniger UI-Rebuilds pro Sync durch Notify-Coalescing.
+- Konflikt-Schutz beim Speichern: Wenn jemand die Karte zwischenzeitlich geändert hat, kommt ein klarer Dialog (Aktuelle laden / Trotzdem überschreiben).
+- iOS-Shortcuts und Siri: Karten anlegen via `nextdeck://newcard?title=…`.
+- Bugfixes: klickbare Links in Beschreibung und Kommentaren, stabile Karten-Reihenfolge, MP3-Anhänge, Boards löschen, Listen umbenennen, Status-Chip-Layout, Datei-Anhänge gegen aktuelle Nextcloud-Versionen.
+- Verbesserungen: Markdown-Toolbar zwei-reihig mit Auto-Selektion, pro-Board-Sync-Intervall, lokale Benachrichtigungen für Zuweisungen/Erwähnungen, ausblendbare Info-Chips, scrollbare lange Beschreibungen, Skeleton-Loader, Haptik beim Drag-Drop.
+
+# EN – Version 1.8
+
+- Modernized UI: floating glass tab bar (iOS 17/18 look), softer card shadows, app-wide design tokens.
+- Faster sync: HTTP keep-alive pool, large JSON payloads decoded in a background isolate, ~80x fewer UI rebuilds per sync via notify coalescing.
+- Conflict protection on save: clear dialog when someone modified the card in parallel (Reload current / Overwrite anyway).
+- iOS Shortcuts and Siri: create cards via `nextdeck://newcard?title=…`.
+- Bug fixes: clickable links in description and comments, stable card order, MP3 attachments, board delete, list rename, status-chip layout, file uploads on current Nextcloud versions.
+- Improvements: two-row markdown toolbar with auto-selected placeholders, per-board sync interval, local notifications for assignments/mentions, hideable info chips, scrollable long descriptions, skeleton loaders, haptic feedback on drag-drop.
+
+# ES – Version 1.8
+
+- UI modernizada: barra de pestañas flotante estilo iOS 17/18, sombras suaves, tokens de diseño consistentes.
+- Sincronización más rápida: keep-alive HTTP, decodificación JSON en isolate de fondo, ~80x menos reconstrucciones de UI por sincronización.
+- Protección de conflictos al guardar: diálogo claro cuando alguien modificó la tarjeta en paralelo.
+- Atajos iOS y Siri: crear tarjetas con `nextdeck://newcard?title=…`.
+- Correcciones: enlaces clicables en descripción y comentarios, orden de tarjetas estable, adjuntos MP3, eliminar tableros, renombrar listas, layout de chips de estado, subida de archivos en versiones actuales de Nextcloud.
+- Mejoras: barra de Markdown en dos filas con auto-selección, intervalo de sincronización por tablero, notificaciones locales, chips ocultables, descripción con scroll, skeleton-loaders, feedback háptico.

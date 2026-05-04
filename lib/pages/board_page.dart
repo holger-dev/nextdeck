@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/animation.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart'
@@ -17,6 +18,8 @@ import '../models/user_ref.dart';
 import 'board_search_page.dart';
 import 'stack_reorder_page.dart';
 import '../theme/app_theme.dart';
+import '../theme/design_tokens.dart';
+import '../widgets/skeleton.dart';
 import '../l10n/app_localizations.dart';
 import '../navigation/nav_keys.dart';
 
@@ -223,7 +226,10 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                     Center(child: Text(L10n.of(context).pleaseSelectBoard))
                   else if ((app.bootSyncing && columns.isEmpty) ||
                       (columns.isEmpty && (app.lastError == null)))
-                    const Center(child: CupertinoActivityIndicator())
+                    // Skeleton-Loader: zeigt schon das Card-Layout an,
+                    // bevor echte Karten geladen sind. Wirkt schneller
+                    // als ein einsamer Spinner.
+                    const SafeArea(child: CardListSkeleton())
                   else if (app.lastError != null)
                     Center(
                       child: Padding(
@@ -265,7 +271,7 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                                   (_pageController.page ?? 0).floor() - 1;
                               if (target >= 0) {
                                 _pageController.animateToPage(target,
-                                    duration: const Duration(milliseconds: 220),
+                                    duration: DT.durationMedium,
                                     curve: Curves.easeOut);
                               }
                             },
@@ -274,7 +280,7 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                                   (_pageController.page ?? 0).ceil() + 1;
                               if (target < columns.length) {
                                 _pageController.animateToPage(target,
-                                    duration: const Duration(milliseconds: 220),
+                                    duration: DT.durationMedium,
                                     curve: Curves.easeOut);
                               }
                             },
@@ -322,7 +328,7 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                               (_pageController.page ?? 0).floor() - 1;
                           if (target >= 0) {
                             _pageController.animateToPage(target,
-                                duration: const Duration(milliseconds: 220),
+                                duration: DT.durationMedium,
                                 curve: Curves.easeOut);
                           }
                         },
@@ -330,14 +336,17 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                           final target = (_pageController.page ?? 0).ceil() + 1;
                           if (target < columns.length) {
                             _pageController.animateToPage(target,
-                                duration: const Duration(milliseconds: 220),
+                                duration: DT.durationMedium,
                                 curve: Curves.easeOut);
                           }
                         }),
                   if (!isTablet)
                     Positioned(
                       right: 16,
-                      bottom: 16,
+                      // Über der schwebenden Glass-Tab-Bar: deren Höhe ist
+                      // ~52 px, dazu Bottom-Inset (Home-Indicator) und ein
+                      // kleiner Abstand. Sonst überlappt sie den Plus-Button.
+                      bottom: MediaQuery.of(context).padding.bottom + 76,
                       child: CupertinoButton.filled(
                         color: addButtonColor,
                         padding: const EdgeInsets.all(12),
@@ -483,7 +492,7 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                                 if (_pageController.hasClients) {
                                   _pageController.animateToPage(target,
                                       duration:
-                                          const Duration(milliseconds: 220),
+                                          DT.durationMedium,
                                       curve: Curves.easeOut);
                                 }
                               },
@@ -1071,7 +1080,7 @@ class _ColumnViewState extends State<_ColumnView> {
                 child: (isLoading && cards.isNotEmpty)
                     ? const Center(child: CupertinoActivityIndicator())
                     : (showArchivedLoading && cards.isEmpty)
-                        ? const Center(child: CupertinoActivityIndicator())
+                        ? const CardListSkeleton()
                         : CupertinoScrollbar(
                             controller: _listCtrl.hasClients ? _listCtrl : null,
                             child: ListView.builder(
@@ -1241,17 +1250,15 @@ class _ColumnViewState extends State<_ColumnView> {
                                           decoration: BoxDecoration(
                                             color: bg,
                                             borderRadius:
-                                                BorderRadius.circular(14),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                  color: CupertinoColors.black
-                                                      .withOpacity(0.2),
-                                                  blurRadius: 12,
-                                                  offset: const Offset(0, 6))
-                                            ],
-                                            border: Border.all(
-                                                color: CupertinoColors.separator
-                                                    .withOpacity(0.6)),
+                                                BorderRadius.circular(DT.radiusL),
+                                            // Drag-Feedback: stärkere Schatten,
+                                            // damit die Karte sichtbar
+                                            // "schwebt" — konsistent mit dem
+                                            // Card-Look ohne harten Border.
+                                            boxShadow: DT.shadowL(
+                                                CupertinoTheme.brightnessOf(
+                                                        context) ==
+                                                    Brightness.dark),
                                           ),
                                           padding: const EdgeInsets.all(12),
                                           child: Text(card.title,
@@ -1626,6 +1633,8 @@ class _ColumnViewState extends State<_ColumnView> {
                             buildDefaultDragHandles: false,
                             padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
                             itemCount: cards.length,
+                            onReorderStart: (_) =>
+                                HapticFeedback.selectionClick(),
                             onReorder: (oldIndex, newIndex) async {
                               if (showArchivedOnly) return;
                               final app = context.read<AppState>();
@@ -1634,6 +1643,7 @@ class _ColumnViewState extends State<_ColumnView> {
                               if (newIndex > oldIndex) newIndex -= 1;
                               final movedCard = cards[oldIndex];
                               final cardId = movedCard.id;
+                              HapticFeedback.mediumImpact();
                               app.reorderCardLocal(
                                   boardId: boardId,
                                   stackId: widget.column.id,
@@ -1747,20 +1757,13 @@ class _ColumnViewState extends State<_ColumnView> {
                                                 decoration: BoxDecoration(
                                                   color: bg,
                                                   borderRadius:
-                                                      BorderRadius.circular(14),
-                                                  boxShadow: [
-                                                    BoxShadow(
-                                                        color: CupertinoColors
-                                                            .black
-                                                            .withOpacity(0.2),
-                                                        blurRadius: 12,
-                                                        offset:
-                                                            const Offset(0, 6))
-                                                  ],
-                                                  border: Border.all(
-                                                      color: CupertinoColors
-                                                          .separator
-                                                          .withOpacity(0.6)),
+                                                      BorderRadius.circular(
+                                                          DT.radiusL),
+                                                  boxShadow: DT.shadowL(
+                                                      CupertinoTheme
+                                                                  .brightnessOf(
+                                                                      context) ==
+                                                          Brightness.dark),
                                                 ),
                                                 padding:
                                                     const EdgeInsets.all(12),
@@ -2257,6 +2260,8 @@ class _CardTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final textColor = AppTheme.textOn(background);
     final assigneesText = _assigneesText();
+    final isDark =
+        CupertinoTheme.brightnessOf(context) == Brightness.dark;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -2264,17 +2269,12 @@ class _CardTile extends StatelessWidget {
         width: double.infinity,
         decoration: BoxDecoration(
           color: background,
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-              color: CupertinoColors.black.withOpacity(0.08),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-          border: Border.all(color: CupertinoColors.separator.withOpacity(0.6)),
+          borderRadius: BorderRadius.circular(DT.radiusL),
+          // Modernerer Look: weiche Elevation statt harter 1-px-Border —
+          // gibt der Karte sichtbare Tiefe ohne "Lineal"-Charakter.
+          boxShadow: DT.shadowM(isDark),
         ),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(DT.spaceM),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2647,7 +2647,7 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
     final target =
         (_ctrl.offset + delta).clamp(0.0, _ctrl.position.maxScrollExtent);
     _ctrl.animateTo(target,
-        duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+        duration: DT.durationMedium, curve: Curves.easeOut);
   }
 
   ScrollController _ctrlFor(int columnId) =>
@@ -2801,6 +2801,8 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                         padding: const EdgeInsets.fromLTRB(
                                             16, 8, 16, 32),
                                         itemCount: visibleCards.length,
+                                        onReorderStart: (_) =>
+                                            HapticFeedback.selectionClick(),
                                         onReorder: (oldIndex, newIndex) async {
                                           if (showArchivedOnly) return;
                                           final app = context.read<AppState>();
@@ -2810,6 +2812,7 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                           final movedCard =
                                               visibleCards[oldIndex];
                                           final cardId = movedCard.id;
+                                          HapticFeedback.mediumImpact();
                                           app.reorderCardLocal(
                                               boardId: boardId,
                                               stackId: c.id,
@@ -2957,25 +2960,11 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                               borderRadius:
                                                                   BorderRadius
                                                                       .circular(
-                                                                          14),
-                                                              boxShadow: [
-                                                                BoxShadow(
-                                                                    color: CupertinoColors
-                                                                        .black
-                                                                        .withOpacity(
-                                                                            0.2),
-                                                                    blurRadius:
-                                                                        12,
-                                                                    offset:
-                                                                        const Offset(
-                                                                            0,
-                                                                            6))
-                                                              ],
-                                                              border: Border.all(
-                                                                  color: CupertinoColors
-                                                                      .separator
-                                                                      .withOpacity(
-                                                                          0.6)),
+                                                                          DT.radiusL),
+                                                              boxShadow: DT.shadowL(
+                                                                  CupertinoTheme.brightnessOf(
+                                                                              context) ==
+                                                                      Brightness.dark),
                                                             ),
                                                             padding:
                                                                 const EdgeInsets

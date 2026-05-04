@@ -68,7 +68,13 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
           GestureDetector(
             onTap: _enterEdit,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 160),
+              // Begrenzt die Höhe der Beschreibung. Längere Texte werden
+              // intern scrollbar — Anhänge und Kommentare bleiben damit
+              // ohne langes Scrollen erreichbar.
+              constraints: const BoxConstraints(
+                minHeight: 160,
+                maxHeight: 480,
+              ),
               child: Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -77,9 +83,15 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
                   border: Border.all(
                       color: CupertinoColors.separator.resolveFrom(context)),
                 ),
-                child: _PreviewWithTasks(
-                  text: widget.controller.text,
-                  onToggleTask: (lineIndex) => _toggleTaskAt(lineIndex),
+                child: CupertinoScrollbar(
+                  thumbVisibility: false,
+                  child: SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
+                    child: _PreviewWithTasks(
+                      text: widget.controller.text,
+                      onToggleTask: (lineIndex) => _toggleTaskAt(lineIndex),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -185,74 +197,130 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
 
     String replace;
     int cursorOffset = 0;
+    // Wenn ein Placeholder-Text eingefügt wurde, geben wir hier den
+    // [start, end]-Range INNERHALB von `replace` zurück, sodass er
+    // automatisch markiert wird und der User einfach drüber-tippt
+    // (statt erst selektieren oder löschen zu müssen).
+    int? placeholderStart;
+    int? placeholderEnd;
+
     switch (a) {
       case _MdAction.bold:
-        replace =
-            '**${selected.isEmpty ? L10n.of(context).mdBold : selected}**';
-        cursorOffset = selected.isEmpty ? 2 : replace.length;
+        final ph = L10n.of(context).mdBold;
+        replace = '**${selected.isEmpty ? ph : selected}**';
+        if (selected.isEmpty) {
+          placeholderStart = 2;
+          placeholderEnd = 2 + ph.length;
+        }
+        cursorOffset = replace.length;
         break;
       case _MdAction.italic:
-        replace =
-            '*${selected.isEmpty ? L10n.of(context).mdItalic : selected}*';
-        cursorOffset = selected.isEmpty ? 1 : replace.length;
+        final ph = L10n.of(context).mdItalic;
+        replace = '*${selected.isEmpty ? ph : selected}*';
+        if (selected.isEmpty) {
+          placeholderStart = 1;
+          placeholderEnd = 1 + ph.length;
+        }
+        cursorOffset = replace.length;
         break;
       case _MdAction.strike:
-        replace =
-            '~~${selected.isEmpty ? L10n.of(context).mdStrike : selected}~~';
-        cursorOffset = selected.isEmpty ? 2 : replace.length;
+        final ph = L10n.of(context).mdStrike;
+        replace = '~~${selected.isEmpty ? ph : selected}~~';
+        if (selected.isEmpty) {
+          placeholderStart = 2;
+          placeholderEnd = 2 + ph.length;
+        }
+        cursorOffset = replace.length;
         break;
       case _MdAction.code:
-        replace = '`${selected.isEmpty ? L10n.of(context).mdCode : selected}`';
-        cursorOffset = selected.isEmpty ? 1 : replace.length;
+        final ph = L10n.of(context).mdCode;
+        replace = '`${selected.isEmpty ? ph : selected}`';
+        if (selected.isEmpty) {
+          placeholderStart = 1;
+          placeholderEnd = 1 + ph.length;
+        }
+        cursorOffset = replace.length;
         break;
       case _MdAction.link:
         final label = selected.isEmpty ? L10n.of(context).mdLinkText : selected;
         replace = '[$label](https://)';
-        cursorOffset = replace.length - 1; // place before )
+        // Cursor zwischen den runden Klammern parken, damit der User
+        // direkt die URL eintippen kann.
+        cursorOffset = replace.length - 1;
         break;
       case _MdAction.ul:
+        final ph = L10n.of(context).mdListItem;
         replace = selected.isEmpty
-            ? '- ${L10n.of(context).mdListItem}'
+            ? '- $ph'
             : selected
                 .split('\n')
                 .map((l) => l.isEmpty ? '- ' : '- $l')
                 .join('\n');
+        if (selected.isEmpty) {
+          placeholderStart = 2; // nach "- "
+          placeholderEnd = 2 + ph.length;
+        }
         cursorOffset = replace.length;
         break;
       case _MdAction.ol:
         int i = 1;
+        final ph = L10n.of(context).mdListItem;
         replace = selected.isEmpty
-            ? '1. ${L10n.of(context).mdListItem}'
+            ? '1. $ph'
             : selected
                 .split('\n')
                 .map((l) => l.isEmpty ? '${i++}. ' : '${i++}. $l')
                 .join('\n');
+        if (selected.isEmpty) {
+          placeholderStart = 3; // nach "1. "
+          placeholderEnd = 3 + ph.length;
+        }
         cursorOffset = replace.length;
         break;
       case _MdAction.task:
+        final ph = L10n.of(context).mdTask;
         replace = selected.isEmpty
-            ? '- [ ] ${L10n.of(context).mdTask}'
+            ? '- [ ] $ph'
             : selected
                 .split('\n')
                 .map((l) => l.isEmpty ? '- [ ] ' : '- [ ] $l')
                 .join('\n');
+        if (selected.isEmpty) {
+          placeholderStart = 6; // nach "- [ ] "
+          placeholderEnd = 6 + ph.length;
+        }
         cursorOffset = replace.length;
         break;
       case _MdAction.quote:
+        final ph = L10n.of(context).mdQuote;
         replace = selected.isEmpty
-            ? '> ${L10n.of(context).mdQuote}'
+            ? '> $ph'
             : selected
                 .split('\n')
                 .map((l) => l.isEmpty ? '> ' : '> $l')
                 .join('\n');
+        if (selected.isEmpty) {
+          placeholderStart = 2; // nach "> "
+          placeholderEnd = 2 + ph.length;
+        }
         cursorOffset = replace.length;
         break;
     }
     final newText = hasSel ? before + replace + after : before + replace;
-    final base = hasSel ? before.length : before.length;
+    final base = before.length;
+    final TextSelection newSelection;
+    if (placeholderStart != null && placeholderEnd != null) {
+      // Placeholder-Bereich markieren — beim Tippen wird er ersetzt.
+      newSelection = TextSelection(
+        baseOffset: base + placeholderStart,
+        extentOffset: base + placeholderEnd,
+      );
+    } else {
+      newSelection = TextSelection.collapsed(offset: base + cursorOffset);
+    }
     widget.controller.value = TextEditingValue(
       text: newText,
-      selection: TextSelection.collapsed(offset: base + cursorOffset),
+      selection: newSelection,
     );
   }
 
@@ -441,39 +509,67 @@ class _Toolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = <Widget>[
+    // Zwei-Reihen-Layout: alle Format-Tools sofort sichtbar, nichts mehr
+    // im horizontalen Scroll versteckt.
+    // Reihe 1: Inline-Formatierung (Bold/Italic/Strike/Code/Link)
+    // Reihe 2: Block-/Listen-Formatierung (Bullet/Numbered/Task/Quote/Help)
+    final inlineItems = <Widget>[
       _icon(CupertinoIcons.bold, () => onAction(_MdAction.bold)),
       _icon(CupertinoIcons.italic, () => onAction(_MdAction.italic)),
       _txt('S', () => onAction(_MdAction.strike)),
       _txt('`', () => onAction(_MdAction.code)),
       _icon(CupertinoIcons.link, () => onAction(_MdAction.link)),
+    ];
+    final blockItems = <Widget>[
       _icon(CupertinoIcons.list_bullet, () => onAction(_MdAction.ul)),
+      _icon(CupertinoIcons.list_number, () => onAction(_MdAction.ol)),
       _icon(CupertinoIcons.checkmark_square, () => onAction(_MdAction.task)),
+      _icon(CupertinoIcons.quote_bubble, () => onAction(_MdAction.quote)),
       if (onShowHelp != null) _icon(CupertinoIcons.question, onShowHelp!),
     ];
+
+    final editSaveButton = CupertinoButton(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      onPressed: preview ? onEnterEdit : onSave,
+      child: Icon(
+        preview
+            ? CupertinoIcons.pencil_circle_fill
+            : CupertinoIcons.check_mark_circled_solid,
+        size: 26,
+      ),
+    );
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: CupertinoColors.separator)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
+          // Linke Spalte: zwei Reihen Format-Tools
           Expanded(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(children: items),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: inlineItems
+                      .map((w) => Expanded(child: Center(child: w)))
+                      .toList(),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: blockItems
+                      .map((w) => Expanded(child: Center(child: w)))
+                      .toList(),
+                ),
+              ],
             ),
           ),
-          CupertinoButton(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-            onPressed: preview ? onEnterEdit : onSave,
-            child: Icon(
-              preview
-                  ? CupertinoIcons.pencil_circle_fill
-                  : CupertinoIcons.check_mark_circled_solid,
-              size: 24,
-            ),
-          ),
+          // Rechte Spalte: Edit/Save in voller Höhe
+          editSaveButton,
         ],
       ),
     );

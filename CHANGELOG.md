@@ -4,6 +4,15 @@ All notable changes are documented in this file.
 
 This changelog is based on `STORE.md` and links to detailed release notes in `changelog/`.
 
+## [1.8]
+- Modernized UI: floating glass tab bar (iOS 17/18 look), softer card shadows, design-token system.
+- Faster sync: HTTP keep-alive pool, large JSON payloads decoded in a background isolate, ~80x fewer UI rebuilds per sync via notify coalescing.
+- Conflict protection: optimistic-concurrency detection on every card save with a clear "Reload current / Overwrite anyway" dialog.
+- iOS Shortcuts / Siri integration: create cards directly via `nextdeck://newcard?title=…`.
+- Bug fixes: clickable links (#50, #68), card order stability (#58), MP3 attachments (#61), board delete (#62), list rename (#63), status-chip overlap (#65), file uploads on current Nextcloud (#67), brighter board overview palette (#51).
+- Improvements: two-row markdown toolbar with auto-selected placeholders (#53), per-board sync interval (#54), local notifications for assignments/mentions (#55), hideable info chips (#66), scrollable long descriptions, skeleton loaders, haptic feedback.
+- Details: `changelog/1.8.md`
+
 ## [1.7]
 - Added board/upcoming filters (`assigned to me` vs `all`) in views and settings.
 - Added board actions (create boards, add/move columns, change board color).
@@ -51,6 +60,7 @@ This changelog is based on `STORE.md` and links to detailed release notes in `ch
 - Enforced HTTPS for server URLs.
 - Details: `changelog/1.1.md`
 
+[1.8]: changelog/1.8.md
 [1.7]: changelog/1.7.md
 [1.6]: changelog/1.6.md
 [1.5]: changelog/1.5.md

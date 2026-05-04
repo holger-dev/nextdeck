@@ -14,7 +14,9 @@ import 'models/board.dart';
 import 'models/column.dart' as deck;
 import 'models/card_item.dart';
 import 'theme/app_theme.dart';
+import 'theme/design_tokens.dart';
 import 'pages/card_detail_page.dart';
+import 'widgets/glass_tab_bar.dart';
 
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -200,30 +202,19 @@ class _RootTabsState extends State<_RootTabs> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final l10n = L10n.of(context);
-    return CupertinoTabScaffold(
-      controller: app.tabController,
-      tabBar: CupertinoTabBar(
-        items: [
-          BottomNavigationBarItem(
-            icon: const Icon(CupertinoIcons.time),
-            label: l10n.navUpcoming,
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(CupertinoIcons.square_list),
-            label: l10n.navBoard,
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(CupertinoIcons.rectangle_grid_2x2),
-            label: l10n.overview,
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(CupertinoIcons.gear),
-            label: l10n.settingsTitle,
-          ),
-        ],
-        onTap: (index) {
-          // If re-tapping the current tab, pop to root of that tab's navigator
-          if (index == app.tabController.index) {
+    final mqBottom = MediaQuery.of(context).padding.bottom;
+
+    // Wir hören direkt auf den `CupertinoTabController` (ChangeNotifier).
+    // Wichtig: `app.selectTab(index)` setzt nur `tabController.index = …`
+    // und ruft KEIN notifyListeners auf AppState. Ohne AnimatedBuilder
+    // würde der Tab-Wechsel unsichtbar bleiben.
+    return AnimatedBuilder(
+      animation: app.tabController,
+      builder: (context, _) {
+        final currentIndex = app.tabController.index;
+
+        void handleTap(int index) {
+          if (index == currentIndex) {
             final nav = (index == 0)
                 ? AppNavKeys.upcomingNavKey
                 : (index == 1)
@@ -234,32 +225,67 @@ class _RootTabsState extends State<_RootTabs> {
             nav.currentState?.popUntil((r) => r.isFirst);
           }
           app.selectTab(index);
-        },
-      ),
-      tabBuilder: (context, index) {
-        switch (index) {
-          case 0:
-            return CupertinoTabView(
-              navigatorKey: AppNavKeys.upcomingNavKey,
-              builder: (_) => const UpcomingPage(),
-            );
-          case 1:
-            return CupertinoTabView(
-              navigatorKey: AppNavKeys.boardNavKey,
-              builder: (_) => const BoardPage(),
-            );
-          case 2:
-            return CupertinoTabView(
-              navigatorKey: AppNavKeys.overviewNavKey,
-              builder: (_) => const OverviewPage(),
-            );
-          case 3:
-          default:
-            return CupertinoTabView(
-              navigatorKey: AppNavKeys.settingsNavKey,
-              builder: (_) => const SettingsPage(),
-            );
         }
+
+        return CupertinoPageScaffold(
+          child: Stack(
+            children: [
+              // 1) Tab-Inhalte: IndexedStack hält den State aller Tabs.
+              Positioned.fill(
+                child: IndexedStack(
+                  index: currentIndex,
+                  children: [
+                    CupertinoTabView(
+                      navigatorKey: AppNavKeys.upcomingNavKey,
+                      builder: (_) => const UpcomingPage(),
+                    ),
+                    CupertinoTabView(
+                      navigatorKey: AppNavKeys.boardNavKey,
+                      builder: (_) => const BoardPage(),
+                    ),
+                    CupertinoTabView(
+                      navigatorKey: AppNavKeys.overviewNavKey,
+                      builder: (_) => const OverviewPage(),
+                    ),
+                    CupertinoTabView(
+                      navigatorKey: AppNavKeys.settingsNavKey,
+                      builder: (_) => const SettingsPage(),
+                    ),
+                  ],
+                ),
+              ),
+
+              // 2) Schwebende Glass-Tab-Bar.
+              Positioned(
+                left: DT.spaceM,
+                right: DT.spaceM,
+                bottom: mqBottom + DT.spaceS,
+                child: GlassTabBar(
+                  currentIndex: currentIndex,
+                  onTap: handleTap,
+                  items: [
+                    GlassTabBarItem(
+                      icon: CupertinoIcons.time,
+                      label: l10n.navUpcoming,
+                    ),
+                    GlassTabBarItem(
+                      icon: CupertinoIcons.square_list,
+                      label: l10n.navBoard,
+                    ),
+                    GlassTabBarItem(
+                      icon: CupertinoIcons.rectangle_grid_2x2,
+                      label: l10n.overview,
+                    ),
+                    GlassTabBarItem(
+                      icon: CupertinoIcons.gear,
+                      label: l10n.settingsTitle,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
       },
     );
   }

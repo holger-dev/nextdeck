@@ -7,6 +7,7 @@ import '../models/board.dart';
 import '../services/log_service.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/app_theme.dart';
+import '../theme/design_tokens.dart';
 import 'debug_log_page.dart';
 import '../version.dart';
 
@@ -1032,16 +1033,18 @@ class _SettingsSection extends StatelessWidget {
           ),
         ),
         if (expanded) ...[
-          const SizedBox(height: 8),
+          const SizedBox(height: DT.spaceS),
           Container(
             decoration: BoxDecoration(
               color: CupertinoTheme.of(context)
                   .barBackgroundColor
                   .withOpacity(isDarkMode ? 0.25 : 0.7),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: CupertinoColors.separator),
+              borderRadius: BorderRadius.circular(DT.radiusM),
+              // Modernerer Look: Soft-Shadow statt 1-px-Border. Sektionen
+              // wirken dadurch als eigene Karten statt umrandeter Boxen.
+              boxShadow: DT.shadowS(isDarkMode),
             ),
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(DT.spaceM),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: children,

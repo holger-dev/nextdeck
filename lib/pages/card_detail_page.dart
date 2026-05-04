@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/gestures.dart' show TapGestureRecognizer;
 import 'package:provider/provider.dart';
 import 'package:flutter/material.dart'
     show showDatePicker, showTimePicker, TimeOfDay;
@@ -626,8 +627,14 @@ class _CardDetailPageState extends State<CardDetailPage> {
     }
   }
 
+  // Schutz vor Doppel-Conflict-Dialog bei mehreren parallelen Save-Calls
+  // (z. B. Description-Debounce + Title-OnSubmitted gleichzeitig).
+  bool _conflictDialogOpen = false;
+
   Future<void> _savePatch(Map<String, dynamic> patch,
-      {int? useStackId, bool optimistic = false}) async {
+      {int? useStackId,
+      bool optimistic = false,
+      bool bypassConflictCheck = false}) async {
     if (!mounted) return;
     final app = context.read<AppState>();
     // Prefer the boardId of the card when provided, else fall back to active board
@@ -689,6 +696,94 @@ class _CardDetailPageState extends State<CardDetailPage> {
         });
       return;
     }
+    // Issue #59 — Optimistic-Concurrency-Detection vor dem Save.
+    // Wir holen den aktuellen Server-Stand und vergleichen `lastModified`
+    // mit unserem Snapshot in `_card.lastModified`. Wenn der Server-Stand
+    // neuer ist, hat jemand zwischenzeitlich editiert — dann fragen wir
+    // den User, ob er die aktuelle Version laden oder überschreiben will.
+    if (!bypassConflictCheck && _card?.lastModified != null) {
+      try {
+        final freshJson = await app.api
+            .fetchCard(baseUrl, user, pass, boardId, stackId, widget.cardId);
+        if (!mounted) {
+          if (mounted) setState(() => _saving = false);
+          return;
+        }
+        if (freshJson != null) {
+          final fresh = CardItem.fromJson(freshJson);
+          final ourLm = _card!.lastModified ?? 0;
+          final serverLm = fresh.lastModified ?? 0;
+          // Toleranz von 1 s, falls Server-Zeit minimal abweicht
+          if (serverLm > ourLm + 1) {
+            // Konflikt erkannt — fragen.
+            final shouldOverwrite =
+                await _showConflictDialog(fresh.lastEditor, serverLm);
+            if (!mounted) {
+              setState(() => _saving = false);
+              return;
+            }
+            if (shouldOverwrite == false) {
+              // User wählt "Aktuelle laden" → User-Edits verwerfen,
+              // komplett vom Server übernehmen, Save abbrechen.
+              setState(() {
+                _card = fresh;
+                _titleCtrl.text = fresh.title;
+                _descCtrl.text = fresh.description ?? '';
+                _due = fresh.due;
+                _titleDirty = false;
+                _descDirty = false;
+                _dueDirty = false;
+                _saving = false;
+              });
+              return;
+            } else if (shouldOverwrite == true) {
+              // User wählt "Trotzdem überschreiben" → Save mit bypass.
+              // _card.lastModified hochziehen, sonst greift der Check
+              // beim nächsten Tick wieder.
+              _card = CardItem(
+                id: _card!.id,
+                title: _card!.title,
+                description: _card!.description,
+                due: _card!.due,
+                done: _card!.done,
+                archived: _card!.archived,
+                labels: _card!.labels,
+                assignees: _card!.assignees,
+                order: _card!.order,
+                lastModified: serverLm,
+                lastEditor: _card!.lastEditor,
+              );
+              // Fall through zu updateCardAndRefresh.
+            } else {
+              // Dialog abgebrochen (null) → Save abbrechen.
+              setState(() => _saving = false);
+              return;
+            }
+          } else {
+            // Server-Stand passt — bringe unseren Snapshot mit, falls
+            // wir bisher kein lastModified hatten.
+            if (_card!.lastModified == null && fresh.lastModified != null) {
+              _card = CardItem(
+                id: _card!.id,
+                title: _card!.title,
+                description: _card!.description,
+                due: _card!.due,
+                done: _card!.done,
+                archived: _card!.archived,
+                labels: _card!.labels,
+                assignees: _card!.assignees,
+                order: _card!.order,
+                lastModified: fresh.lastModified,
+                lastEditor: fresh.lastEditor,
+              );
+            }
+          }
+        }
+      } catch (_) {
+        // Wenn die Vor-Prüfung fehlschlägt (Netzwerk etc.), den Save
+        // trotzdem versuchen — wie bisheriges Verhalten.
+      }
+    }
     try {
       await app.updateCardAndRefresh(
           boardId: boardId,
@@ -703,6 +798,57 @@ class _CardDetailPageState extends State<CardDetailPage> {
         setState(() {
           _saving = false;
         });
+    }
+  }
+
+  /// Zeigt den Konflikt-Dialog: jemand hat die Karte zwischenzeitlich
+  /// geändert. Returnt:
+  /// * `true`  → Trotzdem überschreiben
+  /// * `false` → Aktuelle Version vom Server laden
+  /// * `null`  → Dialog wurde abgebrochen (Tap außerhalb / Back)
+  Future<bool?> _showConflictDialog(String? editor, int? serverLm) async {
+    if (_conflictDialogOpen) return null;
+    _conflictDialogOpen = true;
+    try {
+      final whenStr = serverLm != null
+          ? DateTime.fromMillisecondsSinceEpoch(serverLm * 1000)
+              .toLocal()
+              .toString()
+              .substring(0, 16)
+          : '—';
+      final whoStr = (editor != null && editor.isNotEmpty) ? editor : '?';
+      // Hinweis: Strings sind hier hart auf Deutsch — entsprechende
+      // l10n-Keys können später nachgepflegt werden, ohne den Flow
+      // zu ändern.
+      return await showCupertinoDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => CupertinoAlertDialog(
+          title: const Text('Karte wurde geändert'),
+          content: Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              '$whoStr hat diese Karte um $whenStr geändert. '
+              'Trotzdem mit deinen Änderungen überschreiben oder die '
+              'aktuelle Version laden?',
+            ),
+          ),
+          actions: [
+            CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Aktuelle laden'),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Trotzdem überschreiben'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      _conflictDialogOpen = false;
     }
   }
 
@@ -3073,13 +3219,48 @@ class _MentionMatch {
       {required this.start, required this.end, required this.mention});
 }
 
+// Erkennt nackte URLs (http/https/mailto) für Auto-Verlinkung in Kommentaren.
+// Pragmatisch und tolerant: stoppt an Whitespace und schließenden Klammern,
+// um auch URLs in Klammern wie "(https://…)" sauber zu linken.
+final RegExp _kCommentUrlRegex = RegExp(
+  r'(?:https?://|mailto:)[^\s<>"\)]+',
+  caseSensitive: false,
+);
+
+Future<void> _openCommentLink(String href) async {
+  final uri = Uri.tryParse(href);
+  if (uri == null) return;
+  final scheme = uri.scheme.toLowerCase();
+  if (scheme != 'http' && scheme != 'https' && scheme != 'mailto') return;
+  try {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {
+    // Silent fail — Tap soll nicht crashen, wenn keine App den Link
+    // verarbeiten kann.
+  }
+}
+
+class _CommentSegment {
+  final int start;
+  final int end;
+  final String type; // 'mention' | 'url'
+  final dynamic payload;
+  const _CommentSegment(
+      {required this.start,
+      required this.end,
+      required this.type,
+      required this.payload});
+}
+
 List<InlineSpan> _buildCommentSpans(
     CommentItem comment, TextStyle baseStyle, TextStyle mentionStyle) {
   final message = comment.message;
-  if (comment.mentions.isEmpty || message.isEmpty) {
+  if (message.isEmpty) {
     return [TextSpan(text: message, style: baseStyle)];
   }
-  final matches = <_MentionMatch>[];
+
+  // 1) Mentions sammeln
+  final segments = <_CommentSegment>[];
   for (final m in comment.mentions) {
     final id = m.mentionId;
     if (id.isEmpty) continue;
@@ -3087,26 +3268,59 @@ List<InlineSpan> _buildCommentSpans(
     for (final t in tokens) {
       var idx = message.indexOf(t);
       while (idx >= 0) {
-        matches.add(_MentionMatch(start: idx, end: idx + t.length, mention: m));
+        segments.add(_CommentSegment(
+            start: idx, end: idx + t.length, type: 'mention', payload: m));
         idx = message.indexOf(t, idx + t.length);
       }
     }
   }
-  if (matches.isEmpty) return [TextSpan(text: message, style: baseStyle)];
-  matches.sort((a, b) => a.start.compareTo(b.start));
+
+  // 2) URLs sammeln (sofern sie nicht in einem Mention-Bereich liegen)
+  for (final match in _kCommentUrlRegex.allMatches(message)) {
+    final overlaps = segments.any((s) =>
+        match.start < s.end && match.end > s.start && s.type == 'mention');
+    if (overlaps) continue;
+    segments.add(_CommentSegment(
+        start: match.start,
+        end: match.end,
+        type: 'url',
+        payload: match.group(0)!));
+  }
+
+  if (segments.isEmpty) {
+    return [TextSpan(text: message, style: baseStyle)];
+  }
+
+  segments.sort((a, b) => a.start.compareTo(b.start));
+
+  final linkStyle = baseStyle.copyWith(
+    color: CupertinoColors.activeBlue,
+    decoration: TextDecoration.underline,
+  );
+
   final spans = <InlineSpan>[];
   var pos = 0;
-  for (final m in matches) {
-    if (m.start < pos) continue;
-    if (m.start > pos) {
-      spans.add(
-          TextSpan(text: message.substring(pos, m.start), style: baseStyle));
+  for (final seg in segments) {
+    if (seg.start < pos) continue; // Überlappung -> verwerfen
+    if (seg.start > pos) {
+      spans.add(TextSpan(
+          text: message.substring(pos, seg.start), style: baseStyle));
     }
-    final dn = m.mention.mentionDisplayName.isNotEmpty
-        ? m.mention.mentionDisplayName
-        : m.mention.mentionId;
-    spans.add(TextSpan(text: '@$dn', style: mentionStyle));
-    pos = m.end;
+    if (seg.type == 'mention') {
+      final m = seg.payload;
+      final dn = m.mentionDisplayName.isNotEmpty
+          ? m.mentionDisplayName
+          : m.mentionId;
+      spans.add(TextSpan(text: '@$dn', style: mentionStyle));
+    } else {
+      final href = seg.payload as String;
+      spans.add(TextSpan(
+        text: message.substring(seg.start, seg.end),
+        style: linkStyle,
+        recognizer: TapGestureRecognizer()..onTap = () => _openCommentLink(href),
+      ));
+    }
+    pos = seg.end;
   }
   if (pos < message.length) {
     spans.add(TextSpan(text: message.substring(pos), style: baseStyle));

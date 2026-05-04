@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show compute;
 import 'package:http/http.dart' as http;
 
 import '../models/board.dart';
@@ -15,6 +16,12 @@ class NextcloudDeckApi {
     'Accept': 'application/json'
   };
   static const _restHeader = {'Accept': 'application/json'};
+
+  // Persistenter HTTP-Client: hält die TCP-/TLS-Verbindung am Leben
+  // (Keep-Alive) und vermeidet Handshake-Overhead bei jedem Request.
+  // Das Verhalten der Calls bleibt identisch zu http.get/post/etc., nur die
+  // unterliegende Connection wird wiederverwendet.
+  static final http.Client _httpClient = http.Client();
 
   // Concurrency limiter and request timeout to reduce server load
   static int _maxConcurrent = 12;
@@ -221,7 +228,8 @@ class NextcloudDeckApi {
       http.Response effective = res;
       if (httpOk) {
         effective = _ensureOk(res, 'Boards laden (details) fehlgeschlagen');
-        data = _parseBodyOk(effective);
+        // Off-load Decoding ins Isolate für große Boards-Responses.
+        data = await _parseBodyOkAsync(effective);
       } else if (res.statusCode == 404) {
         try {
           data = jsonDecode(res.body);
@@ -233,7 +241,7 @@ class NextcloudDeckApi {
         }
       } else {
         final ok = _ensureOk(res, 'Boards laden (details) fehlgeschlagen');
-        data = _parseBodyOk(ok);
+        data = await _parseBodyOkAsync(ok);
         effective = ok;
       }
       List<dynamic> list;
@@ -553,7 +561,7 @@ class NextcloudDeckApi {
       http.Response effective = res;
       if (httpOk) {
         effective = _ensureOk(res, 'Boards laden fehlgeschlagen');
-        data = _parseBodyOk(effective);
+        data = await _parseBodyOkAsync(effective);
       } else if (res.statusCode == 404) {
         try {
           data = jsonDecode(res.body);
@@ -565,7 +573,7 @@ class NextcloudDeckApi {
         }
       } else {
         final ok = _ensureOk(res, 'Boards laden fehlgeschlagen');
-        data = _parseBodyOk(ok);
+        data = await _parseBodyOkAsync(ok);
         effective = ok;
       }
       List<dynamic> list;
@@ -938,7 +946,7 @@ class NextcloudDeckApi {
           }
           if (_isOk(r)) {
             res = r;
-            data = _parseBodyOk(r);
+            data = await _parseBodyOkAsync(r);
             break;
           }
         } catch (_) {}
@@ -957,7 +965,7 @@ class NextcloudDeckApi {
               }
               if (_isOk(r)) {
                 res = r;
-                data = _parseBodyOk(r);
+                data = await _parseBodyOkAsync(r);
                 break;
               }
             } catch (_) {}
@@ -1462,7 +1470,8 @@ class NextcloudDeckApi {
               return const FetchBoardCardsResult(
                   cards: [], etag: null, notModified: true);
             if (_isOk(res) && !_ocsFailure(res)) {
-              final data = _parseBodyOk(res);
+              // Off-load JSON-Decoding ins Isolate für große Card-Listen.
+              final data = await _parseBodyOkAsync(res);
               final etag = res.headers['etag'] ??
                   res.headers['ETag'] ??
                   res.headers['Etag'];
@@ -1510,7 +1519,7 @@ class NextcloudDeckApi {
           if (_isOk(res) && !_ocsFailure(res)) {
             _boardCardsVariantCache[key] = templ;
             _boardCardsVariantExpiry.remove(key);
-            final data = _parseBodyOk(res);
+            final data = await _parseBodyOkAsync(res);
             final etag = res.headers['etag'] ??
                 res.headers['ETag'] ??
                 res.headers['Etag'];
@@ -3414,6 +3423,31 @@ class NextcloudDeckApi {
     return decoded;
   }
 
+  // Wie `_parseBodyOk`, aber lagert das JSON-Decoding für große Bodies
+  // (>= 200 KB) in ein Background-Isolate aus, damit der UI-Thread bei
+  // großen Sync-Responses (z. B. Boards-mit-Details) nicht ruckelt.
+  // Verhalten/Rückgabewerte sind identisch zu _parseBodyOk.
+  Future<dynamic> _parseBodyOkAsync(http.Response res) async {
+    // Schwellwert: Unterhalb amortisiert sich der Isolate-Spawn nicht.
+    const int isolateThresholdBytes = 200 * 1024;
+    final body = res.body;
+    final dynamic decoded = body.length >= isolateThresholdBytes
+        ? await compute(jsonDecode, body)
+        : jsonDecode(body);
+    if (decoded is Map && decoded['ocs'] is Map) {
+      final ocs = (decoded['ocs'] as Map).cast<String, dynamic>();
+      final meta = (ocs['meta'] as Map?)?.cast<String, dynamic>();
+      final status = meta?['status']?.toString().toLowerCase();
+      if (status != null && status != 'ok') {
+        final code = meta?['statuscode'];
+        final msg = meta?['message'] ?? 'OCS-Fehler';
+        throw Exception('OCS $code: $msg');
+      }
+      return ocs['data'];
+    }
+    return decoded;
+  }
+
   http.Response _ensureOk(http.Response? res, String message) {
     if (res == null) {
       throw Exception(message);
@@ -3553,22 +3587,28 @@ class NextcloudDeckApi {
       final to = timeout ?? _defaultTimeout;
       switch (method) {
         case 'GET':
-          res = await http.get(uri, headers: headers).timeout(to);
+          res = await _httpClient.get(uri, headers: headers).timeout(to);
           break;
         case 'POST':
-          res = await http.post(uri, headers: headers, body: body).timeout(to);
+          res = await _httpClient
+              .post(uri, headers: headers, body: body)
+              .timeout(to);
           break;
         case 'PUT':
-          res = await http.put(uri, headers: headers, body: body).timeout(to);
+          res = await _httpClient
+              .put(uri, headers: headers, body: body)
+              .timeout(to);
           break;
         case 'PATCH':
-          res = await http.patch(uri, headers: headers, body: body).timeout(to);
+          res = await _httpClient
+              .patch(uri, headers: headers, body: body)
+              .timeout(to);
           break;
         case 'DELETE':
-          res = await http.delete(uri, headers: headers).timeout(to);
+          res = await _httpClient.delete(uri, headers: headers).timeout(to);
           break;
         default:
-          res = await http.get(uri, headers: headers).timeout(to);
+          res = await _httpClient.get(uri, headers: headers).timeout(to);
       }
       final dur = DateTime.now().difference(t0).inMilliseconds;
       final queued = t0.difference(tQueueStart).inMilliseconds;

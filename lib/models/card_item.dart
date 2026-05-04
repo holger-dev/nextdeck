@@ -11,8 +11,14 @@ class CardItem {
   final List<Label> labels;
   final List<UserRef> assignees;
   final int? order;
+  /// Server-Stempel (Unix-Sekunden) für Optimistic-Concurrency-Detection.
+  /// Wird genutzt, um beim Save zu erkennen, ob ein anderer Editor die
+  /// Karte zwischenzeitlich verändert hat.
+  final int? lastModified;
+  /// Letzter Editor laut Server (z.B. "freddie"). Optional.
+  final String? lastEditor;
 
-  const CardItem({required this.id, required this.title, this.description, this.due, this.done, this.archived = false, this.labels = const [], this.assignees = const [], this.order});
+  const CardItem({required this.id, required this.title, this.description, this.due, this.done, this.archived = false, this.labels = const [], this.assignees = const [], this.order, this.lastModified, this.lastEditor});
 
   factory CardItem.fromJson(Map<String, dynamic> json) {
     DateTime? due;
@@ -110,6 +116,20 @@ class CardItem {
       return const <UserRef>[];
     }();
 
+    int? lastModified;
+    final rawLm = json['lastModified'] ?? json['last_modified'] ?? json['lastModifiedAt'];
+    if (rawLm is int) {
+      // Unix-Sekunden oder ms — normalisieren auf Sekunden.
+      lastModified = rawLm > 100000000000 ? rawLm ~/ 1000 : rawLm;
+    } else if (rawLm is String) {
+      final parsed = int.tryParse(rawLm.trim());
+      if (parsed != null) {
+        lastModified = parsed > 100000000000 ? parsed ~/ 1000 : parsed;
+      }
+    }
+
+    final lastEditor = (json['lastEditor'] ?? json['lastEditorDisplayName'] ?? json['lastEditorUid'])?.toString();
+
     return CardItem(
       id: json['id'] as int,
       title: (json['title'] ?? json['name'] ?? '').toString(),
@@ -120,6 +140,8 @@ class CardItem {
       labels: labels,
       assignees: assignees,
       order: (json['order'] is num) ? (json['order'] as num).toInt() : (json['position'] is num ? (json['position'] as num).toInt() : null),
+      lastModified: lastModified,
+      lastEditor: lastEditor,
     );
   }
 }

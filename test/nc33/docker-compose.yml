@@ -1,0 +1,40 @@
+name: nextdeck-nc33-test
+
+services:
+  db:
+    image: mariadb:11
+    restart: unless-stopped
+    command: --transaction-isolation=READ-COMMITTED --binlog-format=ROW
+    environment:
+      MARIADB_ROOT_PASSWORD: root_pw
+      MARIADB_DATABASE: nextcloud
+      MARIADB_USER: nextcloud
+      MARIADB_PASSWORD: nextcloud_pw
+    volumes:
+      - db-data:/var/lib/mysql
+
+  app:
+    image: nextcloud:33-apache
+    restart: unless-stopped
+    depends_on:
+      - db
+    ports:
+      # Auf dem Mac unter http://localhost:8080 erreichbar.
+      # Im iOS-Simulator dieselbe URL nutzen — Simulator teilt das
+      # Host-Netzwerk des Macs.
+      - "8080:80"
+    environment:
+      MYSQL_HOST: db
+      MYSQL_DATABASE: nextcloud
+      MYSQL_USER: nextcloud
+      MYSQL_PASSWORD: nextcloud_pw
+      NEXTCLOUD_ADMIN_USER: admin
+      NEXTCLOUD_ADMIN_PASSWORD: admin_pw
+      # localhost als trusted_domain — sonst lehnt NC die App-Anfrage ab
+      NEXTCLOUD_TRUSTED_DOMAINS: "localhost 127.0.0.1"
+    volumes:
+      - app-data:/var/www/html
+
+volumes:
+  db-data:
+  app-data:
