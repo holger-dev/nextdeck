@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../models/card_item.dart';
 import '../theme/app_theme.dart';
+import '../theme/design_tokens.dart';
 import '../models/label.dart';
 import 'package:intl/intl.dart';
 import 'dart:math' as Math;
@@ -359,7 +360,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
                 padding: const EdgeInsets.only(top: 0),
                 child: CupertinoScrollbar(
                   child: ListView(
-                    padding: const EdgeInsets.fromLTRB(12, 8, 12, 80),
+                    padding: EdgeInsets.fromLTRB(12, 8, 12, DT.tabBarReserve),
                     children: [
                       ..._buildSection(context, l10n.overdueLabel, _overdue,
                           emphasize: true, showEmptyHeaderOnly: true),
@@ -467,7 +468,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
             Expanded(
               child: CupertinoScrollbar(
                 child: ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                  padding: EdgeInsets.fromLTRB(16, 8, 16, DT.tabBarReserve),
                   itemCount: items.length,
                   itemBuilder: (context, i) {
                     final h = items[i];

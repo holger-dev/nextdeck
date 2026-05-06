@@ -95,7 +95,11 @@ class _OverviewPageState extends State<OverviewPage> {
           },
           child: ListView(
             controller: _scroll,
-            padding: const EdgeInsets.all(16),
+            // Bottom-Padding inkl. Reserve für die schwebende Glass-Tab-Bar,
+            // sonst werden „Ausgeblendete Boards" und Archiv darunter
+            // verdeckt.
+            padding: EdgeInsets.fromLTRB(
+                16, 16, 16, 16 + DT.tabBarReserve),
             children: [
               if (_showSearch || _query.isNotEmpty) ...[
                 CupertinoSearchTextField(

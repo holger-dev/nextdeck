@@ -130,6 +130,18 @@ class DT {
         : const Color(0x14000000);
   }
 
+  // ---- Floating-Tab-Bar Reserve ----
+  /// Vertikaler Reserve-Padding, den scrollbare Pages am unteren Rand
+  /// brauchen, damit ihr Inhalt nicht von der schwebenden Glass-Tab-Bar
+  /// verdeckt wird. Höhe der Tab-Bar (~52 px) + Margin (8 px) + zusätzliche
+  /// Atempausen (~40 px für Home-Indicator und Sicherheits-Reserve).
+  /// Auf konkrete Pages additiv zu MediaQuery-Padding-Bottom verwenden:
+  ///
+  ///   padding: EdgeInsets.only(
+  ///     bottom: DT.tabBarReserve + MediaQuery.of(context).padding.bottom,
+  ///   ),
+  static const double tabBarReserve = 96.0;
+
   // ---- Tab-Bar / Glass ----
   /// Hintergrund für Glass-/Translucent-Effekte (iOS 17+ Look).
   ///

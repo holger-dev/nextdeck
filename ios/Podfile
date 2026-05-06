@@ -36,11 +36,17 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
-    # Force all pods to the minimum supported simulator target to avoid 9.0 warnings
     target.build_configurations.each do |config|
+      # Force all pods to the minimum supported simulator target to avoid 9.0 warnings
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '12.0'
       # Silence deprecation warnings from some community pods on iOS 13+ scene APIs
       config.build_settings['SWIFT_SUPPRESS_WARNINGS'] = 'YES'
+      # Erzeugt dSYMs für ALLE Pod-Targets im Release-Build. Ohne das
+      # lehnt App Store Connect den Upload ab (z. B. fehlendes dSYM für
+      # objective_c.framework — Dart FFI-Bridge).
+      if config.name == 'Release' || config.name == 'Profile'
+        config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
+      end
     end
   end
 end

@@ -141,6 +141,45 @@ class NextcloudDeckApi {
     }
   }
 
+  /// Holt die zentrale Liste aller offenen Notifications für den User
+  /// von der Nextcloud-Notifications-App (`notifications` muss installiert
+  /// sein). Das deckt Deck-Zuweisungen, @-Mentions in Comments, Shares
+  /// und alles ab, was Server-Side als „Notification" gilt — komplett
+  /// unabhängig von unserem Card-Sync-Loop.
+  ///
+  /// Returnt:
+  /// * Liste der Notification-Objekte (raw JSON, lt. OCS-API)
+  /// * `null` wenn die App nicht installiert ist (404), bei Auth-Fehlern
+  ///   oder Netzwerkfehlern — der Caller behandelt das als „nichts zu tun".
+  Future<List<Map<String, dynamic>>?> fetchServerNotifications(
+      String baseUrl, String user, String pass) async {
+    final headers = {
+      ..._ocsHeader,
+      'authorization': _basicAuth(user, pass),
+    };
+    final uri = _buildUri(
+        baseUrl, '/ocs/v2.php/apps/notifications/api/v2/notifications', false);
+    try {
+      final res = await _send('GET', uri, headers,
+          priority: false, timeout: const Duration(seconds: 8));
+      if (res.statusCode == 404) return null;
+      if (!_isOk(res)) return null;
+      final data = await _parseBodyOkAsync(res);
+      // OCS gibt das Notification-Array unter `data` zurück; _parseBodyOk*
+      // extrahiert das automatisch.
+      if (data is! List) return null;
+      final out = <Map<String, dynamic>>[];
+      for (final item in data) {
+        if (item is Map) {
+          out.add(item.cast<String, dynamic>());
+        }
+      }
+      return out;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<UserRef?> fetchCurrentUser(
       String baseUrl, String username, String password) async {
     final cacheKey = 'me|$baseUrl|$username';

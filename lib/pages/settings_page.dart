@@ -35,6 +35,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _sectionAppearanceOpen = false;
   bool _sectionLanguageOpen = false;
   bool _sectionPerformanceOpen = false;
+  bool _sectionSyncOpen = false;
+  bool _sectionSyncOtherBoardsOpen = false;
   bool _sectionLocalOpen = false;
   bool _sectionDeveloperOpen = false;
   bool _sectionSupportOpen = false;
@@ -266,7 +268,9 @@ class _SettingsPageState extends State<SettingsPage> {
       navigationBar: CupertinoNavigationBar(middle: Text(l10n.settingsTitle)),
       child: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(16),
+          // Bottom-Reserve für die schwebende Tab-Bar — sonst wird die
+          // letzte Sektion ("Support") teilweise verdeckt.
+          padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + DT.tabBarReserve),
           children: [
             _SettingsSection(
               title: l10n.nextcloudAccess,
@@ -705,6 +709,135 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
             const SizedBox(height: 16),
             _SettingsSection(
+              title: 'Synchronisation',
+              expanded: _sectionSyncOpen,
+              isDarkMode: app.isDarkMode,
+              onToggle: () =>
+                  setState(() => _sectionSyncOpen = !_sectionSyncOpen),
+              children: [
+                const Text(
+                  'Wie oft die App im Hintergrund Änderungen vom Server holt. '
+                  'Bei jedem Sync werden Karten-Zuweisungen und @-Erwähnungen '
+                  'geprüft – entsprechende Benachrichtigungen erscheinen, '
+                  'sofern sie unter „Benachrichtigungen" aktiv sind.',
+                  style: TextStyle(
+                      color: CupertinoColors.systemGrey, fontSize: 12),
+                ),
+                const SizedBox(height: 14),
+
+                // ---- Globaler Standard ----
+                const Text('Standard für alle Boards',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                CupertinoSlidingSegmentedControl<int>(
+                  groupValue: app.globalSyncIntervalMinutes,
+                  children: const {
+                    0: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Text('Aus'),
+                    ),
+                    5: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Text('5 min'),
+                    ),
+                    15: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Text('15 min'),
+                    ),
+                    30: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Text('30 min'),
+                    ),
+                    60: Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Text('60 min'),
+                    ),
+                  },
+                  onValueChanged: (v) {
+                    if (v != null) app.setGlobalSyncInterval(v);
+                  },
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '„Aus" deaktiviert den automatischen Sync. Pull-to-Refresh '
+                  'in „Anstehend" wirkt jederzeit weiter.',
+                  style: TextStyle(
+                      color: CupertinoColors.systemGrey, fontSize: 12),
+                ),
+
+                // ---- Aktives Board ----
+                if (app.activeBoard != null) ...[
+                  const SizedBox(height: 18),
+                  Text('Aktives Board: ${app.activeBoard!.title}',
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 6),
+                  _SyncIntervalSegmented(
+                    currentOverride:
+                        app.boardSyncIntervalOverride(app.activeBoard!.id),
+                    onSelect: (v) {
+                      final activeId = app.activeBoard!.id;
+                      if (v == null) {
+                        app.clearBoardSyncOverride(activeId);
+                      } else {
+                        app.setBoardSyncInterval(activeId, v);
+                      }
+                    },
+                  ),
+                ],
+
+                // ---- Andere Boards ----
+                const SizedBox(height: 18),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => setState(() =>
+                      _sectionSyncOtherBoardsOpen =
+                          !_sectionSyncOtherBoardsOpen),
+                  child: Row(
+                    children: [
+                      Icon(
+                          _sectionSyncOtherBoardsOpen
+                              ? CupertinoIcons.chevron_down
+                              : CupertinoIcons.chevron_right,
+                          size: 14,
+                          color: CupertinoColors.systemGrey),
+                      const SizedBox(width: 6),
+                      const Text('Weitere Boards',
+                          style: TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+                if (_sectionSyncOtherBoardsOpen) ...[
+                  const SizedBox(height: 8),
+                  for (final b in app.boards.where((bb) =>
+                      !bb.archived &&
+                      !app.isBoardHidden(bb.id) &&
+                      bb.id != app.activeBoard?.id)) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10, bottom: 4),
+                      child: Text(b.title,
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w600)),
+                    ),
+                    _SyncIntervalSegmented(
+                      currentOverride: app.boardSyncIntervalOverride(b.id),
+                      onSelect: (v) {
+                        if (v == null) {
+                          app.clearBoardSyncOverride(b.id);
+                        } else {
+                          app.setBoardSyncInterval(b.id, v);
+                        }
+                      },
+                    ),
+                  ],
+                ],
+              ],
+            ),
+
+            const SizedBox(height: 16),
+            _SettingsSection(
               title: l10n.performance,
               expanded: _sectionPerformanceOpen,
               isDarkMode: app.isDarkMode,
@@ -746,47 +879,9 @@ class _SettingsPageState extends State<SettingsPage> {
                 Text(L10n.of(context).upcomingProgressHelp,
                     style: const TextStyle(
                         color: CupertinoColors.systemGrey, fontSize: 12)),
-                if (app.activeBoard != null) ...[
-                  const SizedBox(height: 12),
-                  Text(l10n.perBoardSyncInterval,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 8),
-                  CupertinoSlidingSegmentedControl<int>(
-                    groupValue: app.syncIntervalForBoard(app.activeBoard!.id),
-                    children: {
-                      0: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        child: Text(l10n.syncIntervalManual),
-                      ),
-                      1: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Text('1 min'),
-                      ),
-                      5: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Text('5 min'),
-                      ),
-                      15: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Text('15 min'),
-                      ),
-                      30: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        child: Text('30 min'),
-                      ),
-                    },
-                    onValueChanged: (v) {
-                      if (v != null) {
-                        app.setBoardSyncInterval(app.activeBoard!.id, v);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 6),
-                  Text(l10n.perBoardSyncIntervalHelp,
-                      style: const TextStyle(
-                          color: CupertinoColors.systemGrey, fontSize: 12)),
-                ],
+                // Hinweis: Der frühere Per-Board-Sync-Selector ist in die
+                // dedizierte Sektion „Synchronisation" weiter oben verschoben
+                // (Globaler Default + Pro-Board-Override für alle Boards).
               ],
             ),
             const SizedBox(height: 16),
@@ -1061,5 +1156,73 @@ class _Divider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(height: 1, color: CupertinoColors.separator);
+  }
+}
+
+/// Segmented Control für Per-Board-Sync-Intervall.
+/// `currentOverride == null`  → das Board nutzt den globalen Default
+/// `currentOverride == 0`     → Auto-Sync explizit "Aus" für dieses Board
+/// `currentOverride > 0`      → Override-Intervall in Minuten
+///
+/// `onSelect(null)` löscht den Override → fallback auf globalen Standard.
+class _SyncIntervalSegmented extends StatelessWidget {
+  final int? currentOverride;
+  final ValueChanged<int?> onSelect;
+
+  const _SyncIntervalSegmented({
+    required this.currentOverride,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Marker-Wert -1 = "Standard" (kein Override) — null funktioniert in
+    // CupertinoSlidingSegmentedControl<int> nicht zuverlässig.
+    const allowedKeys = {-1, 0, 1, 5, 15, 30};
+    final raw = currentOverride;
+    // Robust gegen unbekannte Override-Werte aus alten Settings-Versionen
+    // (z. B. "1 min" aus der früheren Performance-Sektion). Wenn der Wert
+    // nicht zu unseren Keys passt, geben wir groupValue=null an den
+    // SegmentedControl → kein Crash, einfach keine Auswahl markiert.
+    final int? value = raw == null
+        ? -1
+        : (allowedKeys.contains(raw) ? raw : null);
+    return CupertinoSlidingSegmentedControl<int>(
+      groupValue: value,
+      children: const {
+        -1: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 6),
+          child: Text('Standard', style: TextStyle(fontSize: 12)),
+        ),
+        0: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 6),
+          child: Text('Aus', style: TextStyle(fontSize: 12)),
+        ),
+        1: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 6),
+          child: Text('1', style: TextStyle(fontSize: 12)),
+        ),
+        5: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 6),
+          child: Text('5', style: TextStyle(fontSize: 12)),
+        ),
+        15: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 6),
+          child: Text('15', style: TextStyle(fontSize: 12)),
+        ),
+        30: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 6),
+          child: Text('30', style: TextStyle(fontSize: 12)),
+        ),
+      },
+      onValueChanged: (v) {
+        if (v == null) return;
+        if (v == -1) {
+          onSelect(null);
+        } else {
+          onSelect(v);
+        }
+      },
+    );
   }
 }

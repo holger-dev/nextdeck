@@ -67,6 +67,9 @@ class AppState extends ChangeNotifier {
   bool _dueOverdueEnabled = true; // user setting: overdue reminders
   List<int> _dueReminderMinutes = const [60, 1440];
   Map<int, int> _boardSyncIntervals = const {}; // boardId -> minutes, 0=manual
+  // Globaler Default-Sync-Intervall in Minuten. Greift, wenn ein Board
+  // keinen eigenen Override gesetzt hat. 0 = kein automatischer Sync.
+  int _globalSyncIntervalMinutes = 0;
   final Map<int, DateTime> _lastBoardIntervalSync = {};
   int? _defaultBoardId; // user-selected default board for startup
   String _startupBoardMode = 'default'; // 'default' | 'last'
@@ -117,7 +120,19 @@ class AppState extends ChangeNotifier {
   int? get defaultBoardId => _defaultBoardId;
   String get startupBoardMode => _startupBoardMode;
   bool get startupUsesDefault => _startupBoardMode != 'last';
-  int syncIntervalForBoard(int boardId) => _boardSyncIntervals[boardId] ?? 0;
+  int get globalSyncIntervalMinutes => _globalSyncIntervalMinutes;
+  /// Effektiver Sync-Intervall für ein Board:
+  /// 1) Per-Board-Override (falls gesetzt)  → gewinnt
+  /// 2) Globaler Default                    → fallback
+  /// 3) 0                                   → kein Auto-Sync
+  int syncIntervalForBoard(int boardId) {
+    final override = _boardSyncIntervals[boardId];
+    if (override != null) return override;
+    return _globalSyncIntervalMinutes;
+  }
+  /// Pro-Board-Override (oder null wenn nur global gilt) — für die UI,
+  /// um „Standard" vs. expliziten Wert unterscheiden zu können.
+  int? boardSyncIntervalOverride(int boardId) => _boardSyncIntervals[boardId];
   List<Board> get boards => _boards;
   List<deck.Column> columnsForActiveBoard() =>
       _activeBoard == null ? [] : (_columnsByBoard[_activeBoard!.id] ?? []);
@@ -244,6 +259,10 @@ class AppState extends ChangeNotifier {
             const [60, 1440];
     _boardSyncIntervals = _parseBoardSyncIntervals(
         await storage.read(key: 'board_sync_intervals'));
+    final globalRaw = await storage.read(key: 'global_sync_interval');
+    final globalParsed = int.tryParse(globalRaw ?? '');
+    _globalSyncIntervalMinutes =
+        (globalParsed != null && globalParsed >= 0) ? globalParsed : 0;
     _localMode = (await storage.read(key: 'local_mode')) == '1';
     _localeCode = await storage.read(key: 'locale');
     _baseUrl = await storage.read(key: 'baseUrl');
@@ -485,6 +504,11 @@ class AppState extends ChangeNotifier {
       // Rebuild Upcoming view after manual board refresh
       _rebuildUpcomingCacheFromMemory();
       notifyListeners();
+      // Activity-Notifications nach jedem Board-Refresh prüfen.
+      // Ohne diesen Hook bekäme der User nie eine Notification, wenn ihn
+      // jemand im Browser einer Karte zuweist und der Auto-Sync das
+      // anschließend zieht (refreshUpcomingDelta läuft dort nicht mehr).
+      unawaited(_notifyNewActivityFromMemory());
     } catch (_) {}
   }
 
@@ -602,6 +626,9 @@ class AppState extends ChangeNotifier {
       _upScanActive = false;
       _upScanBoardTitle = null;
       notifyListeners();
+      // Activity-Notifications nach komplettem Sync prüfen — deckt
+      // jetzt auch Karten in NICHT-aktiven Boards ab.
+      unawaited(_notifyNewActivityFromMemory());
     }
   }
 
@@ -649,6 +676,8 @@ class AppState extends ChangeNotifier {
       _upScanBoardTitle = null;
       _upScanDone = _upScanTotal; // Ensure completion is always recorded
       notifyListeners();
+      // Activity-Notifications nach komplettem Sync prüfen.
+      unawaited(_notifyNewActivityFromMemory());
     }
   }
 
@@ -1968,37 +1997,87 @@ class AppState extends ChangeNotifier {
         _password == null) return;
     _syncTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
       try {
+        if (_isSyncing || _sync == null) return;
+
+        // Auto-Sync: NUR das aktive Board (entlastet den Server, Notifs
+        // für andere Boards kommen jetzt über die zentrale OCS-API).
         final active = _activeBoard;
-        if (!_isSyncing && active != null && _sync != null) {
+        if (active != null) {
           final minutes = syncIntervalForBoard(active.id);
-          final last = _lastBoardIntervalSync[active.id];
-          final due = minutes > 0 &&
-              (last == null ||
-                  DateTime.now().difference(last) >=
-                      Duration(minutes: minutes));
-          if (due) {
-            _lastBoardIntervalSync[active.id] = DateTime.now();
-            await refreshSingleBoard(active.id);
+          if (minutes > 0) {
+            final last = _lastBoardIntervalSync[active.id];
+            final due = last == null ||
+                DateTime.now().difference(last) >= Duration(minutes: minutes);
+            if (due) {
+              _lastBoardIntervalSync[active.id] = DateTime.now();
+              try {
+                await refreshSingleBoard(active.id);
+              } catch (_) {}
+            }
           }
         }
-        // DISABLED: Auto-sync disabled to prevent overriding freshly loaded cards
-        // await _sync?.periodicDeltaSync();
-        // DISABLED: Board auto-sync disabled to prevent card overriding
-        // if (tabController.index == 1) {
-        //   final b = _activeBoard;
-        //   if (b != null) {
-        //     try {
-        //       await refreshColumnsFor(b, bypassCooldown: false, full: false);
-        //     } catch (_) {}
-        //     try {
-        //       await _ensureSomeCardsForBoard(b.id, limit: 2);
-        //     } catch (_) {}
-        //   }
-        // }
-        // DISABLED: Upcoming delta sync disabled to prevent card overriding
-        // unawaited(refreshUpcomingDelta());
+        // Parallel: Server-Notifications pollen — deckt Zuweisungen,
+        // Comment-Mentions und Mentions in allen Boards ab, ohne sie
+        // einzeln zu syncen.
+        unawaited(_pollServerNotifications());
       } catch (_) {}
     });
+  }
+
+  // ---- Server-Notifications-Polling ----
+  // Hält die UUIDs lokal gesehener Notifications, damit wir nicht für
+  // dieselbe Server-Notification mehrfach Banner feuern.
+  static const String _kSeenNotifsKey = 'server_notifs_seen';
+
+  Future<void> _pollServerNotifications() async {
+    if (_localMode || !_activityNotificationsEnabled || !Platform.isIOS) {
+      return;
+    }
+    if (_baseUrl == null || _username == null || _password == null) return;
+    try {
+      final raw = await api.fetchServerNotifications(
+          _baseUrl!, _username!, _password!);
+      if (raw == null) return; // App nicht installiert / 404
+      final seenList = cache.get(_kSeenNotifsKey);
+      final seen = seenList is List
+          ? seenList.map((e) => e.toString()).toSet()
+          : <String>{};
+      final current = <String>{};
+      final newOnes = <Map<String, dynamic>>[];
+      for (final n in raw) {
+        // Notification-ID kann int oder string kommen
+        final idDyn = n['notification_id'] ?? n['id'];
+        if (idDyn == null) continue;
+        final id = idDyn.toString();
+        current.add(id);
+        if (!seen.contains(id)) newOnes.add(n);
+      }
+      cache.put(_kSeenNotifsKey, current.toList());
+      // Wenn wir gerade neu aktiviert wurden und das seen-Set noch leer
+      // ist, würden alle Bestands-Notifications als "neu" durchgehen.
+      // Diesen Bootstrap-Burst vermeiden wir, indem wir bei leerem
+      // seen-Set nur seeden, ohne zu feuern.
+      if (seen.isEmpty) return;
+      for (final n in newOnes.take(5)) {
+        final subject = (n['subject'] ?? '').toString().trim();
+        final message = (n['message'] ?? '').toString().trim();
+        final title = subject.isNotEmpty ? subject : 'Neue Aktivität';
+        final body = message.isNotEmpty ? message : subject;
+        // Stabile lokale Notification-ID aus dem Server-ID-Hash.
+        // flutter_local_notifications erwartet 32-bit signed int — wir
+        // klammern den absoluten Hash auf den positiven Bereich.
+        final hash =
+            (n['notification_id'] ?? n['id']).toString().hashCode.abs();
+        final notifId = hash % 0x7FFFFFFF;
+        await _notifications.showActivityNotification(
+          id: notifId,
+          title: title,
+          body: body,
+        );
+      }
+    } catch (_) {
+      // Silent fail — Polling soll den restlichen Sync nicht stören.
+    }
   }
 
   void _stopAutoSync() {
@@ -2100,8 +2179,53 @@ class AppState extends ChangeNotifier {
     notifyListeners();
     if (Platform.isIOS && value) {
       await _notifications.init(requestPermissions: true);
+      // Lokale Activity-Detection (Karten-Diff) seeden.
       unawaited(_notifyNewActivityFromMemory(seedOnly: true));
+      // Auch das Server-Notifications-Polling vorab seeden — sonst
+      // poppt beim ersten Poll der gesamte offene Notification-Bestand
+      // vom Server auf einmal auf.
+      unawaited(_seedServerNotificationsBaseline());
     }
+  }
+
+  /// Holt einmalig die aktuellen Server-Notification-IDs ab und legt sie
+  /// als „bereits gesehen" ab, ohne lokale Notifications zu rendern.
+  /// Wird beim erstmaligen Aktivieren von Activity-Notifications gerufen.
+  Future<void> _seedServerNotificationsBaseline() async {
+    if (_localMode) return;
+    if (_baseUrl == null || _username == null || _password == null) return;
+    try {
+      final raw = await api.fetchServerNotifications(
+          _baseUrl!, _username!, _password!);
+      if (raw == null) return;
+      final ids = <String>{};
+      for (final n in raw) {
+        final idDyn = n['notification_id'] ?? n['id'];
+        if (idDyn != null) ids.add(idDyn.toString());
+      }
+      cache.put(_kSeenNotifsKey, ids.toList());
+    } catch (_) {}
+  }
+
+  /// Setzt den globalen Default-Intervall für alle Boards ohne Override.
+  /// 0 = kein Auto-Sync. Werte > 0 in Minuten.
+  Future<void> setGlobalSyncInterval(int minutes) async {
+    final normalized = minutes < 0 ? 0 : minutes;
+    _globalSyncIntervalMinutes = normalized;
+    await storage.write(
+        key: 'global_sync_interval', value: normalized.toString());
+    notifyListeners();
+  }
+
+  /// Entfernt den Per-Board-Override; das Board nutzt danach wieder den
+  /// globalen Default.
+  void clearBoardSyncOverride(int boardId) {
+    final next = Map<int, int>.from(_boardSyncIntervals);
+    next.remove(boardId);
+    _boardSyncIntervals = next;
+    storage.write(
+        key: 'board_sync_intervals', value: _encodeBoardSyncIntervals(next));
+    notifyListeners();
   }
 
   void setBoardSyncInterval(int boardId, int minutes) {
