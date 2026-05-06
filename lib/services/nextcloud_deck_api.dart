@@ -141,6 +141,53 @@ class NextcloudDeckApi {
     }
   }
 
+  /// Holt den Aktivitäts-Stream des Users (Nextcloud `activity`-App).
+  /// Liefert ALLE Aktivitäten — auch wenn sie von der Nextcloud-App
+  /// schon gelesen wurden — und ist damit immun gegen das „Race"-
+  /// Problem zwischen Notifications-API und mehreren Clients.
+  ///
+  /// `sinceActivityId` filtert auf Items neuer als die ID. `limit` cap
+  /// auf Anzahl der zurückgegebenen Items.
+  ///
+  /// Returnt:
+  /// * Liste der Activity-Objekte (raw JSON)
+  /// * `null` wenn die `activity`-App nicht installiert ist (404), bei
+  ///   Auth-Fehlern oder Netzwerkfehlern.
+  Future<List<Map<String, dynamic>>?> fetchServerActivities(
+      String baseUrl, String user, String pass,
+      {int? sinceActivityId, int limit = 30}) async {
+    final headers = {
+      ..._ocsHeader,
+      'authorization': _basicAuth(user, pass),
+    };
+    final base = _buildUri(
+        baseUrl, '/ocs/v2.php/apps/activity/api/v2/activity', false);
+    final query = <String, String>{
+      ...base.queryParameters,
+      'limit': limit.toString(),
+      'sort': 'desc',
+      if (sinceActivityId != null) 'since': sinceActivityId.toString(),
+    };
+    final uri = base.replace(queryParameters: query);
+    try {
+      final res = await _send('GET', uri, headers,
+          priority: false, timeout: const Duration(seconds: 10));
+      if (res.statusCode == 404) return null;
+      if (!_isOk(res)) return null;
+      final data = await _parseBodyOkAsync(res);
+      if (data is! List) return null;
+      final out = <Map<String, dynamic>>[];
+      for (final item in data) {
+        if (item is Map) {
+          out.add(item.cast<String, dynamic>());
+        }
+      }
+      return out;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Holt die zentrale Liste aller offenen Notifications für den User
   /// von der Nextcloud-Notifications-App (`notifications` muss installiert
   /// sein). Das deckt Deck-Zuweisungen, @-Mentions in Comments, Shares

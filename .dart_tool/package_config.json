@@ -20,6 +20,12 @@
       "languageVersion": "3.4"
     },
     {
+      "name": "background_fetch",
+      "rootUri": "file:///Users/holgerheidkamp/.pub-cache/hosted/pub.dev/background_fetch-1.6.2",
+      "packageUri": "lib/",
+      "languageVersion": "3.6"
+    },
+    {
       "name": "boolean_selector",
       "rootUri": "file:///Users/holgerheidkamp/.pub-cache/hosted/pub.dev/boolean_selector-2.1.2",
       "packageUri": "lib/",

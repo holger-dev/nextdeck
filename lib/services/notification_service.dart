@@ -15,8 +15,13 @@ class NotificationService {
   bool _initialized = false;
   bool _tzInitialized = false;
 
-  Future<void> init({bool requestPermissions = false}) async {
-    if (!Platform.isIOS) return;
+  /// Initialisiert das Plugin und fordert ggf. iOS-Permissions an.
+  /// Returnt:
+  /// * `true`  — Permission erteilt (oder kein Request gemacht)
+  /// * `false` — User hat „nicht erlauben" gewählt
+  /// * `null`  — Plattform nicht iOS / Status unbekannt
+  Future<bool?> init({bool requestPermissions = false}) async {
+    if (!Platform.isIOS) return null;
     if (!_tzInitialized) {
       tz.initializeTimeZones();
       try {
@@ -28,21 +33,41 @@ class NotificationService {
       _tzInitialized = true;
     }
     if (!_initialized) {
+      // requestXxxPermission: true beim ersten initialize() lässt das
+      // Plugin iOS gleich registrieren — sonst taucht die App in
+      // System-Einstellungen → Mitteilungen gar nicht erst auf.
+      // Der eigentliche Permission-Pop-up kommt erst, wenn der User
+      // die Setting in der App aktiviert (siehe `init(requestPermissions: true)`).
       const ios = DarwinInitializationSettings(
-        requestAlertPermission: false,
-        requestBadgePermission: false,
-        requestSoundPermission: false,
+        requestAlertPermission: true,
+        requestBadgePermission: true,
+        requestSoundPermission: true,
       );
       const settings = InitializationSettings(iOS: ios);
       await _plugin.initialize(settings: settings);
       _initialized = true;
     }
     if (requestPermissions) {
-      await _plugin
+      final granted = await _plugin
           .resolvePlatformSpecificImplementation<
               IOSFlutterLocalNotificationsPlugin>()
           ?.requestPermissions(alert: true, badge: true, sound: true);
+      return granted;
     }
+    return true;
+  }
+
+  /// Liefert den aktuellen iOS-Notification-Permission-Status.
+  /// Returnt `true` wenn alle drei Kanäle (Alert, Badge, Sound) authorized
+  /// sind, sonst `false`. `null` auf nicht-iOS.
+  Future<bool?> hasIosPermission() async {
+    if (!Platform.isIOS) return null;
+    final impl = _plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    if (impl == null) return null;
+    final res = await impl.checkPermissions();
+    if (res == null) return false;
+    return res.isAlertEnabled == true || res.isAlertEnabled == null;
   }
 
   Future<void> cancelAll() async {
@@ -127,12 +152,25 @@ class NotificationService {
   }) async {
     if (!Platform.isIOS) return;
     await init();
+    // WICHTIG: presentBanner/presentList/presentSound MÜSSEN explizit
+    // gesetzt sein, sonst zeigt iOS Foreground-Banner für `_plugin.show()`
+    // gar nicht. Bei `zonedSchedule` ist das anders (System-managed),
+    // deshalb funktionieren Due-Date-Reminders aber Activity-Notifs nicht
+    // ohne diese Flags.
     await _plugin.show(
       id: id,
       title: title,
       body: body,
-      notificationDetails:
-          const NotificationDetails(iOS: DarwinNotificationDetails()),
+      notificationDetails: const NotificationDetails(
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBanner: true,
+          presentList: true,
+          presentSound: true,
+          presentBadge: true,
+          interruptionLevel: InterruptionLevel.active,
+        ),
+      ),
     );
   }
 

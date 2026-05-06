@@ -50,6 +50,67 @@ Ein schlanker, schneller und datenschutzfreundlicher Nextcloud‑Deck‑Client m
   - „Anmeldung testen“ ausführen; die App prüft Login, Deck‑Verfügbarkeit und lädt anschliessend Boards
 
 
+## Benachrichtigungen
+
+Next Deck nutzt zwei komplementäre Wege für Aktivitäts-Benachrichtigungen
+(Karten-Zuweisungen, @-Mentions in Kommentaren, Shares):
+
+1. **Foreground-Polling**, solange die App offen ist – das aktive Board
+   wird im konfigurierten Intervall gesynct, parallel die zentrale
+   Nextcloud-Notifications-API gepollt (Latenz: unter einer Minute).
+2. **Background-Fetch**, wenn die App im Hintergrund oder beendet ist –
+   iOS weckt die App alle 15–60 min auf (Apple entscheidet; kann länger
+   dauern bei Standby/niedrigem Akku) und führt denselben Poll aus.
+
+Beide Wege erzeugen **lokale Banner**, die iOS rendert – sie sehen aus wie
+echtes Push, sind technisch aber **kein** Push.
+
+### Warum kein echtes APNs-Push?
+
+Echtes Push (Sub-Sekunden-Latenz, App muss nicht laufen) geht über Apples
+APNs. Die offizielle Nextcloud-iOS-App nutzt dafür den zentralen
+`push.nextcloud.com`-Proxy, der **ausschließlich** für die offizielle
+App-Bundle-ID `com.nextcloud.iOS` konfiguriert ist. Drittanbieter-Apps wie
+Next Deck können sich dort nicht direkt anhängen. Echtes Push für Next
+Deck würde verlangen:
+
+- Apple Developer APNs Auth Key (`.p8`), Key-ID, Team-ID
+- „Push Notifications"-Capability für die App-ID in App Store Connect
+- Entweder:
+  - Ein eigener Push-Proxy (z. B. `nextcloud/push-proxy`) auf dem eigenen
+    Server, konfiguriert mit dem `.p8`-Key und der Next-Deck-Bundle-ID –
+    *oder*
+  - Ein Direkt-APNs-Service, der Nextcloud-`notifications`-Events
+    abonniert und an APNs schickt
+- Den App-seitigen Push-Subscribe-Flow gegen
+  `/ocs/v2.php/apps/notifications/api/v2/push` mit RSA-Keypair
+
+Realistisch heißt das ~ 1 Tag Code + Server-Admin + dauerhafte Wartung des
+Push-Proxys. **Für die meisten Use-Cases ist das nicht nötig.** Das
+Polling-Modell ist „gut genug", wenn man auf 15–60 min Latenz im
+Hintergrund leben kann, und braucht keinerlei Server-Änderungen.
+
+### Empfehlung, wenn du echtes Push *heute* willst
+
+Wenn du sub-Sekunden-Push brauchst und keinen eigenen Proxy hosten
+möchtest:
+
+1. **Installiere die offizielle Nextcloud-iOS-App** zusätzlich zu Next
+   Deck.
+2. Die Nextcloud-App liefert echtes Push via `push.nextcloud.com`.
+   Karten-Zuweisungen, Mentions und Shares poppen dort verlässlich auf.
+3. **Deaktiviere die Activity-Benachrichtigungen in Next Deck**
+   (Einstellungen → Benachrichtigungen), um Doppelbenachrichtigungen zu
+   vermeiden.
+4. Nutze Next Deck für die eigentliche Board-Arbeit – die Nextcloud-App
+   fängt den Notification-Handoff ab.
+
+Das ist der pragmatische Zero-Config-Weg, der die Stärken beider Apps
+kombiniert. Wenn du später einen eigenen Push-Proxy aufsetzt, kannst du
+die In-App-Benachrichtigungen wieder aktivieren und die der Nextcloud-App
+abschalten.
+
+
 ## Sicherheit & Datenschutz
 
 - HTTPS erzwungen: Eingaben werden automatisch auf `https://` normalisiert

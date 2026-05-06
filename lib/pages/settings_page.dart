@@ -507,13 +507,222 @@ class _SettingsPageState extends State<SettingsPage> {
                     Expanded(child: Text(l10n.activityNotificationsEnable)),
                     CupertinoSwitch(
                       value: app.activityNotificationsEnabled,
-                      onChanged: (v) => app.setActivityNotificationsEnabled(v),
+                      onChanged: (v) async {
+                        final granted =
+                            await app.setActivityNotificationsEnabled(v);
+                        if (!mounted) return;
+                        if (v && !granted) {
+                          // iOS hat Permission blockiert / abgelehnt.
+                          final wantSettings =
+                              await showCupertinoDialog<bool>(
+                            context: context,
+                            builder: (ctx) => CupertinoAlertDialog(
+                              title: const Text(
+                                  'iOS blockiert Mitteilungen'),
+                              content: const Padding(
+                                padding: EdgeInsets.only(top: 8),
+                                child: Text(
+                                  'iOS verhindert gerade, dass Nextdeck '
+                                  'Banner anzeigen kann. '
+                                  'Bitte aktiviere die Mitteilungen in '
+                                  'den iOS-Einstellungen für Nextdeck.',
+                                ),
+                              ),
+                              actions: [
+                                CupertinoDialogAction(
+                                  isDefaultAction: true,
+                                  onPressed: () =>
+                                      Navigator.of(ctx).pop(true),
+                                  child: const Text('Zu Einstellungen'),
+                                ),
+                                CupertinoDialogAction(
+                                  onPressed: () =>
+                                      Navigator.of(ctx).pop(false),
+                                  child: const Text('Später'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (wantSettings == true) {
+                            await app.openIosAppSettings();
+                          }
+                        }
+                      },
                     ),
                   ]),
                   const SizedBox(height: 6),
                   Text(l10n.activityNotificationsHelp,
                       style: const TextStyle(
                           color: CupertinoColors.systemGrey, fontSize: 12)),
+                  // Permission-Status-Zeile — sichtbar wenn Toggle an,
+                  // damit der User direkt sieht ob iOS blockiert.
+                  if (app.activityNotificationsEnabled)
+                    FutureBuilder<bool?>(
+                      future: app.checkIosNotifPermission(),
+                      builder: (context, snap) {
+                        final ok = snap.data == true;
+                        if (snap.connectionState != ConnectionState.done) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Row(
+                            children: [
+                              Icon(
+                                ok
+                                    ? CupertinoIcons.checkmark_seal_fill
+                                    : CupertinoIcons.exclamationmark_triangle_fill,
+                                color: ok
+                                    ? CupertinoColors.activeGreen
+                                    : CupertinoColors.systemRed,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  ok
+                                      ? 'iOS-Mitteilungen erlaubt'
+                                      : 'iOS-Mitteilungen blockiert — Banner kommen nicht durch',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: ok
+                                        ? CupertinoColors.systemGrey
+                                        : CupertinoColors.systemRed,
+                                  ),
+                                ),
+                              ),
+                              if (!ok)
+                                CupertinoButton(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 0),
+                                  onPressed: () =>
+                                      app.openIosAppSettings(),
+                                  child: const Text('Öffnen',
+                                      style: TextStyle(fontSize: 12)),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+
+                  if (app.activityNotificationsEnabled) ...[
+                    const SizedBox(height: 14),
+                    const Text('Quelle',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 6),
+                    CupertinoSlidingSegmentedControl<String>(
+                      groupValue: app.notificationSource,
+                      children: const {
+                        'activity': Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6),
+                          child: Text('Aktivitäten',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                        'notifications': Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6),
+                          child: Text('Notifications',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                        'both': Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6),
+                          child: Text('Beide',
+                              style: TextStyle(fontSize: 12)),
+                        ),
+                      },
+                      onValueChanged: (v) {
+                        if (v != null) app.setNotificationSource(v);
+                      },
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      '„Aktivitäten" ist immun gegen Race-Conditions, '
+                      'wenn die offizielle Nextcloud-App parallel läuft. '
+                      '„Notifications" nutzt die zentrale Notifications-API '
+                      '(kann mit der Nextcloud-App kollidieren).',
+                      style: TextStyle(
+                          color: CupertinoColors.systemGrey, fontSize: 12),
+                    ),
+
+                    const SizedBox(height: 14),
+                    const Text('Welche Aktivitäten benachrichtigen?',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w600)),
+                    _NotifFilterToggle(
+                      label: 'Karten an mich zugewiesen',
+                      filterKey: 'assigned',
+                      app: app,
+                    ),
+                    _NotifFilterToggle(
+                      label: '@-Erwähnungen (Beschreibung & Kommentare)',
+                      filterKey: 'mention',
+                      app: app,
+                    ),
+                    _NotifFilterToggle(
+                      label: 'Neue Kommentare',
+                      filterKey: 'comment',
+                      app: app,
+                    ),
+                    _NotifFilterToggle(
+                      label: 'Geteilte Boards/Karten',
+                      filterKey: 'share',
+                      app: app,
+                    ),
+                    _NotifFilterToggle(
+                      label: 'Sonstige Deck-Aktivität',
+                      filterKey: 'updates',
+                      app: app,
+                    ),
+
+                    const SizedBox(height: 14),
+                    const Text('Prüf-Intervall',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 6),
+                    CupertinoSlidingSegmentedControl<int>(
+                      groupValue: _clampPollMinutes(
+                          app.notificationPollMinutes),
+                      children: const {
+                        0: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6),
+                          child:
+                              Text('Aus', style: TextStyle(fontSize: 12)),
+                        ),
+                        1: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6),
+                          child:
+                              Text('1 min', style: TextStyle(fontSize: 12)),
+                        ),
+                        5: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6),
+                          child:
+                              Text('5 min', style: TextStyle(fontSize: 12)),
+                        ),
+                        15: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6),
+                          child:
+                              Text('15 min', style: TextStyle(fontSize: 12)),
+                        ),
+                        30: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6),
+                          child:
+                              Text('30 min', style: TextStyle(fontSize: 12)),
+                        ),
+                      },
+                      onValueChanged: (v) {
+                        if (v != null) app.setNotificationPollMinutes(v);
+                      },
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      'Im Vordergrund läuft der Poll als Teil des Sync-Ticks '
+                      '(max. dieser Intervall). Im Hintergrund entscheidet '
+                      'iOS — typisch alle 15–60 min.',
+                      style: TextStyle(
+                          color: CupertinoColors.systemGrey, fontSize: 12),
+                    ),
+                  ],
                 ],
               ),
             ],
@@ -1156,6 +1365,59 @@ class _Divider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(height: 1, color: CupertinoColors.separator);
+  }
+}
+
+/// Clamp-Helper für den Notification-Poll-Selector.
+/// Wenn der gespeicherte Wert nicht zu unseren Buckets passt
+/// (z. B. ein User hat 7 Min in einem alten Build gesetzt), zeigen wir
+/// den nächsten gültigen.
+int _clampPollMinutes(int v) {
+  const allowed = [0, 1, 5, 15, 30];
+  if (allowed.contains(v)) return v;
+  // Fallback: nächst-näherer Wert
+  if (v <= 0) return 0;
+  if (v <= 3) return 1;
+  if (v <= 10) return 5;
+  if (v <= 22) return 15;
+  return 30;
+}
+
+/// Toggle-Zeile für einen Activity-Filter — schreibt in das Set
+/// `notificationFilters` der AppState.
+class _NotifFilterToggle extends StatelessWidget {
+  final String label;
+  final String filterKey;
+  final AppState app;
+  const _NotifFilterToggle({
+    required this.label,
+    required this.filterKey,
+    required this.app,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final active = app.notificationFilters.contains(filterKey);
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: const TextStyle(fontSize: 14))),
+          CupertinoSwitch(
+            value: active,
+            onChanged: (v) {
+              final next = Set<String>.from(app.notificationFilters);
+              if (v) {
+                next.add(filterKey);
+              } else {
+                next.remove(filterKey);
+              }
+              app.setNotificationFilters(next);
+            },
+          ),
+        ],
+      ),
+    );
   }
 }
 

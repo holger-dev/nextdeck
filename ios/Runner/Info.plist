@@ -53,6 +53,20 @@
 		<string>en</string>
 		<string>es</string>
 	</array>
+	<!-- Background Fetch: erlaubt iOS, die App im Hintergrund kurz aufzuwecken,
+	     damit wir die Nextcloud-Notifications-API pollen können.
+	     iOS entscheidet selbst, wie oft das passiert (typisch 15-60 min). -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<!-- Eindeutige Task-Identifier für BGTaskScheduler. Muss zur
+	     `background_fetch`-Plugin-Konvention passen. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.transistorsoft.fetch</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

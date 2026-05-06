@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -17,6 +19,7 @@ import 'theme/app_theme.dart';
 import 'theme/design_tokens.dart';
 import 'pages/card_detail_page.dart';
 import 'widgets/glass_tab_bar.dart';
+import 'services/background_poll_service.dart';
 
 import 'package:hive_flutter/hive_flutter.dart';
 
@@ -25,6 +28,19 @@ Future<void> main() async {
   await Hive.initFlutter();
   await Hive.openBox('nextdeck_cache');
   runApp(const NextDeckApp());
+  // iOS Background Fetch wird ERST NACH dem ersten Frame initialisiert,
+  // damit ein langsamer BGTaskScheduler-Init die UI nicht blockiert.
+  // Plus Try-Catch, falls das Plugin auf neueren iOS-Versionen
+  // unerwartet wirft.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    Future.delayed(const Duration(seconds: 2), () async {
+      try {
+        await initializeBackgroundFetch();
+      } catch (e, st) {
+        debugPrint('[main] initializeBackgroundFetch failed: $e\n$st');
+      }
+    });
+  });
 }
 
 class NextDeckApp extends StatelessWidget {

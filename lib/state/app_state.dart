@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:hive/hive.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/board.dart';
 import '../models/column.dart' as deck;
@@ -12,6 +13,7 @@ import '../models/card_item.dart';
 import '../models/label.dart';
 import '../models/user_ref.dart';
 import '../l10n/app_localizations.dart';
+import '../services/log_service.dart';
 import '../services/nextcloud_deck_api.dart';
 import '../services/notification_service.dart';
 import '../services/deep_link_service.dart';
@@ -263,6 +265,24 @@ class AppState extends ChangeNotifier {
     final globalParsed = int.tryParse(globalRaw ?? '');
     _globalSyncIntervalMinutes =
         (globalParsed != null && globalParsed >= 0) ? globalParsed : 0;
+    // Notification-Quelle / Filter / Intervall laden
+    final src = await storage.read(key: 'notif_source');
+    if (src == 'activity' || src == 'notifications' || src == 'both') {
+      _notificationSource = src!;
+    }
+    final filtersRaw = await storage.read(key: 'notif_filters');
+    if (filtersRaw != null && filtersRaw.trim().isNotEmpty) {
+      _notificationFilters = filtersRaw
+          .split(',')
+          .map((e) => e.trim().toLowerCase())
+          .where((e) => e.isNotEmpty)
+          .toSet();
+    }
+    final pollRaw = await storage.read(key: 'notif_poll_minutes');
+    final pollParsed = int.tryParse(pollRaw ?? '');
+    if (pollParsed != null && pollParsed >= 0) {
+      _notificationPollMinutes = pollParsed;
+    }
     _localMode = (await storage.read(key: 'local_mode')) == '1';
     _localeCode = await storage.read(key: 'locale');
     _baseUrl = await storage.read(key: 'baseUrl');
@@ -2028,56 +2048,286 @@ class AppState extends ChangeNotifier {
   // Hält die UUIDs lokal gesehener Notifications, damit wir nicht für
   // dieselbe Server-Notification mehrfach Banner feuern.
   static const String _kSeenNotifsKey = 'server_notifs_seen';
+  static const String _kSeenActivitiesKey = 'server_activities_seen';
+
+  /// Notification-Quelle für das Polling.
+  /// `activity`        — Aktivitäts-Stream (Default, immun gegen Race
+  ///                     mit der offiziellen Nextcloud-App).
+  /// `notifications`   — Klassische Notifications-API (kann mit
+  ///                     Nextcloud-App kollidieren).
+  /// `both`            — Beide Quellen werden gepollt.
+  String _notificationSource = 'activity';
+  String get notificationSource => _notificationSource;
+
+  /// Welche Aktivitäts-Typen sollen Banner werden? Filter werden
+  /// case-insensitive gegen `app` und `type`/`subject` der Activity-
+  /// Items geprüft.
+  /// Default: Karten-Zuweisungen + @-Erwähnungen.
+  Set<String> _notificationFilters = {'assigned', 'mention'};
+  Set<String> get notificationFilters => Set.unmodifiable(_notificationFilters);
+
+  /// Intervall in Minuten zwischen zwei Notification-Polls.
+  /// 0 deaktiviert das Polling komplett. Greift unabhängig vom
+  /// Board-Sync-Intervall.
+  int _notificationPollMinutes = 5;
+  int get notificationPollMinutes => _notificationPollMinutes;
+  DateTime? _lastNotificationPoll;
+
+  Future<void> setNotificationSource(String source) async {
+    if (source != 'activity' && source != 'notifications' && source != 'both') {
+      return;
+    }
+    _notificationSource = source;
+    await storage.write(key: 'notif_source', value: source);
+    notifyListeners();
+  }
+
+  Future<void> setNotificationFilters(Set<String> filters) async {
+    _notificationFilters = filters.map((e) => e.toLowerCase()).toSet();
+    await storage.write(
+        key: 'notif_filters', value: _notificationFilters.join(','));
+    notifyListeners();
+  }
+
+  Future<void> setNotificationPollMinutes(int minutes) async {
+    final n = minutes < 0 ? 0 : minutes;
+    _notificationPollMinutes = n;
+    await storage.write(key: 'notif_poll_minutes', value: n.toString());
+    notifyListeners();
+  }
 
   Future<void> _pollServerNotifications() async {
     if (_localMode || !_activityNotificationsEnabled || !Platform.isIOS) {
       return;
     }
     if (_baseUrl == null || _username == null || _password == null) return;
+    if (_notificationPollMinutes <= 0) return;
+    // Throttling — wir laufen im 60-s-Tick, sollen aber nur jeden
+    // notif-poll-Intervall fragen (Default 5 min).
+    final now = DateTime.now();
+    final lastPoll = _lastNotificationPoll;
+    if (lastPoll != null &&
+        now.difference(lastPoll) <
+            Duration(minutes: _notificationPollMinutes)) {
+      return;
+    }
+    _lastNotificationPoll = now;
+
     try {
-      final raw = await api.fetchServerNotifications(
-          _baseUrl!, _username!, _password!);
-      if (raw == null) return; // App nicht installiert / 404
-      final seenList = cache.get(_kSeenNotifsKey);
-      final seen = seenList is List
-          ? seenList.map((e) => e.toString()).toSet()
-          : <String>{};
-      final current = <String>{};
-      final newOnes = <Map<String, dynamic>>[];
-      for (final n in raw) {
-        // Notification-ID kann int oder string kommen
-        final idDyn = n['notification_id'] ?? n['id'];
-        if (idDyn == null) continue;
-        final id = idDyn.toString();
-        current.add(id);
-        if (!seen.contains(id)) newOnes.add(n);
+      if (_notificationSource == 'notifications' ||
+          _notificationSource == 'both') {
+        await _pollNotificationsApi();
       }
-      cache.put(_kSeenNotifsKey, current.toList());
-      // Wenn wir gerade neu aktiviert wurden und das seen-Set noch leer
-      // ist, würden alle Bestands-Notifications als "neu" durchgehen.
-      // Diesen Bootstrap-Burst vermeiden wir, indem wir bei leerem
-      // seen-Set nur seeden, ohne zu feuern.
-      if (seen.isEmpty) return;
-      for (final n in newOnes.take(5)) {
-        final subject = (n['subject'] ?? '').toString().trim();
-        final message = (n['message'] ?? '').toString().trim();
-        final title = subject.isNotEmpty ? subject : 'Neue Aktivität';
-        final body = message.isNotEmpty ? message : subject;
-        // Stabile lokale Notification-ID aus dem Server-ID-Hash.
-        // flutter_local_notifications erwartet 32-bit signed int — wir
-        // klammern den absoluten Hash auf den positiven Bereich.
-        final hash =
-            (n['notification_id'] ?? n['id']).toString().hashCode.abs();
-        final notifId = hash % 0x7FFFFFFF;
-        await _notifications.showActivityNotification(
-          id: notifId,
-          title: title,
-          body: body,
-        );
+      if (_notificationSource == 'activity' ||
+          _notificationSource == 'both') {
+        await _pollActivityStream();
       }
     } catch (_) {
       // Silent fail — Polling soll den restlichen Sync nicht stören.
     }
+  }
+
+  /// Klassische Notifications-API: liefert nur ungelesene Items.
+  /// Race mit der offiziellen Nextcloud-App möglich.
+  Future<void> _pollNotificationsApi() async {
+    final raw = await api.fetchServerNotifications(
+        _baseUrl!, _username!, _password!);
+    if (raw == null) return;
+    final seenList = cache.get(_kSeenNotifsKey);
+    final seen = seenList is List
+        ? seenList.map((e) => e.toString()).toSet()
+        : <String>{};
+    final current = <String>{};
+    final newOnes = <Map<String, dynamic>>[];
+    for (final n in raw) {
+      final idDyn = n['notification_id'] ?? n['id'];
+      if (idDyn == null) continue;
+      final id = idDyn.toString();
+      current.add(id);
+      if (!seen.contains(id)) newOnes.add(n);
+    }
+    cache.put(_kSeenNotifsKey, current.toList());
+    for (final n in newOnes.take(5)) {
+      final subject = (n['subject'] ?? '').toString().trim();
+      final message = (n['message'] ?? '').toString().trim();
+      final title = subject.isNotEmpty ? subject : 'Neue Aktivität';
+      final body = message.isNotEmpty ? message : subject;
+      final hash =
+          (n['notification_id'] ?? n['id']).toString().hashCode.abs();
+      final notifId = hash % 0x7FFFFFFF;
+      await _notifications.showActivityNotification(
+        id: notifId,
+        title: title,
+        body: body,
+      );
+    }
+  }
+
+  /// Activity-Stream: liefert auch bereits gelesene Items, dafür viel
+  /// breiter. Wir filtern nach _notificationFilters.
+  Future<void> _pollActivityStream() async {
+    final logger = LogService();
+    final raw = await api.fetchServerActivities(
+        _baseUrl!, _username!, _password!,
+        limit: 50);
+    if (raw == null) {
+      logger.add(LogEntry(
+        at: DateTime.now(),
+        method: 'POLL',
+        url: 'activity-stream',
+        status: null,
+        durationMs: 0,
+        responseSnippet: 'null (App nicht installiert oder Auth-Fehler)',
+      ));
+      return;
+    }
+    final seenList = cache.get(_kSeenActivitiesKey);
+    final seen = seenList is List
+        ? seenList.map((e) => e.toString()).toSet()
+        : <String>{};
+    final current = <String>{};
+    final newHits = <Map<String, dynamic>>[];
+    final skipReasons = <String, int>{};
+
+    for (final a in raw) {
+      final idDyn = a['activity_id'] ?? a['id'];
+      if (idDyn == null) continue;
+      final id = idDyn.toString();
+      current.add(id);
+      if (seen.contains(id)) {
+        skipReasons['seen'] = (skipReasons['seen'] ?? 0) + 1;
+        continue;
+      }
+      final matches = _activityMatchesFilter(a);
+      if (!matches) {
+        skipReasons['filter'] = (skipReasons['filter'] ?? 0) + 1;
+        continue;
+      }
+      newHits.add(a);
+    }
+    cache.put(_kSeenActivitiesKey, current.toList());
+
+    final wasFirstSeed = seen.isEmpty;
+
+    // Diagnostischer Log-Eintrag: was ist passiert, warum?
+    logger.add(LogEntry(
+      at: DateTime.now(),
+      method: 'POLL',
+      url: 'activity-stream',
+      status: 200,
+      durationMs: 0,
+      responseSnippet:
+          'fetched=${raw.length} new=${newHits.length} '
+          'skipped=${skipReasons} firstSeed=$wasFirstSeed '
+          'filters=${_notificationFilters.toList()} '
+          'me=$_username',
+    ));
+
+    // Erster Poll: nur seeden, kein Banner-Burst beim Erstlauf.
+    if (wasFirstSeed) return;
+
+    for (final a in newHits.take(5)) {
+      final subject = (a['subject'] ?? '').toString().trim();
+      final message = (a['message'] ?? '').toString().trim();
+      final objectName = (a['object_name'] ?? '').toString().trim();
+      final title = subject.isNotEmpty ? subject : 'Neue Aktivität';
+      final body = message.isNotEmpty
+          ? message
+          : (objectName.isNotEmpty ? objectName : subject);
+      final hash =
+          (a['activity_id'] ?? a['id']).toString().hashCode.abs();
+      final notifId = hash % 0x7FFFFFFF;
+      logger.add(LogEntry(
+        at: DateTime.now(),
+        method: 'NOTIF',
+        url: 'fire',
+        status: null,
+        durationMs: 0,
+        responseSnippet: 'id=$notifId title="$title" body="$body"',
+      ));
+      await _notifications.showActivityNotification(
+        id: notifId,
+        title: title,
+        body: body,
+      );
+    }
+  }
+
+  /// Prüft, ob ein Activity-Item den User-Filtern entspricht.
+  ///
+  /// Vereinfachte Heuristik (toleranter als die vorherige Version):
+  ///  - 'assigned'  → JEDE Deck-Aktivität von anderen Usern
+  ///                  (in der Praxis sind das fast immer Zuweisungen,
+  ///                   Verschiebungen, Updates an Karten, die dich
+  ///                   betreffen — siehe `subject_rich` mit User-Refs).
+  ///                  Eigene Aktivitäten werden separat ausgeblendet.
+  ///  - 'mention'   → Activity-`type` oder `subject` enthält "mention"/
+  ///                  "erwähnt", oder das `subject_rich` enthält ein
+  ///                  Token mit deinem User-Namen.
+  ///  - 'comment'   → comments-App-Activities oder Deck-Comment-Events.
+  ///  - 'share'     → Shares (files/calendar/deck).
+  ///  - 'updates'   → komplette Wildcard für ALLE Aktivitäten, die nicht
+  ///                  in den obigen Buckets sind (vor allem Files,
+  ///                  Calendar, etc.).
+  bool _activityMatchesFilter(Map<String, dynamic> a) {
+    final filters = _notificationFilters;
+    if (filters.isEmpty) return false;
+
+    final app = (a['app'] ?? '').toString().toLowerCase();
+    final type = (a['type'] ?? '').toString().toLowerCase();
+    final subject = (a['subject'] ?? '').toString().toLowerCase();
+    final user = (a['user'] ?? '').toString().toLowerCase();
+    final me = _username?.toLowerCase() ?? '';
+
+    bool wants(String key) => filters.contains(key);
+
+    // Eigene Aktivitäten ausblenden — der User triggert sich nicht selbst.
+    if (me.isNotEmpty && user == me) return false;
+
+    // 'assigned' = NUR Karten-Zuweisungen — type enthält "assign", oder
+    // Subject enthält "zugewiesen"/"assigned" plus Username im Subject.
+    // Eigene Filter wie 'updates' fangen andere Deck-Activities auf.
+    if (wants('assigned')) {
+      if (type.contains('assign') ||
+          type == 'deck_user_added' ||
+          subject.contains('zugewiesen') ||
+          subject.contains('assigned')) {
+        return true;
+      }
+    }
+
+    // 'mention' = mention-type oder subject mentions
+    if (wants('mention') &&
+        (type.contains('mention') ||
+            subject.contains('mention') ||
+            subject.contains('erwähnt') ||
+            subject.contains('erwaehnt') ||
+            (me.isNotEmpty && subject.contains('@$me')))) {
+      return true;
+    }
+
+    // 'comment' = comments-App oder Deck-Comment-Events
+    if (wants('comment') &&
+        (app == 'comments' ||
+            type.contains('comment') ||
+            subject.contains('comment') ||
+            subject.contains('kommentar'))) {
+      return true;
+    }
+
+    // 'share' = Shares (Files/Deck/...)
+    if (wants('share') &&
+        (type.contains('share') ||
+            subject.contains('shared') ||
+            subject.contains('geteilt'))) {
+      return true;
+    }
+
+    // 'updates' = komplettes Wildcard für alle Activities, die nicht
+    // schon durch andere Filter abgedeckt sind. Vor allem Files/Calendar.
+    if (wants('updates')) return true;
+
+    return false;
   }
 
   void _stopAutoSync() {
@@ -2172,39 +2422,47 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  Future<void> setActivityNotificationsEnabled(bool value) async {
+  /// Aktiviert/deaktiviert Activity-Notifications. Returnt:
+  /// * `true`  → erfolgreich, iOS-Permission OK
+  /// * `false` → User wollte aktivieren, iOS hat aber „nicht erlauben"
+  ///             gesagt (Setting bleibt persisted, der Caller sollte
+  ///             einen Hinweis zeigen + iOS-Settings öffnen anbieten)
+  Future<bool> setActivityNotificationsEnabled(bool value) async {
     _activityNotificationsEnabled = value;
     await storage.write(
         key: 'activity_notif_enabled', value: value ? '1' : '0');
     notifyListeners();
     if (Platform.isIOS && value) {
-      await _notifications.init(requestPermissions: true);
+      final granted =
+          await _notifications.init(requestPermissions: true);
       // Lokale Activity-Detection (Karten-Diff) seeden.
       unawaited(_notifyNewActivityFromMemory(seedOnly: true));
-      // Auch das Server-Notifications-Polling vorab seeden — sonst
-      // poppt beim ersten Poll der gesamte offene Notification-Bestand
-      // vom Server auf einmal auf.
-      unawaited(_seedServerNotificationsBaseline());
+      // Server-Notifications: seen-Set zurücksetzen.
+      cache.delete(_kSeenNotifsKey);
+      return granted == true;
     }
+    return true;
   }
 
-  /// Holt einmalig die aktuellen Server-Notification-IDs ab und legt sie
-  /// als „bereits gesehen" ab, ohne lokale Notifications zu rendern.
-  /// Wird beim erstmaligen Aktivieren von Activity-Notifications gerufen.
-  Future<void> _seedServerNotificationsBaseline() async {
-    if (_localMode) return;
-    if (_baseUrl == null || _username == null || _password == null) return;
+  /// Aktueller iOS-Notification-Permission-Status. Returnt `true` wenn
+  /// die App Banner anzeigen darf, `false` wenn iOS sie blockiert,
+  /// `null` auf nicht-iOS.
+  Future<bool?> checkIosNotifPermission() {
+    return _notifications.hasIosPermission();
+  }
+
+  /// Öffnet die iOS-Mitteilungs-Einstellungen für die App.
+  /// Funktioniert via App-Settings-URL-Scheme. Auf iOS landet der User
+  /// direkt bei Einstellungen → Nextdeck → Mitteilungen (sofern dort
+  /// schon ein Eintrag existiert).
+  Future<bool> openIosAppSettings() async {
+    if (!Platform.isIOS) return false;
     try {
-      final raw = await api.fetchServerNotifications(
-          _baseUrl!, _username!, _password!);
-      if (raw == null) return;
-      final ids = <String>{};
-      for (final n in raw) {
-        final idDyn = n['notification_id'] ?? n['id'];
-        if (idDyn != null) ids.add(idDyn.toString());
-      }
-      cache.put(_kSeenNotifsKey, ids.toList());
-    } catch (_) {}
+      final uri = Uri.parse('app-settings:');
+      return await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Setzt den globalen Default-Intervall für alle Boards ohne Override.

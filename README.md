@@ -54,6 +54,66 @@ A clean, fast and privacy-friendly Nextcloud Deck client with native Cupertino U
   - Execute "Test login"; the app checks login, deck availability and then loads boards
 
 
+## Notifications
+
+Next Deck offers two complementary mechanisms for activity notifications
+(card assignments, @-mentions in comments, shares):
+
+1. **Foreground polling** while the app is open — the active board syncs on
+   the configured interval, and the central Nextcloud notifications API is
+   polled in parallel (latency: under one minute).
+2. **Background fetch** when the app is in the background or terminated —
+   iOS wakes the app every 15-60 minutes (Apple decides; can take longer if
+   the device is idle or the battery is low) and the same poll runs.
+
+Both mechanisms produce **local notifications** rendered by iOS — they look
+identical to system push, but technically they are *not* push.
+
+### Why not real APNs push?
+
+Real push (sub-second delivery, app does not need to run at all) goes
+through Apple's APNs. The official Nextcloud iOS app uses the central
+`push.nextcloud.com` proxy, which is configured *only* for the official app
+bundle ID `com.nextcloud.iOS`. Third-party apps like Next Deck cannot
+attach to that proxy out of the box. A real push setup for Next Deck would
+require:
+
+- An Apple Developer APNs Auth Key (`.p8`), key ID, team ID
+- The "Push Notifications" capability enabled on your app ID in App Store
+  Connect
+- Either:
+  - Your own self-hosted push proxy (e.g. `nextcloud/push-proxy`) running
+    next to your Nextcloud server, configured with the `.p8` key and the
+    Next Deck bundle ID — *or*
+  - A direct APNs sender service that subscribes to your Nextcloud
+    `notifications` events
+- The App-side Push subscription flow against
+  `/ocs/v2.php/apps/notifications/api/v2/push` with an RSA key pair
+
+That is roughly a day of development plus server-admin work, and ongoing
+operational responsibility for the push proxy. **Most users will not need
+this.** The polling-based approach is "good enough" for the vast majority
+of workflows and requires no server changes.
+
+### Recommended setup if you want real push *today*
+
+If you absolutely need sub-second push and don't want to host a proxy
+yourself:
+
+1. **Install the official Nextcloud iOS app** alongside Next Deck.
+2. The Nextcloud app handles real push via `push.nextcloud.com`. Card
+   assignments, mentions and shares will pop up there.
+3. **Disable activity notifications inside Next Deck** (Settings ->
+   Notifications) to avoid duplicates.
+4. Use Next Deck for the actual board work — the Nextcloud app for the
+   notification handoff.
+
+This is a pragmatic, zero-configuration approach that gives you the
+combined strengths of both apps. If at some point you decide to set up a
+custom push proxy for Next Deck, the in-app polling can be re-enabled and
+the Nextcloud-app notifications can be turned off there.
+
+
 ## Security & data protection
 
 - HTTPS enforced: Entries are automatically normalized to `https://`

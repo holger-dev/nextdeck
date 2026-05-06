@@ -5,8 +5,9 @@
   "packages": [
     {
       "name": "nextdeck",
-      "version": "1.8.0+10",
+      "version": "1.8.0+18",
       "dependencies": [
+        "background_fetch",
         "cupertino_icons",
         "file_picker",
         "flutter",
@@ -69,6 +70,13 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "background_fetch",
+      "version": "1.6.2",
+      "dependencies": [
+        "flutter"
       ]
     },
     {
