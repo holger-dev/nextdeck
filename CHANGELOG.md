@@ -9,6 +9,7 @@ This changelog is based on `STORE.md` and links to detailed release notes in `ch
 - Faster sync: HTTP keep-alive pool, large JSON payloads decoded in a background isolate, ~80x fewer UI rebuilds per sync via notify coalescing.
 - Conflict protection: optimistic-concurrency detection on every card save with a clear "Reload current / Overwrite anyway" dialog.
 - iOS Shortcuts / Siri integration: create cards directly via `nextdeck://newcard?title=…`.
+- Server-side notification polling: banners for assignments, comment-@-mentions, and shares come from the central Nextcloud notifications API — works across all boards.
 - Bug fixes: clickable links (#50, #68), card order stability (#58), MP3 attachments (#61), board delete (#62), list rename (#63), status-chip overlap (#65), file uploads on current Nextcloud (#67), brighter board overview palette (#51).
 - Improvements: two-row markdown toolbar with auto-selected placeholders (#53), per-board sync interval (#54), local notifications for assignments/mentions (#55), hideable info chips (#66), scrollable long descriptions, skeleton loaders, haptic feedback.
 - Details: `changelog/1.8.md`

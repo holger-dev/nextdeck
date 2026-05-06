@@ -302,6 +302,7 @@ Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (wer
 - Schnellerer Sync: HTTP-Connection-Pool (Keep-Alive), JSON-Decoding für große Boards/Listen im Background-Isolate, ~80x weniger UI-Rebuilds pro Sync durch Notify-Coalescing.
 - Konflikt-Schutz beim Speichern: Wenn jemand die Karte zwischenzeitlich geändert hat, kommt ein klarer Dialog (Aktuelle laden / Trotzdem überschreiben).
 - iOS-Shortcuts und Siri: Karten anlegen via `nextdeck://newcard?title=…`.
+- Server-Benachrichtigungen: zentrale Nextcloud-Notifications-API für Zuweisungen, Comment-Mentions und Shares aus allen Boards.
 - Bugfixes: klickbare Links in Beschreibung und Kommentaren, stabile Karten-Reihenfolge, MP3-Anhänge, Boards löschen, Listen umbenennen, Status-Chip-Layout, Datei-Anhänge gegen aktuelle Nextcloud-Versionen.
 - Verbesserungen: Markdown-Toolbar zwei-reihig mit Auto-Selektion, pro-Board-Sync-Intervall, lokale Benachrichtigungen für Zuweisungen/Erwähnungen, ausblendbare Info-Chips, scrollbare lange Beschreibungen, Skeleton-Loader, Haptik beim Drag-Drop.
 
@@ -311,6 +312,7 @@ Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (wer
 - Faster sync: HTTP keep-alive pool, large JSON payloads decoded in a background isolate, ~80x fewer UI rebuilds per sync via notify coalescing.
 - Conflict protection on save: clear dialog when someone modified the card in parallel (Reload current / Overwrite anyway).
 - iOS Shortcuts and Siri: create cards via `nextdeck://newcard?title=…`.
+- Server-side notifications: central Nextcloud notifications API for assignments, comment mentions and shares from all boards.
 - Bug fixes: clickable links in description and comments, stable card order, MP3 attachments, board delete, list rename, status-chip layout, file uploads on current Nextcloud versions.
 - Improvements: two-row markdown toolbar with auto-selected placeholders, per-board sync interval, local notifications for assignments/mentions, hideable info chips, scrollable long descriptions, skeleton loaders, haptic feedback on drag-drop.
 
@@ -320,5 +322,6 @@ Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (wer
 - Sincronización más rápida: keep-alive HTTP, decodificación JSON en isolate de fondo, ~80x menos reconstrucciones de UI por sincronización.
 - Protección de conflictos al guardar: diálogo claro cuando alguien modificó la tarjeta en paralelo.
 - Atajos iOS y Siri: crear tarjetas con `nextdeck://newcard?title=…`.
+- Notificaciones del servidor: API central de Nextcloud para asignaciones, menciones en comentarios y compartidos de todos los tableros.
 - Correcciones: enlaces clicables en descripción y comentarios, orden de tarjetas estable, adjuntos MP3, eliminar tableros, renombrar listas, layout de chips de estado, subida de archivos en versiones actuales de Nextcloud.
 - Mejoras: barra de Markdown en dos filas con auto-selección, intervalo de sincronización por tablero, notificaciones locales, chips ocultables, descripción con scroll, skeleton-loaders, feedback háptico.
