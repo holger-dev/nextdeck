@@ -6,8 +6,18 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import 'nextcloud_deck_api.dart';
 
+/// Hive-Box-Name des Background-Isolates. Bewusst getrennt vom
+/// `nextdeck_cache` der Foreground-App: Hive 2 ist nicht safe für
+/// concurrent Multi-Isolate-Zugriff auf dieselbe Box. Wenn iOS den
+/// Headless-Task triggert, während die App gerade im Vordergrund ist,
+/// würden beide Isolates dieselbe Datei beschreiben — Risiko sind
+/// verlorene Writes oder im schlimmsten Fall Box-Korruption.
+/// Mit separater Box pollt der Hintergrund eigenständig. Dedup auf der
+/// UI-Seite läuft über die `flutter_local_notifications`-ID (identischer
+/// Hash in beiden Isolates), iOS ersetzt Banner mit gleicher ID.
+const String _kBgPollBoxName = 'nextdeck_bgpoll';
+
 /// Hive-Cache-Key für die bereits gesehenen Server-Notification-IDs.
-/// MUSS identisch sein zu den Konstanten in `app_state.dart`.
 const String _kSeenNotifsKey = 'server_notifs_seen';
 const String _kSeenActivitiesKey = 'server_activities_seen';
 
@@ -72,11 +82,13 @@ Future<void> initializeBackgroundFetch() async {
 /// Items als lokale Notifications rendern. Identisch zur Foreground-
 /// Variante in app_state.dart, hier aber standalone (eigenes Isolate).
 Future<void> _runBackgroundPoll() async {
-  // 1) Hive im Hintergrund-Isolate initialisieren.
+  // 1) Hive im Hintergrund-Isolate initialisieren — eigene Box, damit
+  // wir nicht parallel zu einem evtl. laufenden Foreground-Isolate auf
+  // dieselbe Datei schreiben (siehe Kommentar zu `_kBgPollBoxName`).
   await Hive.initFlutter();
-  final box = Hive.isBoxOpen('nextdeck_cache')
-      ? Hive.box('nextdeck_cache')
-      : await Hive.openBox('nextdeck_cache');
+  final box = Hive.isBoxOpen(_kBgPollBoxName)
+      ? Hive.box(_kBgPollBoxName)
+      : await Hive.openBox(_kBgPollBoxName);
 
   // 2) Auth + Settings aus Secure Storage lesen.
   // Muss zur Accessibility in `AppState` passen, damit Items, die dort

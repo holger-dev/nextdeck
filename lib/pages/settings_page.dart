@@ -158,7 +158,7 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
     final fullUrl = hostOnly.startsWith('/') ? hostOnly : 'https://$hostOnly';
-    app.setCredentials(
+    await app.setCredentials(
         baseUrl: fullUrl, username: _user.text, password: _pass.text);
     setState(() {
       _testing = true;
@@ -847,6 +847,20 @@ class _SettingsPageState extends State<SettingsPage> {
                 Text(l10n.overviewShowBoardInfoHelp,
                     style: const TextStyle(
                         color: CupertinoColors.systemGrey, fontSize: 12)),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: Text(l10n.upcomingSingleColumnLabel)),
+                    CupertinoSwitch(
+                        value: app.upcomingSingleColumn,
+                        onChanged: (v) => app.setUpcomingSingleColumn(v)),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(l10n.upcomingSingleColumnHelp,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12)),
               ],
             ),
             const SizedBox(height: 16),
@@ -1054,18 +1068,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   () => _sectionPerformanceOpen = !_sectionPerformanceOpen),
               children: [
                 Text(L10n.of(context).fullSyncManualHint,
-                    style: const TextStyle(
-                        color: CupertinoColors.systemGrey, fontSize: 12)),
-                const SizedBox(height: 8),
-                Row(children: [
-                  Expanded(
-                      child: Text(L10n.of(context).upcomingSingleColumnLabel)),
-                  CupertinoSwitch(
-                      value: app.upcomingSingleColumn,
-                      onChanged: (v) => app.setUpcomingSingleColumn(v))
-                ]),
-                const SizedBox(height: 6),
-                Text(L10n.of(context).upcomingSingleColumnHelp,
                     style: const TextStyle(
                         color: CupertinoColors.systemGrey, fontSize: 12)),
                 const SizedBox(height: 10),
