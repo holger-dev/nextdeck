@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart' as http;
 import 'sync_service.dart';
@@ -9,24 +11,41 @@ class SyncServiceImpl implements SyncService {
   final String password;
   final Box cache;
 
+  // Wiederverwendbarer HTTP-Client mit Keep-Alive. Spart pro Sync-Pass
+  // dutzende TLS-Handshakes gegenüber `http.get`, das pro Aufruf eine
+  // frische Connection aufbaut.
+  final http.Client _client = http.Client();
+
+  // Timeout für Sync-Calls. Ohne diesen Wert wartet die App im Worst Case
+  // im OS-Default (~75 s+) auf einen toten Server — währenddessen läuft
+  // der AutoSync alle 60 s erneut an und Calls stapeln sich.
+  static const Duration _requestTimeout = Duration(seconds: 15);
+
   SyncServiceImpl({
     required this.baseUrl,
-    required this.username, 
+    required this.username,
     required this.password,
     required this.cache,
   });
 
+  @override
+  void dispose() {
+    _client.close();
+  }
+
   // Simple HTTP helper
   Future<http.Response> _get(String endpoint) async {
-    final url = '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/index.php/apps/deck/api/v1.0$endpoint';
+    final url =
+        '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/index.php/apps/deck/api/v1.0$endpoint';
     final uri = Uri.parse(url);
-    
-    return await http.get(uri, headers: {
-      'Authorization': 'Basic ${base64Encode(utf8.encode('$username:$password'))}',
+
+    return await _client.get(uri, headers: {
+      'Authorization':
+          'Basic ${base64Encode(utf8.encode('$username:$password'))}',
       'OCS-APIRequest': 'true',
       'Accept': 'application/json',
       'Content-Type': 'application/json',
-    });
+    }).timeout(_requestTimeout);
   }
 
   @override
@@ -200,12 +219,13 @@ class SyncServiceImpl implements SyncService {
         cache.delete('board_lastmod_$rid');
         cache.delete('board_lastmod_prev_$rid');
       }
-      
-    } catch (e) {
-      // Error in initial sync
+    } on TimeoutException catch (e) {
+      debugPrint('[sync] initSyncOnAppStart timed out: $e');
+    } catch (e, st) {
+      debugPrint('[sync] initSyncOnAppStart failed: $e\n$st');
     }
   }
-  
+
   /// Load one board's stacks and cards completely
   Future<void> _loadSingleBoardWithStacksAndCards(int boardId) async {
     try {
@@ -246,12 +266,13 @@ class SyncServiceImpl implements SyncService {
       // Save to cache
       cache.put('stacks_$boardId', stacks);
       cache.put('columns_$boardId', columns);
-      
-    } catch (e) {
-      // Error loading board
+    } on TimeoutException catch (e) {
+      debugPrint('[sync] board $boardId refresh timed out: $e');
+    } catch (e, st) {
+      debugPrint('[sync] board $boardId refresh failed: $e\n$st');
     }
   }
-  
+
   int? _parseDueDate(dynamic duedate) {
     if (duedate == null) return null;
     if (duedate is String) {

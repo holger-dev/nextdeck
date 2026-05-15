@@ -240,59 +240,57 @@ class AppState extends ChangeNotifier {
     // unlesbar — Folge: App denkt, User ist ausgeloggt, alle Settings
     // erscheinen zurückgesetzt.
     await _migrateSecureStorageAccessibility();
+    // Deep-Link-Init und Keychain-Read parallel anlaufen lassen.
+    // `readAll()` ist ein einziger Keychain-Roundtrip gegen iOS' SecItem-API
+    // statt 20+ sequentieller Reads — auf älteren Devices spart das im
+    // Cold-Start spürbar zweistellige Millisekunden.
+    Future<void>? deepLinkInit;
     if (Platform.isIOS) {
-      await DeepLinkService.instance.init();
+      deepLinkInit = DeepLinkService.instance.init();
       _deepLinkSub ??= DeepLinkService.instance.links
           .listen((uri) => unawaited(_handleDeepLink(uri)));
     }
-    final String? storedThemeMode = await storage.read(key: 'themeMode');
+    final Map<String, String> kc = await storage.readAll();
+    if (deepLinkInit != null) await deepLinkInit;
+
+    final String? storedThemeMode = kc['themeMode'];
     if (storedThemeMode == 'light' ||
         storedThemeMode == 'dark' ||
         storedThemeMode == 'system') {
       _themeMode = storedThemeMode!;
     } else {
-      _themeMode = (await storage.read(key: 'dark')) == '1' ? 'dark' : 'light';
+      _themeMode = kc['dark'] == '1' ? 'dark' : 'light';
     }
     _isDarkMode = _resolveDarkMode(
         SchedulerBinding.instance.platformDispatcher.platformBrightness);
-    _themeIndex =
-        int.tryParse(await storage.read(key: 'themeIndex') ?? '') ?? 0;
-    _smartColors = (await storage.read(key: 'smartColors')) != '0';
-    _cardColorsFromLabels =
-        (await storage.read(key: 'card_colors_from_labels')) != '0';
-    _showDescriptionText =
-        (await storage.read(key: 'showDescriptionText')) != '0';
-    _upcomingSingleColumn = (await storage.read(key: 'up_single')) == '1';
-    _upcomingAssignedOnly =
-        (await storage.read(key: 'up_assigned_only')) == '1';
-    _boardArchivedOnly =
-        (await storage.read(key: 'board_archived_only')) == '1';
-    _overviewShowBoardInfo =
-        (await storage.read(key: 'overview_board_info')) != '0';
-    final bandMode = await storage.read(key: 'board_band_mode');
+    _themeIndex = int.tryParse(kc['themeIndex'] ?? '') ?? 0;
+    _smartColors = kc['smartColors'] != '0';
+    _cardColorsFromLabels = kc['card_colors_from_labels'] != '0';
+    _showDescriptionText = kc['showDescriptionText'] != '0';
+    _upcomingSingleColumn = kc['up_single'] == '1';
+    _upcomingAssignedOnly = kc['up_assigned_only'] == '1';
+    _boardArchivedOnly = kc['board_archived_only'] == '1';
+    _overviewShowBoardInfo = kc['overview_board_info'] != '0';
+    final bandMode = kc['board_band_mode'];
     if (bandMode == 'nextcloud' || bandMode == 'hidden') {
       _boardBandMode = bandMode!;
     }
-    _dueNotificationsEnabled =
-        (await storage.read(key: 'due_notif_enabled')) == '1';
-    _activityNotificationsEnabled =
-        (await storage.read(key: 'activity_notif_enabled')) == '1';
-    _dueOverdueEnabled = (await storage.read(key: 'due_notif_overdue')) != '0';
+    _dueNotificationsEnabled = kc['due_notif_enabled'] == '1';
+    _activityNotificationsEnabled = kc['activity_notif_enabled'] == '1';
+    _dueOverdueEnabled = kc['due_notif_overdue'] != '0';
     _dueReminderMinutes =
-        _parseReminderMinutes(await storage.read(key: 'due_notif_offsets')) ??
-            const [60, 1440];
-    _boardSyncIntervals = _parseBoardSyncIntervals(
-        await storage.read(key: 'board_sync_intervals'));
-    final globalRaw = await storage.read(key: 'global_sync_interval');
-    final globalParsed = int.tryParse(globalRaw ?? '');
+        _parseReminderMinutes(kc['due_notif_offsets']) ?? const [60, 1440];
+    _boardSyncIntervals =
+        _parseBoardSyncIntervals(kc['board_sync_intervals']);
+    final globalParsed = int.tryParse(kc['global_sync_interval'] ?? '');
     _globalSyncIntervalMinutes =
         (globalParsed != null && globalParsed >= 0) ? globalParsed : 0;
     // Notification-Quelle / Filter / Intervall laden
-    final src = await storage.read(key: 'notif_source');
+    final src = kc['notif_source'];
     if (src == 'activity' || src == 'notifications' || src == 'both') {
       _notificationSource = src!;
     }
-    final filtersRaw = await storage.read(key: 'notif_filters');
+    final filtersRaw = kc['notif_filters'];
     if (filtersRaw != null && filtersRaw.trim().isNotEmpty) {
       _notificationFilters = filtersRaw
           .split(',')
@@ -300,17 +298,15 @@ class AppState extends ChangeNotifier {
           .where((e) => e.isNotEmpty)
           .toSet();
     }
-    final pollRaw = await storage.read(key: 'notif_poll_minutes');
-    final pollParsed = int.tryParse(pollRaw ?? '');
+    final pollParsed = int.tryParse(kc['notif_poll_minutes'] ?? '');
     if (pollParsed != null && pollParsed >= 0) {
       _notificationPollMinutes = pollParsed;
     }
-    _localMode = (await storage.read(key: 'local_mode')) == '1';
-    _localeCode = await storage.read(key: 'locale');
-    _baseUrl = await storage.read(key: 'baseUrl');
-    _defaultBoardId =
-        int.tryParse(await storage.read(key: 'defaultBoardId') ?? '');
-    final sbm = await storage.read(key: 'startup_board_mode');
+    _localMode = kc['local_mode'] == '1';
+    _localeCode = kc['locale'];
+    _baseUrl = kc['baseUrl'];
+    _defaultBoardId = int.tryParse(kc['defaultBoardId'] ?? '');
+    final sbm = kc['startup_board_mode'];
     if (sbm == 'default' || sbm == 'last') {
       _startupBoardMode = sbm!;
     }
@@ -322,18 +318,18 @@ class AppState extends ChangeNotifier {
         await storage.write(key: 'baseUrl', value: _baseUrl);
       }
     }
-    _username = await storage.read(key: 'username');
-    _password = await storage.read(key: 'password');
+    _username = kc['username'];
+    _password = kc['password'];
     _startupTabIndex =
-        int.tryParse(await storage.read(key: 'startup_tab') ?? '')
-                ?.clamp(0, 2) ??
-            1;
+        int.tryParse(kc['startup_tab'] ?? '')?.clamp(0, 2) ?? 1;
     if (_dueNotificationsEnabled && Platform.isIOS) {
       try {
         await _notifications.init(requestPermissions: false);
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[init] notification init failed: $e');
+      }
     }
-    final activeBoardIdStr = await storage.read(key: 'activeBoardId');
+    final activeBoardIdStr = kc['activeBoardId'];
     if (_localMode) {
       _setupLocalBoard();
       unawaited(_updateWidgetData());
@@ -347,7 +343,7 @@ class AppState extends ChangeNotifier {
     // verfügbar ist (typisch: Background-Trigger vor erstem Entsperren).
     final migrationDone = cache.get('cache_migration_v2');
     if (migrationDone != true) {
-      print(
+      debugPrint(
           '[STATE init] Running cache migration - clearing old column caches...');
       final boards = cache.get('boards');
       if (boards is List) {
@@ -361,11 +357,12 @@ class AppState extends ChangeNotifier {
         }
       }
       cache.put('cache_migration_v2', true);
-      print('[STATE init] Cache migration complete');
+      debugPrint('[STATE init] Cache migration complete');
     }
     _hydrateFromCache();
     if (_baseUrl != null && _username != null && _password != null) {
       try {
+        _sync?.dispose();
         _sync = SyncServiceImpl(
             baseUrl: _baseUrl!,
             username: _username!,
@@ -386,15 +383,18 @@ class AppState extends ChangeNotifier {
             // Fetch boards once to drop deleted boards from cache/UI
             try {
               await refreshBoards(forceNetwork: true);
-            } catch (_) {}
+            } catch (e) {
+              debugPrint('[init] boot refreshBoards failed: $e');
+            }
           } finally {
             _bootSyncing = false;
             _bootMessage = null;
             notifyListeners();
           }
         })();
-      } catch (_) {
+      } catch (e) {
         // Ignorieren beim Start; Nutzer kann in den Einstellungen erneut testen
+        debugPrint('[init] boot sync setup failed: $e');
       }
       // Autosync starten (Board-Delta alle 60s, Gatekeeper+Upcoming selektiv)
       _startAutoSync();
@@ -544,7 +544,9 @@ class AppState extends ChangeNotifier {
         try {
           await refreshColumnsFor(b,
               bypassCooldown: true, full: force, forceNetwork: force);
-        } catch (_) {}
+        } catch (e) {
+      debugPrint('[catch] $e');
+    }
         onProgress?.call(i + 1, total);
       }
     } finally {
@@ -564,6 +566,7 @@ class AppState extends ChangeNotifier {
       notifyListeners();
 
       _stopAutoSync();
+      _sync?.dispose();
       _sync = SyncServiceImpl(
           baseUrl: _baseUrl!,
           username: _username!,
@@ -583,7 +586,9 @@ class AppState extends ChangeNotifier {
       // Fetch boards once to drop deleted boards from cache/UI
       try {
         await refreshBoards(forceNetwork: true);
-      } catch (_) {}
+      } catch (e) {
+      debugPrint('[catch] $e');
+    }
     } catch (_) {
     } finally {
       _bootSyncing = false;
@@ -607,7 +612,9 @@ class AppState extends ChangeNotifier {
       // jemand im Browser einer Karte zuweist und der Auto-Sync das
       // anschließend zieht (refreshUpcomingDelta läuft dort nicht mehr).
       unawaited(_notifyNewActivityFromMemory());
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[catch] $e');
+    }
   }
 
   void _rebuildUpcomingCacheFromMemory() {
@@ -679,7 +686,9 @@ class AppState extends ChangeNotifier {
         'later': l,
       });
       unawaited(_notifyNewActivityFromMemory());
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[catch] $e');
+    }
   }
 
   /// Background scan to build a complete Upcoming view across all (non-archived, non-hidden) boards.
@@ -715,7 +724,9 @@ class AppState extends ChangeNotifier {
             full: true,
             forceNetwork: true,
           );
-        } catch (_) {}
+        } catch (e) {
+      debugPrint('[catch] $e');
+    }
         _rebuildUpcomingCacheFromMemory();
         _upScanDone = (_upScanDone + 1).clamp(0, _upScanTotal);
         notifyListeners();
@@ -760,7 +771,9 @@ class AppState extends ChangeNotifier {
               full: true,
               forceNetwork: true,
             );
-          } catch (_) {}
+          } catch (e) {
+      debugPrint('[catch] $e');
+    }
           // Rebuild Upcoming cache incrementally && yield a tiny gap to keep UI responsive
           _rebuildUpcomingCacheFromMemory();
           await Future.delayed(const Duration(milliseconds: 10));
@@ -805,7 +818,9 @@ class AppState extends ChangeNotifier {
               .map((e) => (e as Map).cast<String, int>())
               .toList(),
         };
-      } catch (_) {}
+      } catch (e) {
+      debugPrint('[catch] $e');
+    }
     }
     return null;
   }
@@ -817,9 +832,9 @@ class AppState extends ChangeNotifier {
   void setThemeMode(String mode, {Brightness? platformBrightness}) {
     if (mode != 'light' && mode != 'dark' && mode != 'system') return;
     _themeMode = mode;
-    storage.write(key: 'themeMode', value: mode);
+    unawaited(storage.write(key: 'themeMode', value: mode));
     // keep legacy flag in sync for older installs
-    storage.write(key: 'dark', value: mode == 'dark' ? '1' : '0');
+    unawaited(storage.write(key: 'dark', value: mode == 'dark' ? '1' : '0'));
     final b = platformBrightness ??
         SchedulerBinding.instance.platformDispatcher.platformBrightness;
     final next = _resolveDarkMode(b);
@@ -833,7 +848,7 @@ class AppState extends ChangeNotifier {
 
   void setThemeIndex(int index) {
     _themeIndex = index.clamp(0, 4);
-    storage.write(key: 'themeIndex', value: _themeIndex.toString());
+    unawaited(storage.write(key: 'themeIndex', value: _themeIndex.toString()));
     notifyListeners();
   }
 
@@ -854,32 +869,32 @@ class AppState extends ChangeNotifier {
 
   void setSmartColors(bool value) {
     _smartColors = value;
-    storage.write(key: 'smartColors', value: value ? '1' : '0');
+    unawaited(storage.write(key: 'smartColors', value: value ? '1' : '0'));
     notifyListeners();
   }
 
   void setCardColorsFromLabels(bool value) {
     _cardColorsFromLabels = value;
-    storage.write(key: 'card_colors_from_labels', value: value ? '1' : '0');
+    unawaited(storage.write(key: 'card_colors_from_labels', value: value ? '1' : '0'));
     notifyListeners();
   }
 
   void setShowDescriptionText(bool value) {
     _showDescriptionText = value;
-    storage.write(key: 'showDescriptionText', value: value ? '1' : '0');
+    unawaited(storage.write(key: 'showDescriptionText', value: value ? '1' : '0'));
     notifyListeners();
   }
 
   void setOverviewShowBoardInfo(bool value) {
     _overviewShowBoardInfo = value;
-    storage.write(key: 'overview_board_info', value: value ? '1' : '0');
+    unawaited(storage.write(key: 'overview_board_info', value: value ? '1' : '0'));
     notifyListeners();
   }
 
   void setBoardBandMode(String mode) {
     if (mode != 'nextcloud' && mode != 'hidden') return;
     _boardBandMode = mode;
-    storage.write(key: 'board_band_mode', value: mode);
+    unawaited(storage.write(key: 'board_band_mode', value: mode));
     notifyListeners();
   }
 
@@ -888,9 +903,9 @@ class AppState extends ChangeNotifier {
     if (code != null && code != 'de' && code != 'en' && code != 'es') return;
     _localeCode = code;
     if (code == null) {
-      storage.delete(key: 'locale');
+      unawaited(storage.delete(key: 'locale'));
     } else {
-      storage.write(key: 'locale', value: code);
+      unawaited(storage.write(key: 'locale', value: code));
     }
     // Reschedule to refresh notification language when the locale changes.
     unawaited(_rescheduleDueNotificationsFromMemory());
@@ -964,7 +979,7 @@ class AppState extends ChangeNotifier {
       Board(id: localBoardId, title: 'Lokales Board', archived: false)
     ];
     _activeBoard = _boards.first;
-    storage.write(key: 'activeBoardId', value: localBoardId.toString());
+    unawaited(storage.write(key: 'activeBoardId', value: localBoardId.toString()));
     cache.put('activeBoardId', localBoardId);
     cache.put(
         'boards',
@@ -973,13 +988,13 @@ class AppState extends ChangeNotifier {
             .toList());
   }
 
-  void setCredentials(
+  Future<void> setCredentials(
       {required String baseUrl,
       required String username,
-      required String password}) {
+      required String password}) async {
     _localMode = false;
-    storage.write(key: 'local_mode', value: '0');
     _stopAutoSync();
+    _sync?.dispose();
     _sync = null;
     final prevBase = _baseUrl;
     final prevUser = _username;
@@ -991,9 +1006,16 @@ class AppState extends ChangeNotifier {
     _baseUrl = nextBase;
     _username = nextUser;
     _password = password;
-    storage.write(key: 'baseUrl', value: _baseUrl);
-    storage.write(key: 'username', value: _username);
-    storage.write(key: 'password', value: _password);
+    // Credentials sind kritisch: bei verlorenem Write (User force-quittet
+    // direkt nach dem Login) wäre der User beim nächsten Start ausgeloggt.
+    // Deshalb hier auf den Keychain-Write warten, bevor wir notifyListeners
+    // feuern.
+    await Future.wait([
+      storage.write(key: 'local_mode', value: '0'),
+      storage.write(key: 'baseUrl', value: _baseUrl),
+      storage.write(key: 'username', value: _username),
+      storage.write(key: 'password', value: _password),
+    ]);
     if (changedServer) {
       _clearAllServerCaches();
     }
@@ -1012,7 +1034,13 @@ class AppState extends ChangeNotifier {
               k == 'hiddenBoards' ||
               k == 'upcoming_cache' ||
               k == 'etag_boards_details' ||
-              k == 'etag_boards_list') {
+              k == 'etag_boards_list' ||
+              // Notification-Bookkeeping ist serverspezifisch — bei
+              // Server-Wechsel müssen die „kennen wir schon"-Sets weg,
+              // sonst werden Notifications des neuen Servers
+              // fälschlicherweise als „bereits gesehen" gefiltert.
+              k == _kSeenNotifsKey ||
+              k == _kSeenActivitiesKey) {
             cache.delete(k);
           }
           if (k.startsWith('columns_') ||
@@ -1045,10 +1073,12 @@ class AppState extends ChangeNotifier {
       _upScanBoardTitle = null;
       // Reset default board selection for new server
       _defaultBoardId = null;
-      storage.delete(key: 'defaultBoardId');
-      storage.delete(key: 'activeBoardId');
-      storage.delete(key: 'hiddenBoards');
-    } catch (_) {}
+      unawaited(storage.delete(key: 'defaultBoardId'));
+      unawaited(storage.delete(key: 'activeBoardId'));
+      unawaited(storage.delete(key: 'hiddenBoards'));
+    } catch (e) {
+      debugPrint('[catch] $e');
+    }
   }
 
   // Ensure we always talk HTTPS regardless of user input, except when using server-relative base ('/' || '/path')
@@ -1277,7 +1307,7 @@ class AppState extends ChangeNotifier {
         }
       }
       if (dbg.length > 3) {
-        print('[refreshBoards] board raw flags: $dbg');
+        debugPrint('[refreshBoards] board raw flags: $dbg');
       }
       updatedBoards.add(Board.fromJson(map));
       final lastMod = _parseLastModified(
@@ -1299,8 +1329,23 @@ class AppState extends ChangeNotifier {
 
     // Log server boards for manual diagnostics
     final boardLog = updatedBoards.map((b) => '${b.id}:${b.title}').join(', ');
-    print(
+    debugPrint(
         '[refreshBoards] server returned boards (${updatedBoards.length}): $boardLog');
+
+    // Defensive Sanity-Check: wenn vorher Boards da waren und der Server
+    // jetzt mit komplett leerer Liste zurückkommt, ist das fast immer ein
+    // Edge-Case in der Antwort (Auth-Glitch, OCS-Wrapper-Wechsel, ungültige
+    // Server-Version), nicht „der User hat alle Boards gelöscht". Wir
+    // verwerfen die Antwort, statt Cache und in-memory state zu löschen.
+    if (updatedBoards.isEmpty && _boards.isNotEmpty) {
+      debugPrint(
+          '[refreshBoards] server returned 0 boards but cache has ${_boards.length} — ignoring response to avoid data loss');
+      await _ensureActiveBoardValid();
+      _rebuildUpcomingCacheFromMemory();
+      unawaited(_updateWidgetData());
+      notifyListeners();
+      return;
+    }
 
     final previousBoardIds = _boards.map((b) => b.id).toSet();
     _boards = updatedBoards;
@@ -1627,7 +1672,7 @@ class AppState extends ChangeNotifier {
   void setStartupBoardMode(String mode) {
     if (mode != 'default' && mode != 'last') return;
     _startupBoardMode = mode;
-    storage.write(key: 'startup_board_mode', value: mode);
+    unawaited(storage.write(key: 'startup_board_mode', value: mode));
     notifyListeners();
   }
 
@@ -1760,7 +1805,9 @@ class AppState extends ChangeNotifier {
         notifyListeners();
         return true;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[catch] $e');
+    }
     return false;
   }
 
@@ -1786,7 +1833,9 @@ class AppState extends ChangeNotifier {
         notifyListeners();
       }
       return ok;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[catch] $e');
+    }
     return false;
   }
 
@@ -1822,7 +1871,9 @@ class AppState extends ChangeNotifier {
           _baseUrl!, _username!, _password!, boardId, stackId,
           title: newTitle, order: current.order);
       if (ok) return true;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[catch] $e');
+    }
     _columnsByBoard[boardId] = cols;
     cache.put('columns_$boardId', _serializeColumnsForCache(cols));
     notifyListeners();
@@ -1879,7 +1930,9 @@ class AppState extends ChangeNotifier {
         await api.updateStack(_baseUrl!, _username!, _password!, boardId, c.id,
             title: c.title, order: i);
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[catch] $e');
+    }
   }
 
   Future<Board?> createBoard(
@@ -1918,11 +1971,15 @@ class AppState extends ChangeNotifier {
           _baseUrl!, _username!, _password!, boardId,
           priority: true);
       if (res.columns.isNotEmpty) return;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[catch] $e');
+    }
     for (final title in _defaultStackTitlesForLocale()) {
       try {
         await createStack(boardId: boardId, title: title);
-      } catch (_) {}
+      } catch (e) {
+      debugPrint('[catch] $e');
+    }
     }
   }
 
@@ -2002,7 +2059,9 @@ class AppState extends ChangeNotifier {
               .toList());
       notifyListeners();
       return true;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[catch] $e');
+    }
     return false;
   }
 
@@ -2021,7 +2080,9 @@ class AppState extends ChangeNotifier {
       if (!ok) return false;
       _removeBoardLocal(boardId);
       return true;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[catch] $e');
+    }
     return false;
   }
 
@@ -2110,7 +2171,9 @@ class AppState extends ChangeNotifier {
               _lastBoardIntervalSync[active.id] = DateTime.now();
               try {
                 await refreshSingleBoard(active.id);
-              } catch (_) {}
+              } catch (e) {
+      debugPrint('[catch] $e');
+    }
             }
           }
         }
@@ -2118,7 +2181,9 @@ class AppState extends ChangeNotifier {
         // Comment-Mentions und Mentions in allen Boards ab, ohne sie
         // einzeln zu syncen.
         unawaited(_pollServerNotifications());
-      } catch (_) {}
+      } catch (e) {
+      debugPrint('[catch] $e');
+    }
     });
   }
 
@@ -2416,26 +2481,26 @@ class AppState extends ChangeNotifier {
   void setStartupTabIndex(int index) {
     final clamped = index.clamp(0, 2);
     _startupTabIndex = clamped;
-    storage.write(key: 'startup_tab', value: clamped.toString());
+    unawaited(storage.write(key: 'startup_tab', value: clamped.toString()));
     notifyListeners();
   }
 
   void setUpcomingSingleColumn(bool value) {
     _upcomingSingleColumn = value;
-    storage.write(key: 'up_single', value: value ? '1' : '0');
+    unawaited(storage.write(key: 'up_single', value: value ? '1' : '0'));
     notifyListeners();
   }
 
   void setUpcomingAssignedOnly(bool value) {
     _upcomingAssignedOnly = value;
-    storage.write(key: 'up_assigned_only', value: value ? '1' : '0');
+    unawaited(storage.write(key: 'up_assigned_only', value: value ? '1' : '0'));
     _rebuildUpcomingCacheFromMemory();
     notifyListeners();
   }
 
   void setBoardArchivedOnly(bool value) {
     _boardArchivedOnly = value;
-    storage.write(key: 'board_archived_only', value: value ? '1' : '0');
+    unawaited(storage.write(key: 'board_archived_only', value: value ? '1' : '0'));
     notifyListeners();
   }
 
@@ -2483,8 +2548,8 @@ class AppState extends ChangeNotifier {
     }
     next.sort();
     _dueReminderMinutes = next;
-    storage.write(
-        key: 'due_notif_offsets', value: _dueReminderMinutes.join(','));
+    unawaited(storage.write(
+        key: 'due_notif_offsets', value: _dueReminderMinutes.join(',')));
     notifyListeners();
     if (_dueNotificationsEnabled && Platform.isIOS) {
       unawaited(_rescheduleDueNotificationsFromMemory());
@@ -2493,7 +2558,7 @@ class AppState extends ChangeNotifier {
 
   void setDueOverdueEnabled(bool value) {
     _dueOverdueEnabled = value;
-    storage.write(key: 'due_notif_overdue', value: value ? '1' : '0');
+    unawaited(storage.write(key: 'due_notif_overdue', value: value ? '1' : '0'));
     notifyListeners();
     if (_dueNotificationsEnabled && Platform.isIOS) {
       unawaited(_rescheduleDueNotificationsFromMemory());
@@ -2559,8 +2624,9 @@ class AppState extends ChangeNotifier {
     final next = Map<int, int>.from(_boardSyncIntervals);
     next.remove(boardId);
     _boardSyncIntervals = next;
-    storage.write(
-        key: 'board_sync_intervals', value: _encodeBoardSyncIntervals(next));
+    unawaited(storage.write(
+        key: 'board_sync_intervals',
+        value: _encodeBoardSyncIntervals(next)));
     notifyListeners();
   }
 
@@ -2573,8 +2639,9 @@ class AppState extends ChangeNotifier {
       next[boardId] = normalized;
     }
     _boardSyncIntervals = next;
-    storage.write(
-        key: 'board_sync_intervals', value: _encodeBoardSyncIntervals(next));
+    unawaited(storage.write(
+        key: 'board_sync_intervals',
+        value: _encodeBoardSyncIntervals(next)));
     notifyListeners();
   }
 
@@ -2819,6 +2886,7 @@ class AppState extends ChangeNotifier {
       }
       if (_password != null) {
         try {
+          _sync?.dispose();
           _sync = SyncServiceImpl(
               baseUrl: _baseUrl!,
               username: _username!,
@@ -2833,7 +2901,9 @@ class AppState extends ChangeNotifier {
               await setActiveBoard(board);
             }
           }
-        } catch (_) {}
+        } catch (e) {
+      debugPrint('[catch] $e');
+    }
       }
     }
     _startAutoSync();
@@ -2967,7 +3037,9 @@ class AppState extends ChangeNotifier {
             full: shouldForce,
             forceNetwork: shouldForce, // Use network if board changed
           );
-        } catch (_) {}
+        } catch (e) {
+      debugPrint('[catch] $e');
+    }
         if (boardUpdated) {
           final cols = _columnsByBoard[b.id] ?? const <deck.Column>[];
           for (final c in cols) {
@@ -3027,7 +3099,9 @@ class AppState extends ChangeNotifier {
             full: true,
             forceNetwork: true,
           );
-        } catch (_) {}
+        } catch (e) {
+      debugPrint('[catch] $e');
+    }
         _upScanDone = (_upScanDone + 1).clamp(0, _upScanTotal);
         notifyListeners();
       }
@@ -3095,7 +3169,9 @@ class AppState extends ChangeNotifier {
               }
             }
             _cardCommentsCount[cardId] = total;
-          } catch (_) {}
+          } catch (e) {
+      debugPrint('[catch] $e');
+    }
         }());
       }
       if (needsAttachments) {
@@ -3104,14 +3180,18 @@ class AppState extends ChangeNotifier {
             final list = await api.fetchCardAttachments(base, user, pass,
                 boardId: boardId, stackId: stackId, cardId: cardId);
             _cardAttachmentsCount[cardId] = list.length;
-          } catch (_) {}
+          } catch (e) {
+      debugPrint('[catch] $e');
+    }
         }());
       }
       if (futures.isNotEmpty) {
         await Future.wait(futures);
         notifyListeners();
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[catch] $e');
+    }
   }
 
   // Server update helper: apply update on server only, NO automatic sync
@@ -3478,7 +3558,9 @@ class AppState extends ChangeNotifier {
     try {
       await api.deleteCard(_baseUrl!, _username!, _password!,
           boardId: boardId, stackId: stackId, cardId: cardId);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[catch] $e');
+    }
   }
 
   // Optimistic local update to reflect changes immediately
