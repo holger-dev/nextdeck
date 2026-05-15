@@ -21,8 +21,23 @@ import '../services/widget_service.dart';
 import '../sync/sync_service.dart';
 import '../sync/sync_service_impl.dart';
 
+/// Keychain-Accessibility, die auch nach einem Reboot vor dem ersten Entsperren
+/// noch funktioniert (sobald das Gerät einmal entsperrt wurde). Ohne diesen
+/// Wert würden iOS-Background-Fetches und ähnliche Headless-Trigger den
+/// Keychain als gesperrt vorfinden, alle Reads würden `null` liefern, und die
+/// App würde fälschlich denken, der User sei ausgeloggt.
+const IOSOptions _kSecureStorageIOS = IOSOptions(
+  accessibility: KeychainAccessibility.first_unlock_this_device,
+);
+const MacOsOptions _kSecureStorageMacOS = MacOsOptions(
+  accessibility: KeychainAccessibility.first_unlock_this_device,
+);
+
 class AppState extends ChangeNotifier {
-  final storage = const FlutterSecureStorage();
+  final storage = const FlutterSecureStorage(
+    iOptions: _kSecureStorageIOS,
+    mOptions: _kSecureStorageMacOS,
+  );
   final CupertinoTabController tabController =
       CupertinoTabController(initialIndex: 1);
   final Box cache = Hive.box('nextdeck_cache');
@@ -218,6 +233,13 @@ class AppState extends ChangeNotifier {
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
+    // Vor allen Reads: bestehende Keychain-Items auf die neue Accessibility
+    // (`first_unlock_this_device`) heben. Ohne das wären Items, die in
+    // älteren Versionen mit `whenUnlocked` geschrieben wurden, beim Start
+    // im Hintergrund (Device gerade rebootet, noch nicht entsperrt)
+    // unlesbar — Folge: App denkt, User ist ausgeloggt, alle Settings
+    // erscheinen zurückgesetzt.
+    await _migrateSecureStorageAccessibility();
     if (Platform.isIOS) {
       await DeepLinkService.instance.init();
       _deepLinkSub ??= DeepLinkService.instance.links
@@ -318,27 +340,31 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    if (_baseUrl != null && _username != null && _password != null) {
-      // One-time cache migration: clear old caches without order data
-      final migrationDone = cache.get('cache_migration_v2');
-      if (migrationDone != true) {
-        print(
-            '[STATE init] Running cache migration - clearing old column caches...');
-        final boards = cache.get('boards');
-        if (boards is List) {
-          for (final b in boards) {
-            if (b is Map) {
-              final id = b['id'];
-              if (id is num) {
-                cache.delete('columns_${id.toInt()}');
-              }
+    // Cache-Migration und Cache-Hydration laufen IMMER — auch wenn der
+    // Keychain gerade nicht lesbar ist und Credentials `null` zurückkommen.
+    // Damit bleiben die zwischengespeicherten Boards/Karten sichtbar, statt
+    // dem User eine leere App zu zeigen, wenn der Keychain nur kurz nicht
+    // verfügbar ist (typisch: Background-Trigger vor erstem Entsperren).
+    final migrationDone = cache.get('cache_migration_v2');
+    if (migrationDone != true) {
+      print(
+          '[STATE init] Running cache migration - clearing old column caches...');
+      final boards = cache.get('boards');
+      if (boards is List) {
+        for (final b in boards) {
+          if (b is Map) {
+            final id = b['id'];
+            if (id is num) {
+              cache.delete('columns_${id.toInt()}');
             }
           }
         }
-        cache.put('cache_migration_v2', true);
-        print('[STATE init] Cache migration complete');
       }
-      _hydrateFromCache();
+      cache.put('cache_migration_v2', true);
+      print('[STATE init] Cache migration complete');
+    }
+    _hydrateFromCache();
+    if (_baseUrl != null && _username != null && _password != null) {
       try {
         _sync = SyncServiceImpl(
             baseUrl: _baseUrl!,
@@ -425,9 +451,16 @@ class AppState extends ChangeNotifier {
         }
       }
     }
-    // Wenn keine Zugangsdaten gesetzt sind (und nicht im lokalen Modus), zur Einstellungs-Registerkarte springen
+    // Wenn keine Zugangsdaten gesetzt sind (und nicht im lokalen Modus), zur
+    // Einstellungs-Registerkarte springen — aber NUR wenn auch kein
+    // Cache-Stand vorhanden ist. Sind Credentials kurz nicht lesbar
+    // (gesperrter Keychain), aber der Cache hält Boards, dann ist das
+    // höchstwahrscheinlich ein transientes Problem, kein Logout, und der
+    // User soll seine Daten weiter sehen statt auf Settings geworfen zu
+    // werden.
     if (!_localMode &&
-        (_baseUrl == null || _username == null || _password == null)) {
+        (_baseUrl == null || _username == null || _password == null) &&
+        _boards.isEmpty) {
       tabController.index = 3; // Settings tab
     }
     // Apply preferred startup tab if credentials vorhanden oder im lokalen Modus
@@ -436,6 +469,51 @@ class AppState extends ChangeNotifier {
       tabController.index = _startupTabIndex;
     }
     notifyListeners();
+  }
+
+  /// Einmalige Migration: bestehende Keychain-Items aus früheren Builds wurden
+  /// mit `kSecAttrAccessibleWhenUnlocked` (oder ähnlichem) abgelegt und sind
+  /// damit nach einem Reboot vor dem ersten Entsperren nicht lesbar. iOS kann
+  /// die App in genau diesem Zustand via Background-Fetch starten — dann
+  /// gibt der Keychain für alle Reads `null` zurück und es sieht so aus, als
+  /// wäre der User ausgeloggt. Wir lesen die Items also einmal mit der alten
+  /// Accessibility ein und schreiben sie mit der neuen
+  /// (`first_unlock_this_device`) zurück.
+  Future<void> _migrateSecureStorageAccessibility() async {
+    if (!(Platform.isIOS || Platform.isMacOS)) return;
+    if (cache.get('secure_storage_access_v2_done') == true) return;
+    try {
+      const legacy = FlutterSecureStorage();
+      final existing = await legacy.readAll();
+      if (existing.isEmpty) {
+        // Entweder Fresh-Install (Keychain leer und kein Cache) oder der
+        // Keychain ist gerade gesperrt. Wir markieren die Migration nur als
+        // erledigt, wenn auch kein Cache-Stand existiert — sonst riskieren
+        // wir, dass die Migration „erledigt" gestempelt wird, ohne je
+        // gelaufen zu sein.
+        final boards = cache.get('boards');
+        final hasCachedBoards = boards is List && boards.isNotEmpty;
+        if (!hasCachedBoards) {
+          cache.put('secure_storage_access_v2_done', true);
+        }
+        return;
+      }
+      for (final entry in existing.entries) {
+        try {
+          await legacy.delete(key: entry.key);
+          await storage.write(key: entry.key, value: entry.value);
+        } catch (e) {
+          debugPrint(
+              '[migration] keychain key ${entry.key} migration failed: $e');
+        }
+      }
+      cache.put('secure_storage_access_v2_done', true);
+      debugPrint(
+          '[migration] migrated ${existing.length} keychain items to first_unlock_this_device');
+    } catch (e) {
+      debugPrint('[migration] secure storage upgrade failed: $e');
+      // Flag nicht setzen — beim nächsten Start neu versuchen.
+    }
   }
 
   /// Background warm-up of columns && cards for all non-archived boards.

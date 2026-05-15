@@ -79,7 +79,16 @@ Future<void> _runBackgroundPoll() async {
       : await Hive.openBox('nextdeck_cache');
 
   // 2) Auth + Settings aus Secure Storage lesen.
-  const storage = FlutterSecureStorage();
+  // Muss zur Accessibility in `AppState` passen, damit Items, die dort
+  // mit `first_unlock_this_device` geschrieben wurden, hier gefunden werden.
+  const storage = FlutterSecureStorage(
+    iOptions: IOSOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+    mOptions: MacOsOptions(
+      accessibility: KeychainAccessibility.first_unlock_this_device,
+    ),
+  );
   final baseUrl = await storage.read(key: 'baseUrl');
   final user = await storage.read(key: 'username');
   final pass = await storage.read(key: 'password');
