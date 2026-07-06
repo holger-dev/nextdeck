@@ -1010,12 +1010,29 @@ class AppState extends ChangeNotifier {
     // direkt nach dem Login) wäre der User beim nächsten Start ausgeloggt.
     // Deshalb hier auf den Keychain-Write warten, bevor wir notifyListeners
     // feuern.
-    await Future.wait([
-      storage.write(key: 'local_mode', value: '0'),
-      storage.write(key: 'baseUrl', value: _baseUrl),
-      storage.write(key: 'username', value: _username),
-      storage.write(key: 'password', value: _password),
-    ]);
+    //
+    // Writes werden SEQUENZIELL geschrieben (nicht via Future.wait): auf iOS
+    // gab es Fresh-Install-Reports, bei denen vier gleichzeitige SecItemAdd-
+    // Calls unter Contention teilweise stumm scheiterten — meist am Passwort,
+    // was für den User dann wie „Anmeldedaten nicht gespeichert" aussieht.
+    // Nach dem Schreiben verifizieren wir den Passwort-Slot einmal per Read
+    // und starten bei null einen Retry, damit ein einmaliger Fehlschlag nicht
+    // schon reicht, um den User beim Neustart wieder in den Login zu zwingen.
+    await storage.write(key: 'local_mode', value: '0');
+    await storage.write(key: 'baseUrl', value: _baseUrl);
+    await storage.write(key: 'username', value: _username);
+    await storage.write(key: 'password', value: _password);
+    final verify = await storage.read(key: 'password');
+    if (verify != _password) {
+      debugPrint(
+          '[setCredentials] password verify returned "${verify == null ? "null" : "mismatch"}", retrying once');
+      await storage.write(key: 'password', value: _password);
+      final verify2 = await storage.read(key: 'password');
+      if (verify2 != _password) {
+        throw StateError(
+            'Keychain-Write für Passwort fehlgeschlagen (Slot lässt sich nach Retry nicht lesen).');
+      }
+    }
     if (changedServer) {
       _clearAllServerCaches();
     }

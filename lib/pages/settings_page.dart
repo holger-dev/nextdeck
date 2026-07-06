@@ -158,13 +158,28 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
     final fullUrl = hostOnly.startsWith('/') ? hostOnly : 'https://$hostOnly';
-    await app.setCredentials(
-        baseUrl: fullUrl, username: _user.text, password: _pass.text);
     setState(() {
       _testing = true;
       _testMsg = null;
       _testOk = false;
     });
+    // setCredentials kann seit dem Keychain-Verify-Fix eine Exception
+    // werfen, wenn das Passwort trotz Retry nicht im Keychain landet.
+    // Diese Fehler dürfen NICHT unter den Tisch fallen — sonst denkt der
+    // User „ich hab doch geklickt" und stellt später fest, dass die
+    // Anmeldung nicht persistiert wurde.
+    try {
+      await app.setCredentials(
+          baseUrl: fullUrl, username: _user.text, password: _pass.text);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _testing = false;
+        _testMsg = l10n.errorMsg(e.toString());
+        _testOk = false;
+      });
+      return;
+    }
     try {
       final ok = await app.testLogin();
       if (!ok) {
