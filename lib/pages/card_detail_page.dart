@@ -23,6 +23,7 @@ import '../models/column.dart' as deck;
 import '../widgets/markdown_editor.dart';
 import '../models/user_ref.dart';
 import '../models/comment.dart';
+import '../theme/design_tokens.dart';
 import '../l10n/app_localizations.dart';
 // import 'labels_manage_page.dart';
 
@@ -934,7 +935,11 @@ class _CardDetailPageState extends State<CardDetailPage> {
                       const panelPadding = EdgeInsets.all(12);
                       if (!isWide) {
                         return ListView(
-                          padding: const EdgeInsets.all(16),
+                          // Zusätzlicher Bottom-Space, damit das Kommentar-
+                          // Eingabefeld + „Senden"-Button nicht von der
+                          // schwebenden Glass-Tab-Bar verdeckt werden.
+                          padding: EdgeInsets.fromLTRB(
+                              16, 16, 16, 16 + DT.tabBarReserve),
                           children: [
                             Container(
                               decoration: panelDecoration,
@@ -1562,7 +1567,11 @@ class _CardDetailPageState extends State<CardDetailPage> {
                       }
                       // Wide layout: left = description; right = all other fields stacked
                       return Padding(
-                        padding: const EdgeInsets.all(16),
+                        // Bottom-Space, damit die schwebende Glass-Tab-Bar
+                        // die untersten Elemente (Kommentar-Eingabe rechts,
+                        // Description-Editor links) nicht überdeckt.
+                        padding: EdgeInsets.fromLTRB(
+                            16, 16, 16, 16 + DT.tabBarReserve),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
