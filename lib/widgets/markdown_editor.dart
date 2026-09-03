@@ -27,11 +27,73 @@ class MarkdownEditor extends StatefulWidget {
 
 class _MarkdownEditorState extends State<MarkdownEditor> {
   late bool _preview;
+  // Letzter bekannter Text — für die Enter-Erkennung in _handleTextChanged.
+  // Wird nur über onChanged aktuell gehalten; programmatische Änderungen
+  // (Templates, Toolbar) verpassen höchstens ein Event und heilen sich
+  // beim nächsten Tastendruck selbst.
+  String _lastText = '';
 
   @override
   void initState() {
     super.initState();
     _preview = widget.initialPreview;
+    _lastText = widget.controller.text;
+  }
+
+  /// Issue #82: Enter in einer Task-/Bullet-Zeile führt die Liste fort.
+  /// - `- [ ] Foo` + Enter  → neue Zeile beginnt mit `- [ ] `
+  /// - `- Foo` + Enter      → neue Zeile beginnt mit `- `
+  /// - leere Listenzeile + Enter → Marker wird entfernt (Liste beendet),
+  ///   wie man es aus üblichen Markdown-Editoren kennt.
+  void _handleTextChanged(String newText) {
+    final old = _lastText;
+    _lastText = newText;
+    // Nur reagieren, wenn genau EIN Zeichen dazukam und das ein \n ist —
+    // schließt Paste-Operationen und Löschungen aus.
+    if (newText.length != old.length + 1) return;
+    final sel = widget.controller.selection;
+    if (!sel.isValid || !sel.isCollapsed) return;
+    final pos = sel.start;
+    if (pos < 1 || newText[pos - 1] != '\n') return;
+
+    // Zeile VOR dem frisch eingefügten \n bestimmen
+    final beforeNewline = newText.substring(0, pos - 1);
+    final lineStart = beforeNewline.lastIndexOf('\n') + 1;
+    final prevLine = beforeNewline.substring(lineStart);
+
+    final taskMatch =
+        RegExp(r'^(\s*)- \[( |x|X)\] (.*)$').firstMatch(prevLine);
+    final bulletMatch = RegExp(r'^(\s*)- (.*)$').firstMatch(prevLine);
+
+    String? continuationPrefix;
+    bool emptyItem = false;
+    if (taskMatch != null) {
+      emptyItem = taskMatch.group(3)!.trim().isEmpty;
+      continuationPrefix = '${taskMatch.group(1)!}- [ ] ';
+    } else if (bulletMatch != null) {
+      emptyItem = bulletMatch.group(2)!.trim().isEmpty;
+      continuationPrefix = '${bulletMatch.group(1)!}- ';
+    }
+    if (continuationPrefix == null) return;
+
+    if (emptyItem) {
+      // Leeres Listenelement + Enter → Marker UND das neue \n entfernen;
+      // Cursor bleibt auf der (jetzt leeren) Zeile.
+      final cleaned = newText.replaceRange(lineStart, pos, '');
+      _lastText = cleaned;
+      widget.controller.value = TextEditingValue(
+        text: cleaned,
+        selection: TextSelection.collapsed(offset: lineStart),
+      );
+    } else {
+      final continued = newText.replaceRange(pos, pos, continuationPrefix);
+      _lastText = continued;
+      widget.controller.value = TextEditingValue(
+        text: continued,
+        selection:
+            TextSelection.collapsed(offset: pos + continuationPrefix.length),
+      );
+    }
   }
 
   @override
@@ -62,6 +124,7 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
                       CupertinoColors.label)
                   .withOpacity(0.6),
             ),
+            onChanged: _handleTextChanged,
             onSubmitted: widget.onSubmitted,
           )
         else

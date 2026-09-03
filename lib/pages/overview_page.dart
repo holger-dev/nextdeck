@@ -41,6 +41,14 @@ class _OverviewPageState extends State<OverviewPage> {
   ];
 
   @override
+  void dispose() {
+    // Leak-Fix: Controller/FocusNode wurden bisher nie freigegeben
+    _scroll.dispose();
+    _searchFocus.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     return CupertinoPageScaffold(
@@ -324,7 +332,8 @@ class _OverviewPageState extends State<OverviewPage> {
       {required String title, String? placeholder}) async {
     final controller = TextEditingController();
     final l10n = L10n.of(context);
-    return showCupertinoModalPopup<String>(
+    // Leak-Fix: Controller nach Schließen des Sheets freigeben
+    final result = await showCupertinoModalPopup<String>(
       context: context,
       builder: (ctx) => AnimatedPadding(
         padding: EdgeInsets.only(
@@ -362,6 +371,8 @@ class _OverviewPageState extends State<OverviewPage> {
         ),
       ),
     );
+    controller.dispose();
+    return result;
   }
 
   Future<Board?> _pickBoard(BuildContext context,
@@ -688,7 +699,9 @@ class _BoardSummary extends StatelessWidget {
       for (final c in cols) {
         cards += c.cards.length;
         for (final k in c.cards) {
-          if (k.due != null) {
+          // Issue #75: erledigte Karten (done != null) zählen nicht
+          // mehr als überfällig/bald fällig.
+          if (k.due != null && k.done == null) {
             if (k.due!.isBefore(now))
               overdue++;
             else if (k.due!.difference(now).inHours <= 24) dueSoon++;

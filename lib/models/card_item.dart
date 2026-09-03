@@ -60,7 +60,10 @@ class CardItem {
           if (!s.contains('T') && s.contains(' ')) {
             s = s.replaceFirst(' ', 'T');
           }
-          final dateOnly = RegExp(r'^\\d{4}-\\d{2}-\\d{2}$');
+          // Fix: in Raw-Strings ist `\\d` ein literaler Backslash + 'd' —
+          // die Regex hat dadurch nie gematcht (Date-only-done-Werte wurden
+          // nicht normalisiert). Korrekt ist `\d` wie beim due-Parsing oben.
+          final dateOnly = RegExp(r'^\d{4}-\d{2}-\d{2}$');
           if (dateOnly.hasMatch(s)) {
             s = s + 'T00:00:00';
           }

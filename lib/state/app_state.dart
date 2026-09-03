@@ -130,6 +130,8 @@ class AppState extends ChangeNotifier {
   bool get dueOverdueEnabled => _dueOverdueEnabled;
   bool get dueReminder1hEnabled => _dueReminderMinutes.contains(60);
   bool get dueReminder1dEnabled => _dueReminderMinutes.contains(1440);
+  // Issue #73: alle aktiven Vorlaufzeiten (Minuten), sortiert
+  List<int> get dueReminderMinutes => List.unmodifiable(_dueReminderMinutes);
   String? get baseUrl => _baseUrl;
   String? get username => _username;
   bool get localMode => _localMode;
@@ -636,6 +638,7 @@ class AppState extends ChangeNotifier {
       final tm = <Map<String, int>>[];
       final n7 = <Map<String, int>>[];
       final l = <Map<String, int>>[];
+      final nd = <Map<String, int>>[]; // Issue #84: ohne Fälligkeit
       for (final b in _boards.where((b) => !b.archived)) {
         var cols = _columnsByBoard[b.id];
         if (cols == null) {
@@ -655,7 +658,12 @@ class AppState extends ChangeNotifier {
           for (final k in c.cards) {
             if (k.done != null) continue;
             final due = k.due;
-            if (due == null) continue;
+            if (due == null) {
+              // Issue #84: Karten ohne Fälligkeitsdatum bekommen eine
+              // eigene Sektion in „Anstehend" — wie in Nextcloud Deck.
+              nd.add({'b': b.id, 's': c.id, 'c': k.id, 'd': 0});
+              continue;
+            }
             final entry = {
               'b': b.id,
               's': c.id,
@@ -684,6 +692,7 @@ class AppState extends ChangeNotifier {
         'tomorrow': tm,
         'next7': n7,
         'later': l,
+        'nodue': nd,
       });
       unawaited(_notifyNewActivityFromMemory());
     } catch (e) {
@@ -814,6 +823,11 @@ class AppState extends ChangeNotifier {
               .map((e) => (e as Map).cast<String, int>())
               .toList(),
           'later': (m['later'] as List)
+              .cast<Map>()
+              .map((e) => (e as Map).cast<String, int>())
+              .toList(),
+          // Issue #84 — tolerant gegen alte Caches ohne 'nodue'-Key
+          'nodue': ((m['nodue'] as List?) ?? const [])
               .cast<Map>()
               .map((e) => (e as Map).cast<String, int>())
               .toList(),

@@ -174,11 +174,13 @@ class NotificationService {
     );
   }
 
-  List<int> _idsForCard(int cardId) => [
-        cardId * 10 + 1,
-        cardId * 10 + 2,
-        cardId * 10 + 3,
-      ];
+  // Issue #73: Slots 1–8 für bis zu acht frei wählbare Vorlaufzeiten,
+  // Slot 9 fest für die Overdue-Notification. (Früher: 1=1h, 2=1d, 3=overdue)
+  static const int _kOverdueSlot = 9;
+  static const int _kMaxOffsetSlots = 8;
+
+  List<int> _idsForCard(int cardId) =>
+      [for (var slot = 1; slot <= 9; slot++) cardId * 10 + slot];
 
   List<_DueCandidate> _buildCandidates(
     List<CardItem> cards, {
@@ -191,27 +193,34 @@ class NotificationService {
     final l10n = L10n(Locale(resolvedLocale));
     final out = <_DueCandidate>[];
     final seen = <int>{};
+    // Issue #73: Offsets sortiert und dedupliziert; jeder Offset bekommt
+    // einen stabilen Slot (Index in der sortierten Liste). So kollidieren
+    // frei gewählte Vorlaufzeiten nicht mehr auf derselben Notification-ID.
+    final sortedOffsets = offsets.map((o) => o.inMinutes).toSet().toList()
+      ..sort();
+    final limitedOffsets = sortedOffsets.length <= _kMaxOffsetSlots
+        ? sortedOffsets
+        : sortedOffsets.sublist(0, _kMaxOffsetSlots);
     for (final card in cards) {
       if (!seen.add(card.id)) continue;
       if (card.due == null || card.done != null) continue;
       final due = card.due!;
-      if (offsets.isNotEmpty) {
-        for (final offset in offsets) {
-          final scheduled = due.subtract(offset);
-          if (!scheduled.isAfter(now)) continue;
-          final title = l10n.dueReminderTitle(_labelForOffset(l10n, offset));
-          out.add(_DueCandidate(
-            id: _idForOffset(card.id, offset),
-            title: title,
-            body: card.title,
-            when: tz.TZDateTime.from(scheduled, tz.local),
-          ));
-        }
+      for (var i = 0; i < limitedOffsets.length; i++) {
+        final offset = Duration(minutes: limitedOffsets[i]);
+        final scheduled = due.subtract(offset);
+        if (!scheduled.isAfter(now)) continue;
+        final title = l10n.dueReminderTitle(_labelForOffset(l10n, offset));
+        out.add(_DueCandidate(
+          id: card.id * 10 + (i + 1),
+          title: title,
+          body: card.title,
+          when: tz.TZDateTime.from(scheduled, tz.local),
+        ));
       }
       if (includeOverdue && due.isAfter(now)) {
         final overdueAt = due.add(const Duration(minutes: 5));
         out.add(_DueCandidate(
-          id: card.id * 10 + 3,
+          id: card.id * 10 + _kOverdueSlot,
           title: l10n.overdueReminderTitle,
           body: card.title,
           when: tz.TZDateTime.from(overdueAt, tz.local),
@@ -221,18 +230,17 @@ class NotificationService {
     return out;
   }
 
-  int _idForOffset(int cardId, Duration offset) {
-    final minutes = offset.inMinutes;
-    if (minutes == 60) return cardId * 10 + 1;
-    if (minutes == 1440) return cardId * 10 + 2;
-    return cardId * 10 + 1;
-  }
-
+  /// Menschlich lesbares Label für beliebige Vorlaufzeiten,
+  /// z. B. "30 Min", "2 Std", "1 Tag", "1 Woche".
   String _labelForOffset(L10n l10n, Duration offset) {
     final minutes = offset.inMinutes;
     if (minutes == 60) return l10n.reminderIn1Hour;
     if (minutes == 1440) return l10n.reminderIn1Day;
-    return l10n.reminderIn1Hour;
+    if (minutes < 60) return l10n.reminderInMinutes(minutes);
+    if (minutes % 10080 == 0) return l10n.reminderInWeeks(minutes ~/ 10080);
+    if (minutes % 1440 == 0) return l10n.reminderInDays(minutes ~/ 1440);
+    if (minutes % 60 == 0) return l10n.reminderInHours(minutes ~/ 60);
+    return l10n.reminderInMinutes(minutes);
   }
 
   String _resolveLocaleCode(String? localeCode) {

@@ -1955,9 +1955,17 @@ class NextcloudDeckApi {
       '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/attachments',
       '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/attachments',
     ];
+    // Issue #83: Deck kennt zwei Attachment-Typen — 'file' (neuer,
+    // Nextcloud-Files-Storage, Deck >= 1.3) und 'deck_file' (älterer,
+    // Deck-interner Storage). Welche Variante der Server akzeptiert,
+    // hängt von Deck-Version und Server-Konfiguration ab. Wir probieren
+    // beide (plus „ohne type" für sehr alte Server), statt wie bisher
+    // nur 'file' — sonst schlägt der Upload auf manchen Servern mit
+    // "Invalid attachment type" fehl.
+    const typeVariants = <String?>['file', 'deck_file', null];
     for (final p in candidates) {
       for (final withIndex in [false, true]) {
-        for (final includeType in [true, false]) {
+        for (final typeVariant in typeVariants) {
           try {
             final uri = _buildUri(baseUrl, p, withIndex);
             final t0 = DateTime.now();
@@ -1965,8 +1973,8 @@ class NextcloudDeckApi {
             req.headers['authorization'] = _basicAuth(user, pass);
             req.headers['Accept'] = 'application/json';
             req.headers['OCS-APIRequest'] = 'true';
-            if (includeType) {
-              req.fields['type'] = 'file';
+            if (typeVariant != null) {
+              req.fields['type'] = typeVariant;
             }
             req.files.add(http.MultipartFile.fromBytes('file', bytes,
                 filename: filename));
@@ -1983,10 +1991,14 @@ class NextcloudDeckApi {
               status: res.statusCode,
               durationMs: dur,
               requestBody:
-                  'multipart attachment filename=$filename bytes=${bytes.length} type=${includeType ? 'file' : 'none'}',
+                  'multipart attachment filename=$filename bytes=${bytes.length} type=${typeVariant ?? 'none'}',
               responseSnippet: snippet,
             ));
             if (_isOk(res)) return true;
+            // 4xx außer 404/405: Endpoint existiert, aber Request-Form
+            // passt nicht — nächste type-Variante probieren.
+            // 404/405: Endpoint existiert nicht — direkt zum nächsten Pfad.
+            if (res.statusCode == 404 || res.statusCode == 405) break;
           } catch (e) {
             LogService().add(LogEntry(
               at: DateTime.now(),
@@ -1995,7 +2007,7 @@ class NextcloudDeckApi {
               status: null,
               durationMs: 0,
               requestBody:
-                  'multipart attachment filename=$filename bytes=${bytes.length} type=${includeType ? 'file' : 'none'}',
+                  'multipart attachment filename=$filename bytes=${bytes.length} type=${typeVariant ?? 'none'}',
               error: e.toString(),
             ));
           }

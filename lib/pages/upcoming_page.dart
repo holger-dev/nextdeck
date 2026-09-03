@@ -30,6 +30,8 @@ class _UpcomingPageState extends State<UpcomingPage> {
   final List<_DueHit> _tomorrow = [];
   final List<_DueHit> _next7 = [];
   final List<_DueHit> _later = [];
+  // Issue #84: Karten ohne Fälligkeitsdatum — eigene Sektion wie in NC Deck
+  final List<_DueHit> _noDue = [];
 
   int _seq = 0;
   final PageController _pageController = PageController();
@@ -46,12 +48,20 @@ class _UpcomingPageState extends State<UpcomingPage> {
     });
   }
 
+  @override
+  void dispose() {
+    // Leak-Fix: PageController wurde bisher nie freigegeben
+    _pageController.dispose();
+    super.dispose();
+  }
+
   void _clearAll() {
     _overdue.clear();
     _today.clear();
     _tomorrow.clear();
     _next7.clear();
     _later.clear();
+    _noDue.clear();
   }
 
   void _buildFromLoaded() {
@@ -64,7 +74,6 @@ class _UpcomingPageState extends State<UpcomingPage> {
         if (ct.contains('done') || ct.contains('erledigt'))
           continue; // skip done columns
         for (final k in c.cards) {
-          if (k.due == null) continue;
           _addHit(app, b.id, b.title, c.id, c.title, k);
         }
       }
@@ -74,19 +83,23 @@ class _UpcomingPageState extends State<UpcomingPage> {
 
   void _addHit(AppState app, int boardId, String boardTitle, int stackId,
       String stackTitle, CardItem card) {
-    if (card.due == null) return;
     if (card.done != null) return;
     if (!app.shouldIncludeAssignedCard(card)) return;
     final st = stackTitle.toLowerCase();
     if (st.contains('done') || st.contains('erledigt')) return; // skip done
     final now = DateTime.now();
-    final due = card.due!;
     final hit = _DueHit(
         boardId: boardId,
         boardTitle: boardTitle,
         stackId: stackId,
         stackTitle: stackTitle,
         card: card);
+    // Issue #84: Karten ohne Fälligkeit in eigene Sektion
+    if (card.due == null) {
+      _noDue.add(hit);
+      return;
+    }
+    final due = card.due!;
     if (due.isBefore(now)) {
       _overdue.add(hit);
       return;
@@ -117,21 +130,19 @@ class _UpcomingPageState extends State<UpcomingPage> {
     final app = context.read<AppState>();
     final refs = app.upcomingCacheRefs();
     if (refs != null) {
-      _overdue.clear();
-      _today.clear();
-      _tomorrow.clear();
-      _next7.clear();
-      _later.clear();
+      _clearAll();
       _resolve(app, refs['overdue']!, _overdue);
       _resolve(app, refs['today']!, _today);
       _resolve(app, refs['tomorrow']!, _tomorrow);
       _resolve(app, refs['next7']!, _next7);
       _resolve(app, refs['later']!, _later);
+      _resolve(app, refs['nodue'] ?? const [], _noDue);
       if (_overdue.isEmpty &&
           _today.isEmpty &&
           _tomorrow.isEmpty &&
           _next7.isEmpty &&
-          _later.isEmpty) {
+          _later.isEmpty &&
+          _noDue.isEmpty) {
         _buildFromLoaded();
       }
     } else {
@@ -207,7 +218,6 @@ class _UpcomingPageState extends State<UpcomingPage> {
         final ct = c.title.toLowerCase();
         if (ct.contains('done') || ct.contains('erledigt')) continue;
         for (final k in c.cards) {
-          if (k.due == null) continue;
           _addHit(app, b.id, b.title, c.id, c.title, k);
         }
       }
@@ -221,6 +231,14 @@ class _UpcomingPageState extends State<UpcomingPage> {
     _tomorrow.sort((a, b) => cmp(a.card, b.card));
     _next7.sort((a, b) => cmp(a.card, b.card));
     _later.sort((a, b) => cmp(a.card, b.card));
+    // Ohne Fälligkeit: alphabetisch nach Board, dann Titel
+    _noDue.sort((a, b) {
+      final byBoard = a.boardTitle
+          .toLowerCase()
+          .compareTo(b.boardTitle.toLowerCase());
+      if (byBoard != 0) return byBoard;
+      return a.card.title.toLowerCase().compareTo(b.card.title.toLowerCase());
+    });
     if (mounted)
       setState(() {
         _loading = false;
@@ -267,6 +285,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
                     l10n.tomorrow,
                     l10n.next7Days,
                     l10n.later,
+                    l10n.noDueLabel,
                   ];
                   await showCupertinoModalPopup(
                     context: context,
@@ -336,7 +355,8 @@ class _UpcomingPageState extends State<UpcomingPage> {
                 _today.isEmpty &&
                 _tomorrow.isEmpty &&
                 _next7.isEmpty &&
-                _later.isEmpty)
+                _later.isEmpty &&
+                _noDue.isEmpty)
               const Center(child: CupertinoActivityIndicator()),
             // moved overlay below to ensure it paints on top
             if (!app.upcomingSingleColumn)
@@ -352,6 +372,7 @@ class _UpcomingPageState extends State<UpcomingPage> {
                     _bucketView(context, l10n.tomorrow, _tomorrow),
                     _bucketView(context, l10n.next7Days, _next7),
                     _bucketView(context, l10n.later, _later),
+                    _bucketView(context, l10n.noDueLabel, _noDue),
                   ],
                 ),
               )
@@ -371,6 +392,8 @@ class _UpcomingPageState extends State<UpcomingPage> {
                       ..._buildSection(context, l10n.next7Days, _next7,
                           showEmptyHeaderOnly: true),
                       ..._buildSection(context, l10n.later, _later,
+                          showEmptyHeaderOnly: true),
+                      ..._buildSection(context, l10n.noDueLabel, _noDue,
                           showEmptyHeaderOnly: true),
                     ],
                   ),
@@ -394,14 +417,14 @@ class _UpcomingPageState extends State<UpcomingPage> {
                   enabled: true,
                 ),
               ),
-            if (!app.upcomingSingleColumn && _page < 4)
+            if (!app.upcomingSingleColumn && _page < 5)
               Positioned(
                 right: 8,
                 top: 14,
                 child: _Arrow(
                   onTap: () {
                     final target = (_pageController.page ?? 0).ceil() + 1;
-                    if (target <= 4) {
+                    if (target <= 5) {
                       _pageController.animateToPage(target,
                           duration: const Duration(milliseconds: 220),
                           curve: Curves.easeOut);
@@ -647,11 +670,11 @@ class _UpcomingTile extends StatelessWidget {
                 }
                 return const SizedBox.shrink();
               }),
-            if (due != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Row(
-                  children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  if (due != null) ...[
                     Icon(CupertinoIcons.time,
                         size: 14, color: _dueColor(due!, textColor)),
                     const SizedBox(width: 4),
@@ -663,15 +686,19 @@ class _UpcomingTile extends StatelessWidget {
                           color: _dueColor(due!, textColor)),
                     ),
                     const SizedBox(width: 8),
-                    Expanded(
-                        child: Text(meta,
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: textColor.withOpacity(0.75)),
-                            overflow: TextOverflow.ellipsis)),
                   ],
-                ),
+                  // Issue #84: Meta (Board · Stack) auch für Karten OHNE
+                  // Fälligkeit anzeigen — sonst wüsste man in der neuen
+                  // „Ohne Fälligkeit"-Sektion nicht, wo die Karte liegt.
+                  Expanded(
+                      child: Text(meta,
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: textColor.withOpacity(0.75)),
+                          overflow: TextOverflow.ellipsis)),
+                ],
               ),
+            ),
           ],
         ),
       ),
@@ -704,10 +731,10 @@ Color _dueColor(DateTime due, Color defaultColor) {
   return defaultColor.withOpacity(0.98);
 }
 
-String _formatDue(DateTime due) {
-  final fmt = DateFormat.MMMd().add_Hm();
-  return fmt.format(due.toLocal());
-}
+// Perf: Formatter einmal cachen statt pro Tile-Render neu konstruieren
+final DateFormat _dueFormat = DateFormat.MMMd().add_Hm();
+
+String _formatDue(DateTime due) => _dueFormat.format(due.toLocal());
 
 Color? _parseDeckColor(String raw) {
   if (raw.isEmpty) return null;

@@ -244,6 +244,40 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  /// Issue #73: kompaktes, lokalisiertes Label für eine Vorlaufzeit.
+  String _formatOffsetLabel(int minutes) =>
+      L10n.of(context).offsetLabel(minutes);
+
+  /// Issue #73: Auswahl-Sheet mit gängigen Vorlaufzeiten.
+  Future<void> _addReminderOffsetSheet(AppState app) async {
+    final l10n = L10n.of(context);
+    const presets = <int>[15, 30, 120, 240, 480, 2880, 10080];
+    final available = presets
+        .where((m) => !app.dueReminderMinutes.contains(m))
+        .toList();
+    await showCupertinoModalPopup<void>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(l10n.reminderAddOffset),
+        actions: [
+          for (final m in available)
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                app.setDueReminderOffsetEnabled(m, true);
+              },
+              child: Text(l10n.reminderOffsetBefore(_formatOffsetLabel(m))),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(l10n.cancel),
+        ),
+      ),
+    );
+  }
+
   Future<void> _confirmClearLocalData() async {
     final l10n = L10n.of(context);
     final result = await showCupertinoDialog<bool>(
@@ -516,6 +550,51 @@ class _SettingsPageState extends State<SettingsPage> {
                         onChanged: (v) => app.setDueOverdueEnabled(v),
                       ),
                     ]),
+                    // Issue #73: frei wählbare Vorlaufzeiten zusätzlich
+                    // zu den festen 1h/1d-Toggles.
+                    ...() {
+                      final custom = app.dueReminderMinutes
+                          .where((m) => m != 60 && m != 1440)
+                          .toList();
+                      return <Widget>[
+                        const SizedBox(height: 10),
+                        Text(l10n.reminderCustomOffsets,
+                            style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: CupertinoColors.systemGrey)),
+                        for (final m in custom)
+                          Row(children: [
+                            Expanded(
+                                child: Text(l10n.reminderOffsetBefore(
+                                    _formatOffsetLabel(m)))),
+                            CupertinoButton(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              onPressed: () =>
+                                  app.setDueReminderOffsetEnabled(m, false),
+                              child: const Icon(
+                                  CupertinoIcons.minus_circle_fill,
+                                  size: 20,
+                                  color: CupertinoColors.destructiveRed),
+                            ),
+                          ]),
+                        CupertinoButton(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 0, vertical: 6),
+                          onPressed: () => _addReminderOffsetSheet(app),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(CupertinoIcons.add_circled,
+                                  size: 18),
+                              const SizedBox(width: 6),
+                              Text(l10n.reminderAddOffset),
+                            ],
+                          ),
+                        ),
+                      ];
+                    }(),
                   ],
                   const SizedBox(height: 12),
                   Row(children: [

@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/animation.dart';
+import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -942,6 +943,9 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
         );
       },
     );
+    // Leak-Fix: Sheet-Controller nach Schließen freigeben (Text wurde
+    // vor dem Pop bereits ausgelesen).
+    titleCtrl.dispose();
   }
 }
 
@@ -2365,19 +2369,30 @@ class _CardTile extends StatelessWidget {
               ),
             if (due != null)
               Builder(builder: (context) {
+                // Issue #75: Erledigte Karten (done != null) sind nie
+                // "überfällig" — statt rotem Overdue-Badge zeigen wir
+                // ein grünes Häkchen mit dem Datum.
+                final isDone = done != null;
                 final now = DateTime.now();
-                final isOverdue = due!.isBefore(now);
+                final isOverdue = !isDone && due!.isBefore(now);
                 final hoursTo = due!.difference(now).inHours;
-                final Color dueColor = isOverdue
-                    ? CupertinoColors.systemRed
-                    : (hoursTo <= 24
-                        ? CupertinoColors.activeOrange
-                        : textColor.withOpacity(0.98));
+                final Color dueColor = isDone
+                    ? CupertinoColors.activeGreen
+                    : isOverdue
+                        ? CupertinoColors.systemRed
+                        : (hoursTo <= 24
+                            ? CupertinoColors.activeOrange
+                            : textColor.withOpacity(0.98));
                 return Padding(
                   padding: const EdgeInsets.only(top: 8),
                   child: Row(
                     children: [
-                      Icon(CupertinoIcons.time, size: 14, color: dueColor),
+                      Icon(
+                          isDone
+                              ? CupertinoIcons.checkmark_circle_fill
+                              : CupertinoIcons.time,
+                          size: 14,
+                          color: dueColor),
                       const SizedBox(width: 4),
                       Text(
                         _formatDue(due!),
@@ -2452,25 +2467,24 @@ class _CardDragWrapper extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Auf Tablet: sofortiges Dragging; auf Phone: LongPress, um Scrollen/Reorder nicht zu stören
+    // Issue #70: Auch auf Tablets LongPress statt Sofort-Drag. Das alte
+    // sofortige `Draggable` hat auf dem iPad beim Scrollen durch Spalten
+    // ständig versehentliche Karten-Verschiebungen ausgelöst — jede
+    // Touch-Bewegung auf einer Karte wurde als Drag interpretiert.
+    // Auf Tablets ist der Delay kürzer (250ms statt 500ms), damit sich
+    // bewusstes Draggen weiterhin flott anfühlt.
     final isTablet = MediaQuery.of(context).size.shortestSide >= 600;
-    if (!isTablet) {
-      return LongPressDraggable<_DragCard>(
-        data: data,
-        feedback: feedback,
-        child: child,
-        childWhenDragging: childWhenDragging,
-        onDragUpdate: onDragUpdate,
-        axis: Axis.horizontal,
-      );
-    }
-    return Draggable<_DragCard>(
+    return LongPressDraggable<_DragCard>(
       data: data,
       feedback: feedback,
       child: child,
       childWhenDragging: childWhenDragging,
       onDragUpdate: onDragUpdate,
       axis: Axis.horizontal,
+      delay: isTablet
+          ? const Duration(milliseconds: 250)
+          : kLongPressTimeout,
+      hapticFeedbackOnStart: true,
     );
   }
 }
@@ -3392,17 +3406,12 @@ Color _bestTextColor(Color bg) {
   return L > 0.5 ? CupertinoColors.black : CupertinoColors.white;
 }
 
-Color _dueColor(DateTime due) {
-  final now = DateTime.now();
-  if (due.isBefore(now)) return CupertinoColors.destructiveRed;
-  if (due.difference(now).inHours <= 24) return CupertinoColors.activeOrange;
-  return CupertinoColors.systemGrey;
-}
+// Perf: DateFormat-Konstruktion ist nicht billig — einmal cachen statt
+// pro Karten-Render neu bauen (Boards mit vielen Karten rendern spürbar
+// flüssiger beim Scrollen).
+final DateFormat _dueFormat = DateFormat.MMMd().add_Hm();
 
-String _formatDue(DateTime due) {
-  final fmt = DateFormat.MMMd().add_Hm();
-  return fmt.format(due.toLocal());
-}
+String _formatDue(DateTime due) => _dueFormat.format(due.toLocal());
 
 String _markdownPreviewLine(String src) {
   if (src.isEmpty) return src;

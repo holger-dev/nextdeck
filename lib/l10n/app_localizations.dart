@@ -680,6 +680,72 @@ class L10n {
       : _isEs
           ? 'en 1 día'
           : 'in 1 day';
+  // Issue #73: Labels für frei wählbare Vorlaufzeiten
+  String reminderInMinutes(int m) => _isDe
+      ? 'in $m Min.'
+      : _isEs
+          ? 'en $m min'
+          : 'in $m min';
+  String reminderInHours(int h) => _isDe
+      ? (h == 1 ? 'in 1 Stunde' : 'in $h Stunden')
+      : _isEs
+          ? (h == 1 ? 'en 1 hora' : 'en $h horas')
+          : (h == 1 ? 'in 1 hour' : 'in $h hours');
+  String reminderInDays(int d) => _isDe
+      ? (d == 1 ? 'in 1 Tag' : 'in $d Tagen')
+      : _isEs
+          ? (d == 1 ? 'en 1 día' : 'en $d días')
+          : (d == 1 ? 'in 1 day' : 'in $d days');
+  String reminderInWeeks(int w) => _isDe
+      ? (w == 1 ? 'in 1 Woche' : 'in $w Wochen')
+      : _isEs
+          ? (w == 1 ? 'en 1 semana' : 'en $w semanas')
+          : (w == 1 ? 'in 1 week' : 'in $w weeks');
+  /// Kompaktes Einheiten-Label einer Vorlaufzeit ("30 Min.", "2 Stunden",
+  /// "1 Tag", "1 Woche") — für die Settings-Liste (Issue #73).
+  String offsetLabel(int minutes) {
+    if (minutes % 10080 == 0 && minutes >= 10080) {
+      final w = minutes ~/ 10080;
+      return _isDe
+          ? (w == 1 ? '1 Woche' : '$w Wochen')
+          : _isEs
+              ? (w == 1 ? '1 semana' : '$w semanas')
+              : (w == 1 ? '1 week' : '$w weeks');
+    }
+    if (minutes % 1440 == 0 && minutes >= 1440) {
+      final d = minutes ~/ 1440;
+      return _isDe
+          ? (d == 1 ? '1 Tag' : '$d Tage')
+          : _isEs
+              ? (d == 1 ? '1 día' : '$d días')
+              : (d == 1 ? '1 day' : '$d days');
+    }
+    if (minutes % 60 == 0 && minutes >= 60) {
+      final h = minutes ~/ 60;
+      return _isDe
+          ? (h == 1 ? '1 Stunde' : '$h Stunden')
+          : _isEs
+              ? (h == 1 ? '1 hora' : '$h horas')
+              : (h == 1 ? '1 hour' : '$h hours');
+    }
+    return _isDe ? '$minutes Min.' : '$minutes min';
+  }
+
+  String get reminderCustomOffsets => _isDe
+      ? 'Weitere Vorlaufzeiten'
+      : _isEs
+          ? 'Otros avisos previos'
+          : 'More lead times';
+  String get reminderAddOffset => _isDe
+      ? 'Vorlaufzeit hinzufügen'
+      : _isEs
+          ? 'Añadir aviso previo'
+          : 'Add lead time';
+  String reminderOffsetBefore(String label) => _isDe
+      ? '$label vorher'
+      : _isEs
+          ? '$label antes'
+          : '$label before';
   String dueReminderTitle(String when) => _isDe
       ? 'Fällig $when'
       : _isEs
@@ -1284,6 +1350,11 @@ class L10n {
       : _isEs
           ? 'Más tarde'
           : 'Later';
+  String get noDueLabel => _isDe
+      ? 'Ohne Fälligkeit'
+      : _isEs
+          ? 'Sin fecha límite'
+          : 'No due date';
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

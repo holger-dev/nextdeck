@@ -1300,7 +1300,8 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                                     mime:
                                                                         mime)));
                                                   } else {
-                                                    // Try to open file locally via url_launcher; fallback to Share sheet
+                                                    // Issue #78: siehe
+                                                    // _openOrShareLocalFile
                                                     final tempDir =
                                                         (await getTemporaryDirectory())
                                                             .path;
@@ -1309,26 +1310,9 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                     final file = File(path);
                                                     await file
                                                         .writeAsBytes(bytes);
-                                                    try {
-                                                      final uri =
-                                                          Uri.file(path);
-                                                      final ok = await launchUrl(
-                                                          uri,
-                                                          mode: isAudio
-                                                              ? LaunchMode
-                                                                  .externalApplication
-                                                              : LaunchMode
-                                                                  .platformDefault);
-                                                      if (!ok) {
-                                                        await Share.shareXFiles(
-                                                            [XFile(path)],
-                                                            subject: name);
-                                                      }
-                                                    } catch (_) {
-                                                      await Share.shareXFiles(
-                                                          [XFile(path)],
-                                                          subject: name);
-                                                    }
+                                                    await _openOrShareLocalFile(
+                                                        path, name,
+                                                        isAudio: isAudio);
                                                   }
                                                 },
                                                 child: Align(
@@ -2005,7 +1989,8 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                                         mime:
                                                                             mime)));
                                                       } else {
-                                                        // Save to temp and open with system; fallback share
+                                                        // Issue #78: siehe
+                                                        // _openOrShareLocalFile
                                                         final tempDir =
                                                             (await getTemporaryDirectory())
                                                                 .path;
@@ -2014,28 +1999,9 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                         final file = File(path);
                                                         await file.writeAsBytes(
                                                             bytes);
-                                                        try {
-                                                          final uri =
-                                                              Uri.file(path);
-                                                          final ok = await launchUrl(
-                                                              uri,
-                                                              mode: isAudio
-                                                                  ? LaunchMode
-                                                                      .externalApplication
-                                                                  : LaunchMode
-                                                                      .platformDefault);
-                                                          if (!ok) {
-                                                            await Share
-                                                                .shareXFiles([
-                                                              XFile(path)
-                                                            ], subject: name);
-                                                          }
-                                                        } catch (_) {
-                                                          await Share
-                                                              .shareXFiles([
-                                                            XFile(path)
-                                                          ], subject: name);
-                                                        }
+                                                        await _openOrShareLocalFile(
+                                                            path, name,
+                                                            isAudio: isAudio);
                                                       }
                                                     },
                                                     child: Align(
@@ -2296,6 +2262,39 @@ class _CardDetailPageState extends State<CardDetailPage> {
     );
   }
 
+  /// Issue #78: Anker-Rect fürs Share-Sheet. Auf dem iPad zeigt iOS
+  /// UIActivityViewController als Popover an und verlangt zwingend einen
+  /// sourceRect — ohne ihn erscheint das Sheet schlicht nicht (auf dem
+  /// iPhone fällt das nicht auf, weil dort ein Modal verwendet wird).
+  Rect _shareAnchorRect() {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box != null && box.hasSize) {
+      return box.localToGlobal(Offset.zero) & box.size;
+    }
+    final size = MediaQuery.of(context).size;
+    return Rect.fromCenter(
+        center: Offset(size.width / 2, size.height / 2), width: 1, height: 1);
+  }
+
+  /// Issue #78: Öffnet eine lokal zwischengespeicherte Datei. Audio wird
+  /// extern abgespielt; alles andere (v. a. PDFs) geht direkt ins
+  /// Share-Sheet mit Quick-Look — `launchUrl(file://)` funktioniert auf
+  /// iOS für beliebige Dateien nicht und hat auf dem iPad zusätzlich das
+  /// Popover-Problem verdeckt.
+  Future<void> _openOrShareLocalFile(String path, String name,
+      {required bool isAudio}) async {
+    if (isAudio) {
+      try {
+        final ok = await launchUrl(Uri.file(path),
+            mode: LaunchMode.externalApplication);
+        if (ok) return;
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    await Share.shareXFiles([XFile(path)],
+        subject: name, sharePositionOrigin: _shareAnchorRect());
+  }
+
   Future<void> _showShare() async {
     final app = context.read<AppState>();
     final boardId = widget.boardId ?? app.activeBoard?.id;
@@ -2326,7 +2325,9 @@ class _CardDetailPageState extends State<CardDetailPage> {
                 if (webUrl != null) webUrl,
                 if (desc.isNotEmpty) '\n$desc',
               ].join('\n');
-              Share.share(content, subject: title);
+              // Issue #78: iPad braucht sharePositionOrigin (Popover-Anker)
+              Share.share(content,
+                  subject: title, sharePositionOrigin: _shareAnchorRect());
             },
             child: Text(L10n.of(context).systemShare),
           ),
