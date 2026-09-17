@@ -639,7 +639,10 @@ class AppState extends ChangeNotifier {
       final n7 = <Map<String, int>>[];
       final l = <Map<String, int>>[];
       final nd = <Map<String, int>>[]; // Issue #84: ohne Fälligkeit
-      for (final b in _boards.where((b) => !b.archived)) {
+      // Fix: ausgeblendete Boards gehören NICHT in die Anstehend-Ansicht —
+      // vorher wurde hier nur `archived` gefiltert.
+      for (final b in _boards
+          .where((b) => !b.archived && !_hiddenBoards.contains(b.id))) {
         var cols = _columnsByBoard[b.id];
         if (cols == null) {
           // Board not loaded in memory, try to load from cache for Upcoming view
@@ -2866,8 +2869,25 @@ class AppState extends ChangeNotifier {
     _protectStack(boardId, stackId, ms: 15000);
     String? error;
     try {
+      // NC 2.0 Sync-Optimierung: pro Karte der offizielle, winzige
+      // /reorder-PUT (nur {stackId, order}) statt des alten Voll-PUTs
+      // mit Titel/Beschreibung/Labels. Vorteile:
+      //  * kein Risiko mehr, parallele Edits anderer User mit unserem
+      //    lokalen Stand zu überschreiben (Issue-#59-Klasse)
+      //  * Bruchteil des Payloads → deutlich schnellere Sortier-Syncs
+      // Der alte Voll-PUT bleibt nur als Karten-Fallback für Server,
+      // die den reorder-Endpoint nicht kennen.
       for (int i = 0; i < stack.cards.length; i++) {
         final card = stack.cards[i];
+        bool ok = false;
+        try {
+          ok = await api.reorderCardOfficial(_baseUrl!, _username!,
+              _password!, boardId, stackId, card.id, i);
+        } catch (e) {
+          error = e.toString();
+        }
+        if (ok) continue;
+        // Fallback: Voll-PUT wie früher (alte Server ohne /reorder)
         final payload = <String, dynamic>{
           'order': i + 1,
           'position': i,
@@ -3034,14 +3054,19 @@ class AppState extends ChangeNotifier {
     try {
       await refreshBoards();
       final changedBoards = <int, bool>{};
+      // Perf: ausgeblendete Boards erscheinen weder in Anstehend noch in
+      // der Board-Ansicht — sie im Delta-Refresh mitzusyncen ist reine
+      // Verschwendung (bei vielen versteckten Boards spürbar).
+      bool relevant(Board b) =>
+          !b.archived && !_hiddenBoards.contains(b.id);
       final boardsToProcess =
-          forceFull ? _boards.where((x) => !x.archived).toList() : <Board>[];
+          forceFull ? _boards.where(relevant).toList() : <Board>[];
       if (forceFull) {
         for (final b in boardsToProcess) {
           changedBoards[b.id] = true;
         }
       } else {
-        for (final b in _boards.where((x) => !x.archived)) {
+        for (final b in _boards.where(relevant)) {
           final curr = cache.get('board_lastmod_${b.id}');
           final prev = cache.get('board_lastmod_prev_${b.id}');
           final int? currMs =
@@ -3367,6 +3392,9 @@ class AppState extends ChangeNotifier {
       _hiddenBoards.remove(boardId);
     }
     cache.put('hiddenBoards', _hiddenBoards.toList());
+    // Anstehend-Cache sofort neu aufbauen, damit die Karten des
+    // (ein-/ausgeblendeten) Boards direkt erscheinen/verschwinden.
+    _rebuildUpcomingCacheFromMemory();
     unawaited(_updateWidgetData());
     notifyListeners();
   }

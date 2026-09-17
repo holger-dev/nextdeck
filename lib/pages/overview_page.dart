@@ -1,4 +1,5 @@
 import 'package:flutter/cupertino.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:flutter/animation.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -110,7 +111,8 @@ class _OverviewPageState extends State<OverviewPage> {
                 16, 16, 16, 16 + DT.tabBarReserve),
             children: [
               if (_showSearch || _query.isNotEmpty) ...[
-                CupertinoSearchTextField(
+                // NC 2.0: Liquid-Glass-Suchfeld statt CupertinoSearchTextField
+                GlassSearchBar(
                   placeholder: L10n.of(context).search,
                   focusNode: _searchFocus,
                   onChanged: (v) => setState(() => _query = v.trim()),
@@ -184,7 +186,11 @@ class _OverviewPageState extends State<OverviewPage> {
                       );
                     }
                     final boards = visibleBoards;
-                    final cross = cns.maxWidth >= 1000 ? 3 : 2;
+                    final cross = cns.maxWidth >= 1300
+                        ? 4
+                        : cns.maxWidth >= 1000
+                            ? 3
+                            : 2;
                     return GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -192,7 +198,12 @@ class _OverviewPageState extends State<OverviewPage> {
                         crossAxisCount: cross,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 12,
-                        mainAxisExtent: 190,
+                        // NC 2.0 iPad: kompakte Kachel-Höhe — Titel +
+                        // Chip-Zeile + Luft. 180 ließ den Inhalt in
+                        // großer Leere schweben; 132 wirkt satt und
+                        // lässt trotzdem Platz für eine zweite
+                        // Chip-Zeile (viele Warn-Pills).
+                        mainAxisExtent: 140,
                       ),
                       itemCount: boards.length,
                       itemBuilder: (ctx, i) => _BoardSummary(
@@ -238,7 +249,11 @@ class _OverviewPageState extends State<OverviewPage> {
                             .toList(),
                       );
                     }
-                    final cross = cns.maxWidth >= 1000 ? 3 : 2;
+                    final cross = cns.maxWidth >= 1300
+                        ? 4
+                        : cns.maxWidth >= 1000
+                            ? 3
+                            : 2;
                     return GridView.builder(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -246,7 +261,12 @@ class _OverviewPageState extends State<OverviewPage> {
                         crossAxisCount: cross,
                         crossAxisSpacing: 12,
                         mainAxisSpacing: 12,
-                        mainAxisExtent: 190,
+                        // NC 2.0 iPad: kompakte Kachel-Höhe — Titel +
+                        // Chip-Zeile + Luft. 180 ließ den Inhalt in
+                        // großer Leere schweben; 132 wirkt satt und
+                        // lässt trotzdem Platz für eine zweite
+                        // Chip-Zeile (viele Warn-Pills).
+                        mainAxisExtent: 140,
                       ),
                       itemCount: visibleBoards.length,
                       itemBuilder: (ctx, i) => _BoardSummary(
@@ -512,7 +532,11 @@ class _OverviewPageState extends State<OverviewPage> {
                     .toList(),
               );
             }
-            final cross = cns.maxWidth >= 1000 ? 3 : 2;
+            final cross = cns.maxWidth >= 1300
+                        ? 4
+                        : cns.maxWidth >= 1000
+                            ? 3
+                            : 2;
             return GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -520,7 +544,7 @@ class _OverviewPageState extends State<OverviewPage> {
                 crossAxisCount: cross,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                mainAxisExtent: 190,
+                mainAxisExtent: 140,
               ),
               itemCount: hiddenBoards.length,
               itemBuilder: (ctx, i) => _BoardSummary(
@@ -591,7 +615,11 @@ class _OverviewPageState extends State<OverviewPage> {
                     .toList(),
               );
             }
-            final cross = cns.maxWidth >= 1000 ? 3 : 2;
+            final cross = cns.maxWidth >= 1300
+                        ? 4
+                        : cns.maxWidth >= 1000
+                            ? 3
+                            : 2;
             return GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -599,7 +627,7 @@ class _OverviewPageState extends State<OverviewPage> {
                 crossAxisCount: cross,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                mainAxisExtent: 190,
+                mainAxisExtent: 140,
               ),
               itemCount: archivedBoards.length,
               itemBuilder: (ctx, i) => Opacity(
@@ -691,8 +719,6 @@ class _BoardSummary extends StatelessWidget {
     int cards = 0;
     int dueSoon = 0;
     int overdue = 0;
-    bool hasStacks = false;
-    bool hasAnyCards = false;
     if (showInfo) {
       stacks = cols.length;
       final now = DateTime.now();
@@ -708,9 +734,6 @@ class _BoardSummary extends StatelessWidget {
           }
         }
       }
-      // Cache indicator: stacks/cards loaded
-      hasStacks = cols.isNotEmpty;
-      hasAnyCards = hasStacks && cols.any((c) => c.cards.isNotEmpty);
     }
 
     // Use Nextcloud board color when available; fallback to app palette
@@ -772,15 +795,20 @@ class _BoardSummary extends StatelessWidget {
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.circular(DT.radiusL),
-          // Modernerer Look: Soft-Shadow statt 1-px-Border. Der aktive Status
-          // bleibt durch einen kräftigen grünen Border deutlich sichtbar.
+          // NC 2.0: aktives Board bekommt einen Glow in der Board-Farbe
+          // statt des grünen Rahmens — farbstark und weniger „Formular".
           border: isActive
-              ? Border.all(
-                  color: CupertinoColors.activeGreen,
-                  width: 2,
-                )
+              ? Border.all(color: strong.withOpacity(0.9), width: 2)
               : null,
-          boxShadow: DT.shadowS(app.isDarkMode),
+          boxShadow: isActive
+              ? [
+                  BoxShadow(
+                    color: strong.withOpacity(app.isDarkMode ? 0.45 : 0.35),
+                    blurRadius: 18,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : DT.shadowS(app.isDarkMode),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -794,20 +822,25 @@ class _BoardSummary extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Subtle header accent (half strength)
-                    Container(
-                        height: 6,
-                        decoration: BoxDecoration(
-                            color: strong.withOpacity(0.25),
-                            borderRadius: BorderRadius.circular(6))),
-                    const SizedBox(height: 6),
+                    // NC 2.0: Farb-Dot am Titel statt des flächigen
+                    // Akzent-Balkens — ruhiger und moderner.
                     Row(
                       children: [
+                        Container(
+                          width: 12,
+                          height: 12,
+                          margin: const EdgeInsets.only(right: 8),
+                          decoration: BoxDecoration(
+                            color: strong,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
                         Expanded(
                           child: Text(title,
                               style: TextStyle(
-                                  fontSize: 16,
+                                  fontSize: 17,
                                   fontWeight: FontWeight.w700,
+                                  letterSpacing: -0.3,
                                   color: AppTheme.textOn(bg))),
                         ),
                         CupertinoButton(
@@ -825,9 +858,14 @@ class _BoardSummary extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     if (showInfo)
+                      // NC 2.0: nur relevante Signale — Fällig/Überfällig
+                      // erscheinen NUR bei Werten > 0 (Farbe als echtes
+                      // Warnsignal statt Dauerrauschen); der Cache-Chip
+                      // (Dev-Info) ist raus. Ergebnis: ruhige Kacheln,
+                      // kein Overflow mehr im iPad-Grid.
                       Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
+                        spacing: 6,
+                        runSpacing: 6,
                         children: [
                           _StatChip(
                               icon: CupertinoIcons.rectangle_grid_2x2,
@@ -837,32 +875,21 @@ class _BoardSummary extends StatelessWidget {
                               icon: CupertinoIcons.list_bullet,
                               label: L10n.of(context).cardsLabel,
                               value: cards.toString()),
-                          _StatChip(
-                              icon: CupertinoIcons.time,
-                              label: L10n.of(context).dueSoonLabel,
-                              value: dueSoon.toString(),
-                              color: CupertinoColors.activeOrange,
-                              emphasize: true),
-                          _StatChip(
-                              icon: CupertinoIcons.exclamationmark_triangle,
-                              label: L10n.of(context).overdueLabel,
-                              value: overdue.toString(),
-                              color: CupertinoColors.destructiveRed),
-                          _StatChip(
-                            icon: CupertinoIcons.cloud_download,
-                            label: L10n.of(context).cacheLabel,
-                            value: hasAnyCards
-                                ? L10n.of(context).cardsLabel
-                                : (hasStacks
-                                    ? L10n.of(context).columnsLabel
-                                    : '—'),
-                            color: hasAnyCards
-                                ? CupertinoColors.activeGreen
-                                : (hasStacks
-                                    ? CupertinoColors.activeBlue
-                                    : CupertinoColors.systemGrey),
-                          ),
-                          if (app.boardMemberCount(boardId) != null)
+                          if (dueSoon > 0)
+                            _StatChip(
+                                icon: CupertinoIcons.time,
+                                label: L10n.of(context).dueSoonLabel,
+                                value: dueSoon.toString(),
+                                color: CupertinoColors.activeOrange,
+                                emphasize: true),
+                          if (overdue > 0)
+                            _StatChip(
+                                icon: CupertinoIcons.exclamationmark_triangle,
+                                label: L10n.of(context).overdueLabel,
+                                value: overdue.toString(),
+                                color: CupertinoColors.destructiveRed,
+                                emphasize: true),
+                          if ((app.boardMemberCount(boardId) ?? 0) > 1)
                             _StatChip(
                                 icon: CupertinoIcons.person_2,
                                 label: L10n.of(context).membersLabel,
@@ -897,32 +924,31 @@ class _StatChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // NC 2.0: kompakte Icon+Zahl-Pills statt „Listen: 4"-Textchips —
+    // ruhiger, weniger Platz, kein Kachel-Overflow mehr auf dem iPad.
+    // Das label bleibt für Screenreader als Semantics erhalten.
     final bg = (color ?? CupertinoColors.systemGrey)
         .withOpacity(emphasize ? 0.2 : 0.12);
     final fg = color ?? CupertinoColors.systemGrey;
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 170, minHeight: 34),
+    return Semantics(
+      label: '$label: $value',
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         decoration: BoxDecoration(
           color: bg,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(DT.radiusFull),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 16, color: fg),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                '$label: $value',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                    color: fg,
-                    fontSize: 12,
-                    fontWeight: emphasize ? FontWeight.w800 : FontWeight.w600),
-              ),
+            Icon(icon, size: 14, color: fg),
+            const SizedBox(width: 5),
+            Text(
+              value,
+              style: TextStyle(
+                  color: fg,
+                  fontSize: 12.5,
+                  fontWeight: emphasize ? FontWeight.w800 : FontWeight.w700),
             ),
           ],
         ),

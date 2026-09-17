@@ -110,6 +110,14 @@ class CardSkeleton extends StatelessWidget {
         decoration: BoxDecoration(
           color: base,
           borderRadius: BorderRadius.circular(DT.radiusL),
+          // NC 2.0: gleiche Licht-Oberkante wie die echten Karten, damit
+          // der Übergang Skeleton → Content nahtlos wirkt.
+          border: Border(
+            top: BorderSide(
+                color:
+                    CupertinoColors.white.withOpacity(isDark ? 0.10 : 0.55),
+                width: 1),
+          ),
           boxShadow: DT.shadowS(isDark),
         ),
         padding: const EdgeInsets.all(DT.spaceM),
@@ -121,7 +129,7 @@ class CardSkeleton extends StatelessWidget {
             SizedBox(height: 8),
             Skeleton.line(width: double.infinity),
             SizedBox(height: 6),
-            Skeleton(width: 100, height: 18, radius: 9),
+            Skeleton(width: 100, height: 22, radius: 11),
           ],
         ),
       ),

@@ -28,6 +28,30 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<!-- UIScene-Lifecycle (Pflicht für kommende iOS-Versionen; Xcode 27+
+	     startet nicht-migrierte Apps gar nicht mehr). Eine Scene, eigene
+	     SceneDelegate-Subklasse für Deep-Link-Handling (nextdeck://). -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>UIWindowScene</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+					<key>UISceneConfigurationName</key>
+					<string>flutter</string>
+					<key>UISceneStoryboardFile</key>
+					<string>Main</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
@@ -47,6 +71,13 @@
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Zugriff auf die Mediathek, um Bilder als Anhänge an Karten hochzuladen.</string>
+	<!-- ITMS-90683: Von image_picker referenzierte APIs verlangen diese
+	     Purpose-Strings, auch wenn die App sie nur fürs Aufnehmen von
+	     Anhang-Fotos (bzw. gar nicht) nutzt. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Zugriff auf die Kamera, um Fotos direkt als Anhänge an Karten aufzunehmen.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Zugriff auf das Mikrofon für Videoaufnahmen, die als Anhänge an Karten hochgeladen werden.</string>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>de</string>

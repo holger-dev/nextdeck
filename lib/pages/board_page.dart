@@ -2,10 +2,11 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/animation.dart';
 import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/services.dart' show HapticFeedback;
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/material.dart'
-    show ReorderableListView, ReorderableDragStartListener;
+    show ReorderableListView, ReorderableDelayedDragStartListener;
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -185,11 +186,6 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
         : (AppTheme.boardColorFrom(boardNcColor) ??
             AppTheme.boardStrongColor(boardIndex < 0 ? 0 : boardIndex));
     final showBoardBand = board != null && app.boardBandMode == 'nextcloud';
-    final addButtonColor = boardBaseColor == null
-        ? null
-        : (app.isDarkMode
-            ? AppTheme.blend(boardBaseColor!, const Color(0xFF000000), 0.15)
-            : AppTheme.blend(boardBaseColor!, const Color(0xFFFFFFFF), 0.1));
     final boardBackground = showBoardBand
         ? AppTheme.boardBandBackground(app, boardBaseColor!)
         : AppTheme.appBackground(app);
@@ -215,6 +211,12 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
       backgroundColor: boardBackground,
       child: SafeArea(
         top: true,
+        // NC 2.0: bottom bewusst OHNE SafeArea — die Spalten-Fläche läuft
+        // bis zur Geräteunterkante durch und liegt HINTER der Glass-Tab-Bar.
+        // Vorher endete die farbige Fläche am Home-Indicator und darunter
+        // blitzte der helle Scaffold-Hintergrund auf, was den Liquid-Effekt
+        // zerstört hat (Glas braucht Inhalt, den es brechen kann).
+        bottom: false,
         child: Column(
           children: [
             if (board != null)
@@ -318,15 +320,21 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                         );
                       },
                     ),
+                  // NC 2.0: Spalten-Navigation als fixes Overlay oben
+                  // rechts — bildschirm-rechtsbündig, unabhängig von
+                  // Titellänge und Spalten-Geometrie.
                   if (board != null &&
-                      columns.isNotEmpty &&
+                      columns.length > 1 &&
                       !(MediaQuery.of(context).size.width >= 900 || isTablet))
-                    _EdgeIndicators(
-                        currentPage: _page,
+                    Positioned(
+                      top: 12,
+                      right: 16,
+                      child: _PagerPill(
+                        current: _page.round().clamp(0, columns.length - 1),
                         total: columns.length,
                         onPrev: () {
                           final target =
-                              (_pageController.page ?? 0).floor() - 1;
+                              (_pageController.page ?? 0).round() - 1;
                           if (target >= 0) {
                             _pageController.animateToPage(target,
                                 duration: DT.durationMedium,
@@ -334,31 +342,57 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                           }
                         },
                         onNext: () {
-                          final target = (_pageController.page ?? 0).ceil() + 1;
+                          final target =
+                              (_pageController.page ?? 0).round() + 1;
                           if (target < columns.length) {
                             _pageController.animateToPage(target,
                                 duration: DT.durationMedium,
                                 curve: Curves.easeOut);
                           }
-                        }),
+                        },
+                      ),
+                    ),
                   if (!isTablet)
                     Positioned(
                       right: 16,
-                      // Über der schwebenden Glass-Tab-Bar: deren Höhe ist
-                      // ~52 px, dazu Bottom-Inset (Home-Indicator) und ein
-                      // kleiner Abstand. Sonst überlappt sie den Plus-Button.
-                      bottom: MediaQuery.of(context).padding.bottom + 76,
-                      child: CupertinoButton.filled(
-                        color: addButtonColor,
-                        padding: const EdgeInsets.all(12),
-                        child: Icon(
-                          CupertinoIcons.add,
-                          color: addButtonColor == null
-                              ? null
-                              : AppTheme.textOn(addButtonColor),
+                      // NC 2.0 Feedback-Fix: direkt über der Tab-Bar-Pill
+                      // (statt weit oben im leeren Raum zu schweben).
+                      bottom: MediaQuery.of(context).padding.bottom + 92,
+                      child: GlassButton(
+                        // Feedback-Fix: opaker Farbkern in kräftiger
+                        // Board-Farbe — reines Glas war auf gleichfarbigem
+                        // Board-Hintergrund fast unsichtbar.
+                        icon: Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: boardBaseColor ??
+                                CupertinoColors.activeBlue,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: (boardBaseColor ??
+                                        CupertinoColors.activeBlue)
+                                    .withOpacity(0.5),
+                                blurRadius: 14,
+                                spreadRadius: 1,
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            CupertinoIcons.add,
+                            size: 24,
+                            color: AppTheme.textOn(
+                                boardBaseColor ?? CupertinoColors.activeBlue),
+                          ),
                         ),
-                        onPressed: () async {
+                        width: 60,
+                        height: 60,
+                        iconSize: 44,
+                        glowColor: boardBaseColor,
+                        onTap: () async {
                           if (board == null || columns.isEmpty) return;
+                          HapticFeedback.lightImpact();
                           final currentPage = _pageController.hasClients
                               ? _pageController.page?.round() ?? 0
                               : 0;
@@ -381,9 +415,14 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
     final topColor = app.isDarkMode
         ? AppTheme.blend(baseColor, const Color(0xFF000000), 0.25)
         : AppTheme.blend(baseColor, const Color(0xFF000000), 0.15);
-    final txtColor =
-        app.isDarkMode ? AppTheme.textOn(topColor) : CupertinoColors.black;
+    // NC 2.0 Fix: Kontrastfarbe IMMER aus der tatsächlichen Header-Farbe
+    // ableiten — das alte harte Schwarz im Light-Mode war auf dunklen
+    // Board-Farben (z. B. Dunkellila) unlesbar.
+    final txtColor = AppTheme.textOn(topColor);
     final l10n = L10n.of(context);
+    // NC 2.0: Header mit Titel-Pill (Tap = Board-Wechsel), Glass-Buttons
+    // und Board-Menü als Popover direkt am Button statt Vollbild-Sheet —
+    // ein Tap weniger, kein Kontextverlust.
     return Container(
       width: double.infinity,
       decoration: showBoardBand
@@ -403,174 +442,173 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
               padding: EdgeInsets.zero,
               alignment: Alignment.centerLeft,
               onPressed: () => _showVisibleBoards(context),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 16,
-                    height: 6,
-                    decoration: BoxDecoration(
-                      color: topColor,
-                      borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: txtColor.withOpacity(0.07),
+                  borderRadius: BorderRadius.circular(DT.radiusFull),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: baseColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: txtColor.withOpacity(0.35), width: 1),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      board.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 18,
-                          color: txtColor),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        board.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 18,
+                            letterSpacing: -0.3,
+                            color: txtColor),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Icon(CupertinoIcons.chevron_down, size: 14, color: txtColor),
-                ],
+                    const SizedBox(width: 6),
+                    Icon(CupertinoIcons.chevron_up_chevron_down,
+                        size: 14, color: txtColor.withOpacity(0.7)),
+                  ],
+                ),
               ),
             ),
           ),
-          CupertinoButton(
-            padding: EdgeInsets.zero,
-            onPressed: () {
-              app.setUpcomingAssignedOnly(!app.upcomingAssignedOnly);
-            },
-            child: Icon(
+          GlassIconButton(
+            size: 38,
+            icon: Icon(
                 app.upcomingAssignedOnly
                     ? CupertinoIcons.person_fill
                     : CupertinoIcons.person,
-                size: 22,
+                size: 19,
                 color: txtColor),
+            onPressed: () {
+              app.setUpcomingAssignedOnly(!app.upcomingAssignedOnly);
+            },
           ),
-          CupertinoButton(
-            padding: EdgeInsets.zero,
-            onPressed: () => _showBoardMenu(context, l10n),
-            child: Icon(CupertinoIcons.bars, size: 22, color: txtColor),
-          ),
+          const SizedBox(width: 8),
+          _buildBoardMenuButton(context, app, board, txtColor, l10n),
         ],
       ),
     );
   }
 
-  Future<void> _showBoardMenu(BuildContext context, L10n l10n) async {
-    final app = context.read<AppState>();
-    final board = app.activeBoard;
-    if (board == null) return;
+  /// NC 2.0: Board-Menü als Glass-Popover am Button. Ersetzt das alte
+  /// Vollbild-CupertinoActionSheet (_showBoardMenu) — gleiche Aktionen,
+  /// aber mit Icons, direkt am Auslöser und ohne Kontextwechsel.
+  Widget _buildBoardMenuButton(BuildContext context, AppState app,
+      Board board, Color txtColor, L10n l10n) {
     final columns = app.columnsForActiveBoard();
-    await showCupertinoModalPopup<void>(
+    return GlassPullDownButton(
+      buttonWidth: 38,
+      buttonHeight: 38,
+      menuWidth: 260,
+      icon: Icon(CupertinoIcons.ellipsis_circle, size: 20, color: txtColor),
+      items: [
+        GlassMenuItem(
+          title: l10n.refresh,
+          icon: const Icon(CupertinoIcons.arrow_2_circlepath),
+          onTap: () {
+            if (app.isSyncing) return;
+            app.runWithSyncing(() async {
+              await app.refreshBoards(forceNetwork: true);
+              await app.refreshSingleBoard(board.id);
+            });
+          },
+        ),
+        GlassMenuItem(
+          title: l10n.search,
+          icon: const Icon(CupertinoIcons.search),
+          onTap: () {
+            Navigator.of(context).push(
+                CupertinoPageRoute(builder: (_) => const BoardSearchPage()));
+          },
+        ),
+        if (columns.isNotEmpty)
+          GlassMenuItem(
+            title: l10n.selectColumn,
+            icon: const Icon(CupertinoIcons.list_bullet),
+            onTap: () => _showColumnJumpSheet(context, columns, l10n),
+          ),
+        GlassMenuItem(
+          title: app.boardArchivedOnly
+              ? l10n.showActiveCards
+              : l10n.showArchivedCards,
+          icon: const Icon(CupertinoIcons.archivebox),
+          onTap: () {
+            final next = !app.boardArchivedOnly;
+            app.setBoardArchivedOnly(next);
+            if (next) {
+              app.refreshArchivedCardsForBoard(board.id);
+            }
+          },
+        ),
+        const GlassMenuDivider(),
+        GlassMenuItem(
+          title: l10n.newColumn,
+          icon: const Icon(CupertinoIcons.plus_rectangle),
+          onTap: () => _createColumnForBoard(context, board),
+        ),
+        if (columns.isNotEmpty)
+          GlassMenuItem(
+            title: l10n.renameColumn,
+            icon: const Icon(CupertinoIcons.pencil),
+            onTap: () => _renameColumnForBoard(context, board, columns),
+          ),
+        GlassMenuItem(
+          title: l10n.reorderColumns,
+          icon: const Icon(CupertinoIcons.arrow_up_arrow_down),
+          onTap: () => _reorderColumnsForBoard(context, board),
+        ),
+        GlassMenuItem(
+          title: l10n.changeBoardColor,
+          icon: const Icon(CupertinoIcons.paintbrush),
+          onTap: () => _changeBoardColorForBoard(context, board),
+        ),
+        const GlassMenuDivider(),
+        GlassMenuItem(
+          title: l10n.deleteBoard,
+          icon: const Icon(CupertinoIcons.trash),
+          isDestructive: true,
+          onTap: () => _deleteBoard(context, board),
+        ),
+      ],
+    );
+  }
+
+  /// Spalten-Schnellsprung (aus dem Board-Menü heraus).
+  Future<void> _showColumnJumpSheet(
+      BuildContext context, List<deck.Column> columns, L10n l10n) async {
+    await showCupertinoModalPopup(
       context: context,
-      builder: (ctx) => CupertinoActionSheet(
-        title: Text(l10n.boardActions),
-        actions: [
-          CupertinoActionSheetAction(
-            onPressed: () {
-              if (app.isSyncing) return;
-              Navigator.of(ctx).pop();
-              app.runWithSyncing(() async {
-                await app.refreshBoards(forceNetwork: true);
-                await app.refreshSingleBoard(board.id);
-              });
-            },
-            child: Text(l10n.refresh),
-          ),
-          if (columns.isNotEmpty)
-            CupertinoActionSheetAction(
-              onPressed: () async {
-                Navigator.of(ctx).pop();
-                await showCupertinoModalPopup(
-                  context: context,
-                  builder: (sheetCtx) => CupertinoActionSheet(
-                    title: Text(l10n.selectColumn),
-                    actions: columns
-                        .asMap()
-                        .entries
-                        .map((e) => CupertinoActionSheetAction(
-                              onPressed: () {
-                                Navigator.of(sheetCtx).pop();
-                                final target = e.key;
-                                if (_pageController.hasClients) {
-                                  _pageController.animateToPage(target,
-                                      duration:
-                                          DT.durationMedium,
-                                      curve: Curves.easeOut);
-                                }
-                              },
-                              child: Text(e.value.title),
-                            ))
-                        .toList(),
-                    cancelButton: CupertinoActionSheetAction(
-                      onPressed: () => Navigator.of(sheetCtx).pop(),
-                      isDefaultAction: true,
-                      child: Text(l10n.cancel),
-                    ),
-                  ),
-                );
-              },
-              child: Text(l10n.selectColumn),
-            ),
-          CupertinoActionSheetAction(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              Navigator.of(context).push(
-                  CupertinoPageRoute(builder: (_) => const BoardSearchPage()));
-            },
-            child: Text(l10n.search),
-          ),
-          CupertinoActionSheetAction(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              final next = !app.boardArchivedOnly;
-              app.setBoardArchivedOnly(next);
-              if (next) {
-                app.refreshArchivedCardsForBoard(board.id);
-              }
-            },
-            child: Text(app.boardArchivedOnly
-                ? l10n.showActiveCards
-                : l10n.showArchivedCards),
-          ),
-          CupertinoActionSheetAction(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              await _createColumnForBoard(context, board);
-            },
-            child: Text(l10n.newColumn),
-          ),
-          if (columns.isNotEmpty)
-            CupertinoActionSheetAction(
-              onPressed: () async {
-                Navigator.of(ctx).pop();
-                await _renameColumnForBoard(context, board, columns);
-              },
-              child: Text(l10n.renameColumn),
-            ),
-          CupertinoActionSheetAction(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              _reorderColumnsForBoard(context, board);
-            },
-            child: Text(l10n.reorderColumns),
-          ),
-          CupertinoActionSheetAction(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              await _changeBoardColorForBoard(context, board);
-            },
-            child: Text(l10n.changeBoardColor),
-          ),
-          CupertinoActionSheetAction(
-            isDestructiveAction: true,
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              await _deleteBoard(context, board);
-            },
-            child: Text(l10n.deleteBoard),
-          ),
-        ],
+      builder: (sheetCtx) => CupertinoActionSheet(
+        title: Text(l10n.selectColumn),
+        actions: columns
+            .asMap()
+            .entries
+            .map((e) => CupertinoActionSheetAction(
+                  onPressed: () {
+                    Navigator.of(sheetCtx).pop();
+                    final target = e.key;
+                    if (_pageController.hasClients) {
+                      _pageController.animateToPage(target,
+                          duration: DT.durationMedium, curve: Curves.easeOut);
+                    }
+                  },
+                  child: Text(e.value.title),
+                ))
+            .toList(),
         cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.of(ctx).pop(),
+          onPressed: () => Navigator.of(sheetCtx).pop(),
           isDefaultAction: true,
           child: Text(l10n.cancel),
         ),
@@ -1063,13 +1101,38 @@ class _ColumnViewState extends State<_ColumnView> {
       } catch (_) {}
     }
 
+    // NC 2.0: Spalten-Header links ausgerichtet, große Typo, Karten-Zähler
+    // als Pill. Die Spalten-Navigation ist ein FIXES Overlay am rechten
+    // Bildschirmrand (siehe _PagerPill im Board-Stack) — im Header wäre
+    // ihre Position von Spalten-Geometrie und Titellänge abhängig.
     Widget header = Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      child: Center(
-          child: Text(col.title,
-              textAlign: TextAlign.center,
-              style:
-                  const TextStyle(fontSize: 20, fontWeight: FontWeight.w600))),
+      padding: const EdgeInsets.fromLTRB(20, 16, 120, 10),
+      child: Row(
+        children: [
+          Flexible(
+            child: Text(col.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5)),
+          ),
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(
+              color: CupertinoColors.systemGrey.withOpacity(0.18),
+              borderRadius: BorderRadius.circular(DT.radiusFull),
+            ),
+            child: Text('${cards.length}',
+                style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: CupertinoColors.systemGrey)),
+          ),
+        ],
+      ),
     );
 
     if (isTablet) {
@@ -1089,7 +1152,7 @@ class _ColumnViewState extends State<_ColumnView> {
                             controller: _listCtrl.hasClients ? _listCtrl : null,
                             child: ListView.builder(
                               controller: _listCtrl,
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 140),
                               itemCount: cards.length,
                               itemBuilder: (context, idx) {
                                 final card = cards[idx];
@@ -1140,8 +1203,13 @@ class _ColumnViewState extends State<_ColumnView> {
         builder: (ctx, cand, rej) => Container(
           decoration: BoxDecoration(
               color: containerBg,
+              // NC 2.0: Drop-Hover glüht in der Board-Farbe statt System-Blau
               border: _hover
-                  ? Border.all(color: CupertinoColors.activeBlue, width: 2)
+                  ? Border.all(
+                      color: AppTheme.boardColorFrom(
+                              app.activeBoard?.color) ??
+                          CupertinoColors.activeBlue,
+                      width: 2.5)
                   : null),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1154,7 +1222,7 @@ class _ColumnViewState extends State<_ColumnView> {
                         controller: _listCtrl.hasClients ? _listCtrl : null,
                         child: ListView.builder(
                           controller: _listCtrl,
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 140),
                           primary: false,
                           itemCount: cards.length,
                           itemBuilder: (context, idx) {
@@ -1568,7 +1636,7 @@ class _ColumnViewState extends State<_ColumnView> {
                           controller: _listCtrl.hasClients ? _listCtrl : null,
                           child: ListView.builder(
                             controller: _listCtrl,
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 140),
                             itemCount: cards.length,
                             itemBuilder: (context, idx) {
                               final card = cards[idx];
@@ -1619,8 +1687,12 @@ class _ColumnViewState extends State<_ColumnView> {
       builder: (ctx, cand, rej) => Container(
         decoration: BoxDecoration(
             color: containerBg,
+            // NC 2.0: Drop-Hover glüht in der Board-Farbe statt System-Blau
             border: _hover
-                ? Border.all(color: CupertinoColors.activeBlue, width: 2)
+                ? Border.all(
+                    color: AppTheme.boardColorFrom(app.activeBoard?.color) ??
+                        CupertinoColors.activeBlue,
+                    width: 2.5)
                 : null),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1635,7 +1707,7 @@ class _ColumnViewState extends State<_ColumnView> {
                           controller: _listCtrl.hasClients ? _listCtrl : null,
                           child: ReorderableListView.builder(
                             buildDefaultDragHandles: false,
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 140),
                             itemCount: cards.length,
                             onReorderStart: (_) =>
                                 HapticFeedback.selectionClick(),
@@ -2190,7 +2262,13 @@ class _ColumnViewState extends State<_ColumnView> {
                                         Positioned(
                                           right: 6,
                                           top: 6,
-                                          child: ReorderableDragStartListener(
+                                          // Issue #85: verzögerter Drag-Start
+                                          // (Long-Press). Der sofort startende
+                                          // Listener lag genau in der Daumen-
+                                          // Scroll-Zone — Scrollen auf dem
+                                          // Handle sortierte ungewollt um.
+                                          child:
+                                              ReorderableDelayedDragStartListener(
                                             index: idx,
                                             child: const Icon(
                                                 CupertinoIcons
@@ -2249,21 +2327,9 @@ class _CardTile extends StatelessWidget {
       this.footer,
       this.onMore});
 
-  String _assigneesText() {
-    final names = assignees
-        .map((u) => u.displayName.isNotEmpty ? u.displayName : u.id)
-        .where((n) => n.isNotEmpty)
-        .toList();
-    if (names.isEmpty) return '';
-    if (names.length <= 2) return names.join(', ');
-    final remaining = names.length - 2;
-    return '${names.take(2).join(', ')} +$remaining';
-  }
-
   @override
   Widget build(BuildContext context) {
     final textColor = AppTheme.textOn(background);
-    final assigneesText = _assigneesText();
     final isDark =
         CupertinoTheme.brightnessOf(context) == Brightness.dark;
     return GestureDetector(
@@ -2274,11 +2340,18 @@ class _CardTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: background,
           borderRadius: BorderRadius.circular(DT.radiusL),
-          // Modernerer Look: weiche Elevation statt harter 1-px-Border —
-          // gibt der Karte sichtbare Tiefe ohne "Lineal"-Charakter.
+          // NC 2.0: weiche Elevation + hauchdünne helle Oberkante
+          // („Licht von oben") — gibt den Karten einen Hauch Glas-Tiefe,
+          // ohne echten Shader-Aufwand pro Karte.
+          border: Border(
+            top: BorderSide(
+                color: CupertinoColors.white
+                    .withOpacity(isDark ? 0.10 : 0.55),
+                width: 1),
+          ),
           boxShadow: DT.shadowM(isDark),
         ),
-        padding: const EdgeInsets.all(DT.spaceM),
+        padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -2291,8 +2364,10 @@ class _CardTile extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.2,
+                        height: 1.25,
                         color: textColor),
                   ),
                 ),
@@ -2330,83 +2405,84 @@ class _CardTile extends StatelessWidget {
               Builder(builder: (context) {
                 final app = context.watch<AppState>();
                 if (app.showDescriptionText) {
-                  final s = subtitle!;
-                  final trimmed =
-                      s.length > 200 ? (s.substring(0, 200) + '…') : s;
                   return Padding(
-                    padding: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.only(top: 5),
                     child: Text(
-                      trimmed,
+                      subtitle!,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                          color: textColor.withOpacity(0.85), fontSize: 14),
+                          color: textColor.withOpacity(0.72),
+                          fontSize: 13.5,
+                          height: 1.35),
                     ),
                   );
                 } else {
                   return const SizedBox.shrink();
                 }
               }),
-            if (assigneesText.isNotEmpty)
+            // NC 2.0: Due-Badge + Assignee-Avatare in EINER Footer-Zeile
+            // statt loser Text-Zeilen — kompakter und deutlich moderner.
+            if (due != null || assignees.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 6),
+                padding: const EdgeInsets.only(top: 10),
                 child: Row(
                   children: [
-                    Icon(CupertinoIcons.person,
-                        size: 14, color: textColor.withOpacity(0.9)),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        assigneesText,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: textColor.withOpacity(0.9)),
-                      ),
-                    ),
+                    if (due != null)
+                      Builder(builder: (context) {
+                        // Issue #75: erledigte Karten sind nie „überfällig".
+                        final isDone = done != null;
+                        final now = DateTime.now();
+                        final isOverdue = !isDone && due!.isBefore(now);
+                        final hoursTo = due!.difference(now).inHours;
+                        final Color dueColor = isDone
+                            ? CupertinoColors.activeGreen
+                            : isOverdue
+                                ? CupertinoColors.systemRed
+                                : (hoursTo <= 24
+                                    ? CupertinoColors.activeOrange
+                                    : textColor.withOpacity(0.9));
+                        final bool tinted =
+                            isDone || isOverdue || hoursTo <= 24;
+                        return Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: tinted
+                                ? dueColor.withOpacity(0.16)
+                                : textColor.withOpacity(0.08),
+                            borderRadius:
+                                BorderRadius.circular(DT.radiusFull),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                  isDone
+                                      ? CupertinoIcons.checkmark_circle_fill
+                                      : CupertinoIcons.time,
+                                  size: 13,
+                                  color: dueColor),
+                              const SizedBox(width: 4),
+                              Text(
+                                _formatDue(due!),
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: dueColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                    const Spacer(),
+                    if (assignees.isNotEmpty)
+                      _AssigneeAvatars(
+                          assignees: assignees, textColor: textColor),
                   ],
                 ),
               ),
-            if (due != null)
-              Builder(builder: (context) {
-                // Issue #75: Erledigte Karten (done != null) sind nie
-                // "überfällig" — statt rotem Overdue-Badge zeigen wir
-                // ein grünes Häkchen mit dem Datum.
-                final isDone = done != null;
-                final now = DateTime.now();
-                final isOverdue = !isDone && due!.isBefore(now);
-                final hoursTo = due!.difference(now).inHours;
-                final Color dueColor = isDone
-                    ? CupertinoColors.activeGreen
-                    : isOverdue
-                        ? CupertinoColors.systemRed
-                        : (hoursTo <= 24
-                            ? CupertinoColors.activeOrange
-                            : textColor.withOpacity(0.98));
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: Row(
-                    children: [
-                      Icon(
-                          isDone
-                              ? CupertinoIcons.checkmark_circle_fill
-                              : CupertinoIcons.time,
-                          size: 14,
-                          color: dueColor),
-                      const SizedBox(width: 4),
-                      Text(
-                        _formatDue(due!),
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          fontStyle: FontStyle.normal,
-                          color: dueColor,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }),
             if (footer != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
@@ -2481,8 +2557,10 @@ class _CardDragWrapper extends StatelessWidget {
       childWhenDragging: childWhenDragging,
       onDragUpdate: onDragUpdate,
       axis: Axis.horizontal,
+      // Issue #85: 350ms statt 250ms — beim kurzen Verharren während des
+      // Scrollens feuerte der Drag auf Tablets zu schnell.
       delay: isTablet
-          ? const Duration(milliseconds: 250)
+          ? const Duration(milliseconds: 350)
           : kLongPressTimeout,
       hapticFeedbackOnStart: true,
     );
@@ -2698,9 +2776,18 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
               const SizedBox(width: 12),
               for (final c in widget.columns) ...[
                 Builder(builder: (context) {
-                  final visibleCards = showArchivedOnly
-                      ? (archivedByStack[c.id] ?? const <CardItem>[])
-                      : c.cards.where((card) => !card.archived).toList();
+                  // Issue #87: Personen-Filter griff im breiten
+                  // iPad-Layout nie — hier fehlte die
+                  // shouldIncludeAssignedCard-Bedingung komplett.
+                  final visibleCards = (showArchivedOnly
+                          ? (archivedByStack[c.id] ?? const <CardItem>[])
+                          : c.cards
+                              .where((card) => !card.archived)
+                              .toList())
+                      .where((card) =>
+                          !app.upcomingAssignedOnly ||
+                          app.shouldIncludeAssignedCard(card))
+                      .toList();
                   return SizedBox(
                     width: colWidth,
                     child: DragTarget<_DragCard>(
@@ -3274,8 +3361,10 @@ class _WideColumnsViewState extends State<_WideColumnsView> {
                                                     Positioned(
                                                       right: 6,
                                                       top: 6,
+                                                      // Issue #85: siehe oben —
+                                                      // Long-Press statt Sofort-Drag
                                                       child:
-                                                          ReorderableDragStartListener(
+                                                          ReorderableDelayedDragStartListener(
                                                         index: idx,
                                                         child: const Icon(
                                                             CupertinoIcons
@@ -3337,15 +3426,91 @@ class _LabelChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final bg = _parseDeckColor(label.color) ?? CupertinoColors.systemGrey4;
     final tc = _bestTextColor(bg);
+    // NC 2.0: vollrunde Pills mit etwas Luft — weicher als die alten
+    // 8-px-Ecken.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(DT.radiusFull),
       ),
       child: Text(
         label.title.isEmpty ? 'Label' : label.title,
-        style: TextStyle(color: tc, fontSize: 12, fontWeight: FontWeight.w600),
+        style: TextStyle(
+            color: tc,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.1),
+      ),
+    );
+  }
+}
+
+/// NC 2.0: kompakte Initialen-Avatare für Karten-Assignees.
+/// Zeigt bis zu drei überlappende Kreise, danach einen +N-Zähler.
+class _AssigneeAvatars extends StatelessWidget {
+  final List<UserRef> assignees;
+  final Color textColor;
+  const _AssigneeAvatars(
+      {required this.assignees, required this.textColor});
+
+  String _initials(UserRef u) {
+    final src = u.displayName.isNotEmpty ? u.displayName : u.id;
+    final parts =
+        src.split(RegExp(r'[\s._-]+')).where((s) => s.isNotEmpty).toList();
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) {
+      return parts.first.substring(0, 1).toUpperCase();
+    }
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 24.0;
+    const overlap = 7.0;
+    final shown = assignees.take(3).toList();
+    final extra = assignees.length - shown.length;
+    final width =
+        size + (shown.length - 1) * (size - overlap) + (extra > 0 ? 22 : 0);
+    return SizedBox(
+      height: size,
+      width: width,
+      child: Stack(
+        children: [
+          for (var i = 0; i < shown.length; i++)
+            Positioned(
+              left: i * (size - overlap),
+              child: Container(
+                width: size,
+                height: size,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: textColor.withOpacity(0.16),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                      color: textColor.withOpacity(0.25), width: 1),
+                ),
+                child: Text(
+                  _initials(shown[i]),
+                  style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: textColor.withOpacity(0.95)),
+                ),
+              ),
+            ),
+          if (extra > 0)
+            Positioned(
+              left: shown.length * (size - overlap) + 2,
+              top: 4,
+              child: Text('+$extra',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: textColor.withOpacity(0.8))),
+            ),
+        ],
       ),
     );
   }
@@ -3363,7 +3528,7 @@ class _ReorderableCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ReorderableListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 140),
       itemCount: cards.length,
       onReorder: onReorder,
       itemBuilder: (ctx, index) {
@@ -3438,54 +3603,57 @@ String _markdownPreviewLine(String src) {
   return s;
 }
 
-class _EdgeIndicators extends StatelessWidget {
-  final double currentPage;
+/// NC 2.0: kompakte Pager-Pill (‹ n/m ›) — fixes Overlay oben rechts.
+/// Wird in Board- und Anstehend-Ansicht identisch verwendet.
+class _PagerPill extends StatelessWidget {
+  final int current;
   final int total;
   final VoidCallback onPrev;
   final VoidCallback onNext;
-  const _EdgeIndicators(
-      {required this.currentPage,
+  const _PagerPill(
+      {required this.current,
       required this.total,
       required this.onPrev,
       required this.onNext});
 
   @override
   Widget build(BuildContext context) {
-    final showLeft = currentPage > 0.05;
-    final showRight = currentPage < total - 1 - 0.05;
-    return IgnorePointer(
-      ignoring: false,
-      child: Stack(children: [
-        if (showLeft)
-          Positioned(
-            left: 8,
-            top: 14,
-            child: _Arrow(onTap: onPrev, icon: CupertinoIcons.chevron_back),
-          ),
-        if (showRight)
-          Positioned(
-            right: 8,
-            top: 14,
-            child: _Arrow(onTap: onNext, icon: CupertinoIcons.chevron_forward),
-          ),
-      ]),
-    );
-  }
-}
+    final labelColor = CupertinoColors.label.resolveFrom(context);
+    Widget chip(IconData icon, bool enabled, VoidCallback onTap) {
+      return GestureDetector(
+        onTap: enabled ? onTap : null,
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Icon(icon,
+              size: 16,
+              color: enabled
+                  ? labelColor
+                  : CupertinoColors.systemGrey.withOpacity(0.45)),
+        ),
+      );
+    }
 
-class _Arrow extends StatelessWidget {
-  final VoidCallback onTap;
-  final IconData icon;
-  const _Arrow({required this.onTap, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.all(6),
-        child: Icon(icon, size: 26, color: CupertinoColors.systemGrey),
+    return Container(
+      decoration: BoxDecoration(
+        color: CupertinoTheme.of(context)
+            .scaffoldBackgroundColor
+            .withOpacity(0.55),
+        borderRadius: BorderRadius.circular(DT.radiusFull),
+        border: Border.all(
+            color: CupertinoColors.systemGrey.withOpacity(0.25), width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          chip(CupertinoIcons.chevron_back, current > 0, onPrev),
+          Text('${current + 1}/$total',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: labelColor.withOpacity(0.75))),
+          chip(CupertinoIcons.chevron_forward, current < total - 1, onNext),
+        ],
       ),
     );
   }

@@ -1,6 +1,6 @@
 # DE – Werbetext
 
-Dein schneller, eleganter Nextcloud‑Deck‑Client für iPhone und iPad: Karten per Drag & Drop bewegen, fokussiert arbeiten, alles im Blick – privat, zuverlässig, produktiv.
+Dein schneller, eleganter Nextcloud‑Deck‑Client für iPhone und iPad – jetzt im komplett neuen Liquid‑Glass‑Design: Karten per Drag & Drop bewegen, PDFs direkt bearbeiten, alles im Blick – privat, zuverlässig, produktiv.
 
 
 # DE – Beschreibung
@@ -8,8 +8,11 @@ Dein schneller, eleganter Nextcloud‑Deck‑Client für iPhone und iPad: Karten
 Nextdeck ist der moderne, blitzschnelle Client für Nextcloud Deck – perfekt für Kanban, Aufgaben und Projekte. Behalte Boards, Spalten und Karten jederzeit im Griff: Karten per Drag & Drop verschieben, Details pflegen und den Überblick behalten – auf iPhone und iPad, im hellen wie im dunklen Design.
 
 Highlights (Checkliste)
+- [x] Liquid‑Glass‑Design: schwebende Glas‑Tab‑Bar mit echtem Lichtbrechungs‑Effekt – und die App färbt sich dezent nach deinem aktiven Board.
+- [x] PDFs bearbeiten: Anhänge direkt in der App markieren, unterschreiben, kommentieren und als neue Version anhängen.
 - [x] Drag & Drop: Karten innerhalb einer Spalte oder in andere Spalten verschieben – präzise und intuitiv.
 - [x] Reorder & Positionen: Karten gezielt vor einer anderen Karte einfügen oder nach oben/unten sortieren.
+- [x] Flexible Erinnerungen: frei wählbare Vorlaufzeiten von 15 Minuten bis 1 Woche.
 - [x] Labels & Farben: Farbcodes sorgen für sofortige Orientierung.
 - [x] Fälligkeiten: Überfällige rot, ≤24h orange – direkt auf der Karte.
 - [x] Zuständigkeiten: Teammitglieder zuweisen und Verantwortung sichtbar machen.
@@ -36,7 +39,7 @@ Nextcloud, Deck, Kanban, Aufgaben, Projekte, Project Management, Boards, Karten,
 
 # EN – Promo Text
 
-Your fast, elegant Nextcloud Deck client for iPhone and iPad: drag and drop cards, stay focused, see everything at a glance — private, reliable, productive.
+Your fast, elegant Nextcloud Deck client for iPhone and iPad — now with an all-new Liquid Glass design: drag and drop cards, edit PDFs right in the app, see everything at a glance — private, reliable, productive.
 
 
 # EN – Description
@@ -44,6 +47,9 @@ Your fast, elegant Nextcloud Deck client for iPhone and iPad: drag and drop card
 Nextdeck is the modern, lightning‑fast client for Nextcloud Deck — perfect for Kanban, tasks, and projects. Keep boards, columns, and cards under control at all times: move cards via drag and drop, edit details, and keep your overview — on iPhone and iPad, in light and dark mode.
 
 Highlights (Checklist)
+- [x] Liquid Glass design: floating glass tab bar with real refraction — the app subtly tints itself to match your active board.
+- [x] Edit PDFs: mark up, sign, and annotate attachments in-app and attach them as a new version.
+- [x] Flexible reminders: configurable lead times from 15 minutes to 1 week.
 - [x] Drag & drop: move cards within a column or across columns — precise and intuitive.
 - [x] Reorder & positions: insert cards exactly before another card or move up/down.
 - [x] Labels & colors: instant orientation with color coding.
@@ -72,7 +78,7 @@ Nextcloud, Deck, Kanban, Tasks, Projects, Project Management, Boards, Cards, To�
 
 # ES – Texto Promocional
 
-Tu cliente de Nextcloud Deck rápido y elegante para iPhone y iPad: mueve tarjetas con arrastrar y soltar, trabaja enfocado y ten todo a la vista — privado, fiable y productivo.
+Tu cliente de Nextcloud Deck rápido y elegante para iPhone y iPad — ahora con un diseño Liquid Glass totalmente nuevo: mueve tarjetas con arrastrar y soltar, edita PDFs en la app y ten todo a la vista — privado, fiable y productivo.
 
 
 # ES – Descripción
@@ -325,3 +331,45 @@ Hinweis: Bei diesem Update gern einmal die lokal gespeichert Daten löschen (wer
 - Notificaciones del servidor: API central de Nextcloud para asignaciones, menciones en comentarios y compartidos de todos los tableros.
 - Correcciones: enlaces clicables en descripción y comentarios, orden de tarjetas estable, adjuntos MP3, eliminar tableros, renombrar listas, layout de chips de estado, subida de archivos en versiones actuales de Nextcloud.
 - Mejoras: barra de Markdown en dos filas con auto-selección, intervalo de sincronización por tablero, notificaciones locales, chips ocultables, descripción con scroll, skeleton-loaders, feedback háptico.
+
+# DE – Version 2.0
+
+Next Deck 2.0 — komplett neues Design.
+
+- Frisches Liquid-Glass-Design auf allen Ansichten: schwebende Glas-Tab-Bar mit echtem Lichtbrechungs-Effekt, weiche Panels, ruhigere Karten — und die App färbt sich dezent nach deinem aktiven Board.
+- PDFs bearbeiten: Anhänge direkt in der App markieren, unterschreiben, kommentieren und als neue Version an die Karte hängen — das Original bleibt erhalten.
+- Datei-Upload repariert: Anhänge landen jetzt zuverlässig auf dem Server.
+- Erinnerungen nach deinem Takt: frei wählbare Vorlaufzeiten von 15 Minuten bis 1 Woche.
+- Anstehend mit neuer Spalte „Ohne Fälligkeit" — wie in Nextcloud Deck.
+- Checklisten: Enter erzeugt automatisch den nächsten Aufgabenpunkt.
+- Karten aus „Anstehend" öffnen jetzt sofort.
+- Viele Fixes: kein versehentliches Verschieben beim Scrollen, PDFs öffnen auf dem iPad, erledigte Karten gelten nicht mehr als überfällig, Personen-Filter im iPad-Layout, ausgeblendete Boards bleiben ausgeblendet, stabilere Anmeldung bei Erstinstallation.
+- Unter der Haube: schnellerer Start-Sync, leichtgewichtiges Sortieren, zukunftssicher für kommende iOS-Versionen.
+
+# EN – Version 2.0
+
+Next Deck 2.0 — a complete redesign.
+
+- Fresh Liquid Glass design across every screen: floating glass tab bar with real refraction, soft panels, calmer cards — and the app subtly tints itself to match your active board.
+- Edit PDFs: mark up, sign, and annotate attachments right in the app and attach the result as a new version — the original stays untouched.
+- File upload fixed: attachments now reliably reach your server.
+- Reminders your way: freely configurable lead times from 15 minutes to 1 week.
+- Upcoming gains a "No due date" column — just like Nextcloud Deck.
+- Checklists: Enter automatically starts the next task item.
+- Cards opened from Upcoming now appear instantly.
+- Many fixes: no more accidental card moves while scrolling, PDFs open on iPad, done cards are no longer flagged overdue, the person filter works in the wide iPad layout, hidden boards stay hidden, more reliable sign-in on fresh installs.
+- Under the hood: faster startup sync, lightweight reordering, future-proofed for upcoming iOS versions.
+
+# ES – Versión 2.0
+
+Next Deck 2.0 — un rediseño completo.
+
+- Nuevo diseño Liquid Glass en todas las pantallas: barra de pestañas de cristal flotante con refracción real, paneles suaves, tarjetas más tranquilas — y la app se tiñe sutilmente con el color de tu tablero activo.
+- Edita PDFs: marca, firma y comenta adjuntos directamente en la app y añádelos como nueva versión — el original se conserva.
+- Subida de archivos reparada: los adjuntos llegan ahora de forma fiable a tu servidor.
+- Recordatorios a tu medida: avisos previos configurables desde 15 minutos hasta 1 semana.
+- «Próximas» estrena la columna «Sin fecha límite», como en Nextcloud Deck.
+- Listas de tareas: Intro crea automáticamente el siguiente punto.
+- Las tarjetas abiertas desde «Próximas» aparecen al instante.
+- Muchas correcciones: no más movimientos accidentales al hacer scroll, los PDFs se abren en iPad, las tarjetas completadas ya no aparecen como vencidas, el filtro de personas funciona en el diseño ancho de iPad, los tableros ocultos permanecen ocultos, inicio de sesión más fiable en instalaciones nuevas.
+- Por dentro: sincronización inicial más rápida, reordenación ligera, preparado para futuras versiones de iOS.

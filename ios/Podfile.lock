@@ -1,116 +1,16 @@
 PODS:
-  - background_fetch (1.6.2):
-    - Flutter
-    - TSBackgroundFetch (~> 4.1.0)
-  - DKImagePickerController/Core (4.3.9):
-    - DKImagePickerController/ImageDataManager
-    - DKImagePickerController/Resource
-  - DKImagePickerController/ImageDataManager (4.3.9)
-  - DKImagePickerController/PhotoGallery (4.3.9):
-    - DKImagePickerController/Core
-    - DKPhotoGallery
-  - DKImagePickerController/Resource (4.3.9)
-  - DKPhotoGallery (0.0.19):
-    - DKPhotoGallery/Core (= 0.0.19)
-    - DKPhotoGallery/Model (= 0.0.19)
-    - DKPhotoGallery/Preview (= 0.0.19)
-    - DKPhotoGallery/Resource (= 0.0.19)
-    - SDWebImage
-    - SwiftyGif
-  - DKPhotoGallery/Core (0.0.19):
-    - DKPhotoGallery/Model
-    - DKPhotoGallery/Preview
-    - SDWebImage
-    - SwiftyGif
-  - DKPhotoGallery/Model (0.0.19):
-    - SDWebImage
-    - SwiftyGif
-  - DKPhotoGallery/Preview (0.0.19):
-    - DKPhotoGallery/Model
-    - DKPhotoGallery/Resource
-    - SDWebImage
-    - SwiftyGif
-  - DKPhotoGallery/Resource (0.0.19):
-    - SDWebImage
-    - SwiftyGif
-  - file_picker (0.0.1):
-    - DKImagePickerController/PhotoGallery
-    - Flutter
   - Flutter (1.0.0)
-  - flutter_local_notifications (0.0.1):
-    - Flutter
-  - flutter_secure_storage_darwin (10.0.0):
-    - Flutter
-    - FlutterMacOS
-  - flutter_timezone (0.0.1):
-    - Flutter
-  - image_picker_ios (0.0.1):
-    - Flutter
-  - SDWebImage (5.21.7):
-    - SDWebImage/Core (= 5.21.7)
-  - SDWebImage/Core (5.21.7)
-  - share_plus (0.0.1):
-    - Flutter
-  - SwiftyGif (5.4.5)
-  - TSBackgroundFetch (4.1.1)
-  - url_launcher_ios (0.0.1):
-    - Flutter
 
 DEPENDENCIES:
-  - background_fetch (from `.symlinks/plugins/background_fetch/ios`)
-  - file_picker (from `.symlinks/plugins/file_picker/ios`)
   - Flutter (from `Flutter`)
-  - flutter_local_notifications (from `.symlinks/plugins/flutter_local_notifications/ios`)
-  - flutter_secure_storage_darwin (from `.symlinks/plugins/flutter_secure_storage_darwin/darwin`)
-  - flutter_timezone (from `.symlinks/plugins/flutter_timezone/ios`)
-  - image_picker_ios (from `.symlinks/plugins/image_picker_ios/ios`)
-  - share_plus (from `.symlinks/plugins/share_plus/ios`)
-  - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
-
-SPEC REPOS:
-  trunk:
-    - DKImagePickerController
-    - DKPhotoGallery
-    - SDWebImage
-    - SwiftyGif
-    - TSBackgroundFetch
 
 EXTERNAL SOURCES:
-  background_fetch:
-    :path: ".symlinks/plugins/background_fetch/ios"
-  file_picker:
-    :path: ".symlinks/plugins/file_picker/ios"
   Flutter:
     :path: Flutter
-  flutter_local_notifications:
-    :path: ".symlinks/plugins/flutter_local_notifications/ios"
-  flutter_secure_storage_darwin:
-    :path: ".symlinks/plugins/flutter_secure_storage_darwin/darwin"
-  flutter_timezone:
-    :path: ".symlinks/plugins/flutter_timezone/ios"
-  image_picker_ios:
-    :path: ".symlinks/plugins/image_picker_ios/ios"
-  share_plus:
-    :path: ".symlinks/plugins/share_plus/ios"
-  url_launcher_ios:
-    :path: ".symlinks/plugins/url_launcher_ios/ios"
 
 SPEC CHECKSUMS:
-  background_fetch: 31b1fd797189ec25dc022e4ae5e97bebc6f0935d
-  DKImagePickerController: 946cec48c7873164274ecc4624d19e3da4c1ef3c
-  DKPhotoGallery: b3834fecb755ee09a593d7c9e389d8b5d6deed60
-  file_picker: a0560bc09d61de87f12d246fc47d2119e6ef37be
-  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_local_notifications: 643a3eda1ce1c0599413ca31672536d423dee214
-  flutter_secure_storage_darwin: acdb3f316ed05a3e68f856e0353b133eec373a23
-  flutter_timezone: 7c838e17ffd4645d261e87037e5bebf6d38fe544
-  image_picker_ios: e0ece4aa2a75771a7de3fa735d26d90817041326
-  SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
-  share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
-  SwiftyGif: 706c60cf65fa2bc5ee0313beece843c8eb8194d4
-  TSBackgroundFetch: 18918b6449a1e3f01eb0f5b44d6d79ce6160a5a5
-  url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
+  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
 
-PODFILE CHECKSUM: a358481e0a696f823339a91827a1ea2a3f330478
+PODFILE CHECKSUM: 51b2f30d01fa4ed182968b30dbac31eb3c485981
 
 COCOAPODS: 1.16.2

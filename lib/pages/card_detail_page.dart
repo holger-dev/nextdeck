@@ -24,6 +24,7 @@ import '../widgets/markdown_editor.dart';
 import '../models/user_ref.dart';
 import '../models/comment.dart';
 import '../theme/design_tokens.dart';
+import '../services/quicklook_service.dart';
 import '../l10n/app_localizations.dart';
 // import 'labels_manage_page.dart';
 
@@ -495,11 +496,20 @@ class _CardDetailPageState extends State<CardDetailPage> {
 
   Future<void> _load() async {
     final app = context.read<AppState>();
-    final board = app.activeBoard;
+    // Perf-Fix: Board-Kontext aus dem Widget nehmen (Anstehend übergibt
+    // boardId/stackId!) und nur als Fallback das aktive Board. Vorher
+    // wurde IMMER im aktiven Board gesucht — Karten aus „Anstehend"
+    // (anderes Board) hatten dadurch nie einen Cache-Treffer und hingen
+    // am Spinner, bis der Netz-Fetch fertig war, obwohl die Karte längst
+    // lokal lag.
+    final int? contextBoardId = widget.boardId ?? app.activeBoard?.id;
     final baseUrl = app.baseUrl;
     final user = app.username;
     final pass = await app.storage.read(key: 'password');
-    if (board == null || baseUrl == null || user == null || pass == null) {
+    if (contextBoardId == null ||
+        baseUrl == null ||
+        user == null ||
+        pass == null) {
       setState(() {
         _loading = false;
         _initialFetchDone = true;
@@ -507,8 +517,9 @@ class _CardDetailPageState extends State<CardDetailPage> {
       return;
     }
     try {
-      // Use cached columns/cards first for instant display
-      final cols = app.columnsForActiveBoard();
+      // Use cached columns/cards first for instant display — aus dem
+      // Board, zu dem die Karte gehört.
+      final cols = app.columnsForBoard(contextBoardId);
       _columns = cols;
       final found = cols.expand((c) => c.cards).firstWhere(
           (c) => c.id == widget.cardId,
@@ -590,10 +601,12 @@ class _CardDetailPageState extends State<CardDetailPage> {
           });
       }
       // Background: prefetch board labels (detail) to speed up label sheet
+      // (Fix: gegen das Board der KARTE, nicht das gerade aktive Board —
+      // aus „Anstehend" geöffnet kamen sonst die falschen Labels.)
       unawaited(() async {
         try {
-          final detail =
-              await app.api.fetchBoardDetail(baseUrl!, user!, pass!, board.id);
+          final detail = await app.api
+              .fetchBoardDetail(baseUrl!, user!, pass!, contextBoardId);
           if (detail != null && mounted) {
             final lbls =
                 (detail['labels'] as List?)?.whereType<Map>().toList() ??
@@ -920,19 +933,28 @@ class _CardDetailPageState extends State<CardDetailPage> {
                     builder: (context, cns) {
                       final isWide = cns.maxWidth >= 900;
                       final panelColor = _panelColor(context, app);
+                      // NC 2.0: Panels mit großem Radius, heller
+                      // Licht-Oberkante und weicherem Schatten — gleiche
+                      // Design-Sprache wie die Board-Karten.
                       final panelDecoration = BoxDecoration(
                         color: panelColor,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(DT.radiusXl),
+                        border: Border(
+                          top: BorderSide(
+                              color: CupertinoColors.white
+                                  .withOpacity(app.isDarkMode ? 0.10 : 0.55),
+                              width: 1),
+                        ),
                         boxShadow: [
                           BoxShadow(
                             color: CupertinoColors.black
-                                .withOpacity(app.isDarkMode ? 0.25 : 0.08),
-                            blurRadius: 12,
+                                .withOpacity(app.isDarkMode ? 0.28 : 0.07),
+                            blurRadius: 18,
                             offset: const Offset(0, 6),
                           ),
                         ],
                       );
-                      const panelPadding = EdgeInsets.all(12);
+                      const panelPadding = EdgeInsets.all(16);
                       if (!isWide) {
                         return ListView(
                           // Zusätzlicher Bottom-Space, damit das Kommentar-
@@ -947,11 +969,21 @@ class _CardDetailPageState extends State<CardDetailPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
+                                  // NC 2.0: Titel als randlose Überschrift
+                                  // statt Formularfeld — bleibt editierbar.
                                   CupertinoTextField(
                                     controller: _titleCtrl,
                                     focusNode: _titleFocus,
                                     autofocus: widget.startEditing,
                                     placeholder: L10n.of(context).title,
+                                    maxLines: null,
+                                    style: const TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w800,
+                                        letterSpacing: -0.4,
+                                        height: 1.2),
+                                    decoration: null,
+                                    padding: EdgeInsets.zero,
                                     onSubmitted: (v) => _savePatch({'title': v},
                                         optimistic: true),
                                   ),
@@ -1525,21 +1557,36 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                               L10n.of(context).writeComment,
                                           maxLines: 3,
                                           minLines: 1,
+                                          // NC 2.0: Pill-Eingabefeld
+                                          padding: const EdgeInsets
+                                              .symmetric(
+                                              horizontal: 14, vertical: 9),
+                                          decoration: BoxDecoration(
+                                            color: CupertinoColors
+                                                .systemGrey
+                                                .withOpacity(0.12),
+                                            borderRadius:
+                                                BorderRadius.circular(
+                                                    DT.radiusXl),
+                                          ),
                                           onSubmitted: (_) => _sendComment(),
                                           onChanged: (_) => _onCommentChanged(),
                                         ),
                                       ),
                                       const SizedBox(width: 8),
                                       CupertinoButton.filled(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 12, vertical: 8),
+                                        padding: const EdgeInsets.all(10),
+                                        borderRadius: BorderRadius.circular(
+                                            DT.radiusFull),
                                         onPressed: _sendingComment
                                             ? null
                                             : _sendComment,
                                         child: _sendingComment
                                             ? const CupertinoActivityIndicator()
                                             : const Icon(
-                                                CupertinoIcons.paperplane),
+                                                CupertinoIcons
+                                                    .paperplane_fill,
+                                                size: 20),
                                       ),
                                     ],
                                   ),
@@ -1569,11 +1616,20 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                   crossAxisAlignment:
                                       CrossAxisAlignment.stretch,
                                   children: [
+                                    // NC 2.0: randlose Titel-Überschrift
                                     CupertinoTextField(
                                       controller: _titleCtrl,
                                       focusNode: _titleFocus,
                                       autofocus: widget.startEditing,
                                       placeholder: L10n.of(context).title,
+                                      maxLines: null,
+                                      style: const TextStyle(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.w800,
+                                          letterSpacing: -0.4,
+                                          height: 1.2),
+                                      decoration: null,
+                                      padding: EdgeInsets.zero,
                                       onSubmitted: (v) => _savePatch(
                                           {'title': v},
                                           optimistic: true),
@@ -2224,6 +2280,19 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                   L10n.of(context).writeComment,
                                               maxLines: 3,
                                               minLines: 1,
+                                              // NC 2.0: Pill-Eingabefeld
+                                              padding: const EdgeInsets
+                                                  .symmetric(
+                                                  horizontal: 14,
+                                                  vertical: 9),
+                                              decoration: BoxDecoration(
+                                                color: CupertinoColors
+                                                    .systemGrey
+                                                    .withOpacity(0.12),
+                                                borderRadius:
+                                                    BorderRadius.circular(
+                                                        DT.radiusXl),
+                                              ),
                                               onSubmitted: (_) =>
                                                   _sendComment(),
                                               onChanged: (_) =>
@@ -2232,15 +2301,19 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                           ),
                                           const SizedBox(width: 8),
                                           CupertinoButton.filled(
-                                            padding: const EdgeInsets.symmetric(
-                                                horizontal: 12, vertical: 8),
+                                            padding: const EdgeInsets.all(10),
+                                            borderRadius:
+                                                BorderRadius.circular(
+                                                    DT.radiusFull),
                                             onPressed: _sendingComment
                                                 ? null
                                                 : _sendComment,
                                             child: _sendingComment
                                                 ? const CupertinoActivityIndicator()
                                                 : const Icon(
-                                                    CupertinoIcons.paperplane),
+                                                    CupertinoIcons
+                                                        .paperplane_fill,
+                                                    size: 20),
                                           ),
                                         ],
                                       ),
@@ -2277,10 +2350,8 @@ class _CardDetailPageState extends State<CardDetailPage> {
   }
 
   /// Issue #78: Öffnet eine lokal zwischengespeicherte Datei. Audio wird
-  /// extern abgespielt; alles andere (v. a. PDFs) geht direkt ins
-  /// Share-Sheet mit Quick-Look — `launchUrl(file://)` funktioniert auf
-  /// iOS für beliebige Dateien nicht und hat auf dem iPad zusätzlich das
-  /// Popover-Problem verdeckt.
+  /// extern abgespielt; PDFs gehen in den nativen QuickLook-Editor
+  /// (Issue #86.3); alles andere direkt ins Share-Sheet mit Quick-Look.
   Future<void> _openOrShareLocalFile(String path, String name,
       {required bool isAudio}) async {
     if (isAudio) {
@@ -2291,8 +2362,99 @@ class _CardDetailPageState extends State<CardDetailPage> {
       } catch (_) {}
     }
     if (!mounted) return;
+    // Issue #86.3: PDFs im nativen QuickLook-Markup-Editor öffnen.
+    // Bearbeitet der User die Datei (zeichnen, Text, Signatur), bieten
+    // wir an, das Ergebnis als NEUE Version an die Karte zu hängen —
+    // unter automatisch abgewandeltem Dateinamen, das Original bleibt.
+    if (name.toLowerCase().endsWith('.pdf')) {
+      final edited = await QuickLookService.editFile(path);
+      if (edited == null) {
+        // Editor nicht verfügbar → bisheriger Share-Sheet-Flow
+        if (!mounted) return;
+        await Share.shareXFiles([XFile(path)],
+            subject: name, sharePositionOrigin: _shareAnchorRect());
+        return;
+      }
+      if (edited && mounted) {
+        await _offerUploadEditedFile(path, name);
+      }
+      return;
+    }
     await Share.shareXFiles([XFile(path)],
         subject: name, sharePositionOrigin: _shareAnchorRect());
+  }
+
+  /// Issue #86.3: fragt nach dem Bearbeiten, ob die geänderte Datei als
+  /// neue Version angehängt werden soll, und lädt sie dann mit
+  /// Auto-Suffix im Namen hoch (z. B. report_bearbeitet_20260917-2130.pdf).
+  Future<void> _offerUploadEditedFile(String path, String originalName) async {
+    final l10n = L10n.of(context);
+    final attach = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text(l10n.attachEditedTitle),
+        content: Text(l10n.attachEditedMessage),
+        actions: [
+          CupertinoDialogAction(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(l10n.discardChanges)),
+          CupertinoDialogAction(
+              isDefaultAction: true,
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text(l10n.attachAsNewVersion)),
+        ],
+      ),
+    );
+    if (attach != true || !mounted) return;
+
+    final app = context.read<AppState>();
+    final base = app.baseUrl;
+    final user = app.username;
+    final pass = await app.storage.read(key: 'password');
+    final boardId = widget.boardId ?? app.activeBoard?.id;
+    final stackId = _currentStackId ?? widget.stackId;
+    if (base == null ||
+        user == null ||
+        pass == null ||
+        boardId == null ||
+        stackId == null) return;
+
+    // Auto-Suffix: name.pdf → name_bearbeitet_yyyyMMdd-HHmm.pdf
+    final now = DateTime.now();
+    String two(int v) => v.toString().padLeft(2, '0');
+    final stamp =
+        '${now.year}${two(now.month)}${two(now.day)}-${two(now.hour)}${two(now.minute)}';
+    final dot = originalName.lastIndexOf('.');
+    final base_ = dot > 0 ? originalName.substring(0, dot) : originalName;
+    final ext = dot > 0 ? originalName.substring(dot) : '';
+    final newName = '${base_}_bearbeitet_$stamp$ext';
+
+    try {
+      final bytes = await File(path).readAsBytes();
+      final ok = await app.api.uploadCardAttachment(base, user, pass,
+          boardId: boardId,
+          stackId: stackId,
+          cardId: widget.cardId,
+          bytes: bytes,
+          filename: newName);
+      if (!mounted) return;
+      if (ok) {
+        await _loadAttachments();
+      } else {
+        await showCupertinoDialog(
+          context: context,
+          builder: (ctx) => CupertinoAlertDialog(
+            title: Text(l10n.uploadFailed),
+            content: Text(l10n.fileAttachFailed),
+            actions: [
+              CupertinoDialogAction(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text(l10n.ok))
+            ],
+          ),
+        );
+      }
+    } catch (_) {}
   }
 
   Future<void> _showShare() async {
@@ -3537,11 +3699,18 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // NC 2.0: Sektions-Header in UPPERCASE-Caption-Optik — ruhiger
+    // Rhythmus in der Detailansicht, klare Gliederung.
     return Row(
       children: [
         Expanded(
-            child: Text(title,
-                style: const TextStyle(fontWeight: FontWeight.w600))),
+            child: Text(title.toUpperCase(),
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.8,
+                    color: CupertinoColors.secondaryLabel
+                        .resolveFrom(context)))),
         if (trailing != null) trailing!,
       ],
     );

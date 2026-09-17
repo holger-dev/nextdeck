@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/foundation.dart' show compute, debugPrint;
 import 'package:http/http.dart' as http;
 
 import '../models/board.dart';
@@ -1951,69 +1951,143 @@ class NextcloudDeckApi {
       required int cardId,
       required List<int> bytes,
       required String filename}) async {
-    final candidates = <String>[
-      '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/attachments',
-      '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/attachments',
+    // Issue #83 — Umbau nach Lektüre der Deck-Server-Quelle
+    // (AttachmentApiController / AttachmentService / FileService /
+    // FilesAppService / routes.php):
+    //  * Binär-Uploads gehen AUSSCHLIESSLICH über type=deck_file mit
+    //    Multipart-Feld `file` (FileService::getUploadedFile('file')).
+    //  * type=file ist KEIN Upload — FilesAppService erwartet in `data`
+    //    einen Pfad in der Files-App. Unser blindes type=file war also
+    //    grundsätzlich falsch und lieferte 400.
+    //  * `type` ist Pflichtparameter ohne Default — „ohne type" ist
+    //    IMMER 400. Beide Fehl-Varianten sind entfernt.
+    //  * Zusätzliche offizielle Upload-Wege als Fallback: die interne
+    //    Route POST /cards/{cardId}/attachment (nutzt die Deck-Web-UI
+    //    selbst) und die OCS-Route attachment_ocs#create.
+    //  * OCS-APIRequest-Header nur auf der OCS-Route — auf den
+    //    /api/v*-Routen gehört er nicht hin.
+    // Stabilitäts-Regeln bleiben: Timeout pro Versuch; Abbruch bei
+    // Timeout/5xx (Duplikat-Risiko) und 401/403; HTML-200 ≠ Erfolg.
+    final attempts = <({String path, bool ocs})>[
+      (
+        path:
+            '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/attachments',
+        ocs: false
+      ),
+      (
+        path:
+            '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/attachments',
+        ocs: false
+      ),
+      // Interne (Web-UI-)Route — singular „attachment"
+      (path: '/apps/deck/cards/$cardId/attachment', ocs: false),
+      // OCS-Route
+      (
+        path: '/ocs/v2.php/apps/deck/api/v1.0/cards/$cardId/attachment',
+        ocs: true
+      ),
     ];
-    // Issue #83: Deck kennt zwei Attachment-Typen — 'file' (neuer,
-    // Nextcloud-Files-Storage, Deck >= 1.3) und 'deck_file' (älterer,
-    // Deck-interner Storage). Welche Variante der Server akzeptiert,
-    // hängt von Deck-Version und Server-Konfiguration ab. Wir probieren
-    // beide (plus „ohne type" für sehr alte Server), statt wie bisher
-    // nur 'file' — sonst schlägt der Upload auf manchen Servern mit
-    // "Invalid attachment type" fehl.
-    const typeVariants = <String?>['file', 'deck_file', null];
-    for (final p in candidates) {
+    const uploadTimeout = Duration(seconds: 45);
+    for (final attempt in attempts) {
       for (final withIndex in [false, true]) {
-        for (final typeVariant in typeVariants) {
-          try {
-            final uri = _buildUri(baseUrl, p, withIndex);
-            final t0 = DateTime.now();
-            final req = http.MultipartRequest('POST', uri);
-            req.headers['authorization'] = _basicAuth(user, pass);
-            req.headers['Accept'] = 'application/json';
-            req.headers['OCS-APIRequest'] = 'true';
-            if (typeVariant != null) {
-              req.fields['type'] = typeVariant;
-            }
-            req.files.add(http.MultipartFile.fromBytes('file', bytes,
-                filename: filename));
-            final streamed = await req.send();
-            final res = await http.Response.fromStream(streamed);
-            final dur = DateTime.now().difference(t0).inMilliseconds;
-            final snippet = (res.body.length > 400)
-                ? '${res.body.substring(0, 400)}…'
-                : res.body;
-            LogService().add(LogEntry(
-              at: t0,
-              method: 'POST',
-              url: uri.toString(),
-              status: res.statusCode,
-              durationMs: dur,
-              requestBody:
-                  'multipart attachment filename=$filename bytes=${bytes.length} type=${typeVariant ?? 'none'}',
-              responseSnippet: snippet,
-            ));
-            if (_isOk(res)) return true;
-            // 4xx außer 404/405: Endpoint existiert, aber Request-Form
-            // passt nicht — nächste type-Variante probieren.
-            // 404/405: Endpoint existiert nicht — direkt zum nächsten Pfad.
-            if (res.statusCode == 404 || res.statusCode == 405) break;
-          } catch (e) {
-            LogService().add(LogEntry(
-              at: DateTime.now(),
-              method: 'POST',
-              url: _buildUri(baseUrl, p, withIndex).toString(),
-              status: null,
-              durationMs: 0,
-              requestBody:
-                  'multipart attachment filename=$filename bytes=${bytes.length} type=${typeVariant ?? 'none'}',
-              error: e.toString(),
-            ));
-          }
+        // OCS-Pfade laufen nie über index.php
+        if (attempt.ocs && withIndex) continue;
+        final uri = _buildUri(baseUrl, attempt.path, withIndex);
+        final t0 = DateTime.now();
+        http.Response res;
+        try {
+          final req = http.MultipartRequest('POST', uri);
+          req.headers['authorization'] = _basicAuth(user, pass);
+          req.headers['Accept'] = 'application/json';
+          // OCS-APIRequest auf ALLEN Routen: Nextcloud befreit damit
+          // Basic-Auth-API-Calls vom CSRF-Check — ohne den Header
+          // antwortet die interne Route mit 412 „CSRF check failed".
+          req.headers['OCS-APIRequest'] = 'true';
+          req.fields['type'] = 'deck_file';
+          // KRITISCH (Issue #83, finale Ursache): In Deck ≤ ~1.14 ist
+          // `data` im Controller ein PFLICHT-Parameter ohne Default
+          // (`create($cardId, $type, $data)`). Fehlt das Feld, scheitert
+          // schon das Parameter-Binding im AppFramework → 400 mit leerem
+          // Body, egal welcher Pfad. Beim deck_file-Upload überschreibt
+          // der Server data ohnehin mit dem echten Dateinamen — der Wert
+          // hier dient nur Binding + Validator (not_empty, max:255).
+          req.fields['data'] =
+              filename.length > 255 ? filename.substring(0, 255) : filename;
+          req.files.add(http.MultipartFile.fromBytes('file', bytes,
+              filename: filename));
+          final streamed = await req.send().timeout(uploadTimeout);
+          res =
+              await http.Response.fromStream(streamed).timeout(uploadTimeout);
+        } catch (e) {
+          LogService().add(LogEntry(
+            at: t0,
+            method: 'POST',
+            url: uri.toString(),
+            status: null,
+            durationMs: DateTime.now().difference(t0).inMilliseconds,
+            requestBody:
+                'multipart attachment filename=$filename bytes=${bytes.length} type=deck_file',
+            error: e.toString(),
+          ));
+          // Timeout/Netzwerkfehler: Server-Zustand unbekannt → Abbruch,
+          // um Duplikate zu vermeiden. User kann bewusst neu versuchen.
+          return false;
         }
+        final dur = DateTime.now().difference(t0).inMilliseconds;
+        final snippet = (res.body.length > 400)
+            ? '${res.body.substring(0, 400)}…'
+            : res.body;
+        LogService().add(LogEntry(
+          at: t0,
+          method: 'POST',
+          url: uri.toString(),
+          status: res.statusCode,
+          durationMs: dur,
+          requestBody:
+              'multipart attachment filename=$filename bytes=${bytes.length} type=deck_file',
+          responseSnippet: snippet,
+        ));
+        if (!_isOk(res)) {
+          // Diagnose direkt in der Konsole: Server-Meldung der Fehlantwort
+          // (z. B. „No file uploaded or file size exceeds maximum of …").
+          debugPrint('[NET][UPLOAD-FAIL] ${res.statusCode} $uri → $snippet');
+        }
+        if (_isOk(res)) {
+          // Login-Redirect-Falle: abgelaufene Session liefert 200 mit
+          // HTML-Login-Seite. Das ist KEIN erfolgreicher Upload.
+          final bodyStart = res.body.trimLeft();
+          final looksLikeHtml = bodyStart.startsWith('<!DOCTYPE') ||
+              bodyStart.startsWith('<html');
+          if (!looksLikeHtml) return true;
+          return false;
+        }
+        if (res.statusCode == 401 || res.statusCode == 403) {
+          return false; // Auth-Problem — weitere Versuche sinnlos
+        }
+        if (res.statusCode == 409) {
+          // Datei existiert bereits an der Karte (ConflictException) —
+          // aus User-Sicht ist der Anhang da: als Erfolg werten.
+          return true;
+        }
+        if (res.statusCode >= 500) {
+          return false; // Server-Fehler — Duplikat-Risiko, abbrechen
+        }
+        if (res.statusCode == 404 || res.statusCode == 405) {
+          break; // Endpoint existiert nicht — nächster Pfad
+        }
+        // 400/415/422: nächster Kandidat
       }
     }
+    // Alle Versuche fehlgeschlagen. Diagnose-Hinweis: 400 MIT LEEREM Body
+    // auf den API-Routen ist das typische Muster für ein überschrittenes
+    // PHP-Limit (post_max_size / upload_max_filesize) — der Server
+    // verwirft dann den kompletten Body, $_POST ist leer und der
+    // Pflichtparameter `type` „fehlt".
+    debugPrint(
+        '[NET][UPLOAD-FAIL] Alle Upload-Routen fehlgeschlagen für '
+        '"$filename" (${(bytes.length / (1024 * 1024)).toStringAsFixed(1)} MB). '
+        'Bei leeren 400-Bodies: Server-Upload-Limit prüfen '
+        '(php.ini: post_max_size / upload_max_filesize).');
     return false;
   }
 
@@ -2543,6 +2617,36 @@ class NextcloudDeckApi {
             'Karte verschieben fehlgeschlagen (keine Variante akzeptiert)');
       }
     }
+  }
+
+  /// Offizieller Reorder-Endpoint (card_api#reorder):
+  /// PUT /api/v1.0/boards/{b}/stacks/{s}/cards/{c}/reorder mit
+  /// Body {stackId, order}. Winziger Payload, überschreibt KEINE
+  /// Karteninhalte (kein Titel/Beschreibung im Request) — im Gegensatz
+  /// zum alten Voll-PUT-Fallback. Gegen Deck-Quelle v1.14 verifiziert:
+  /// CardApiController::reorder($stackId, $order).
+  Future<bool> reorderCardOfficial(String baseUrl, String user, String pass,
+      int boardId, int stackId, int cardId, int order) async {
+    final headers = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'OCS-APIRequest': 'true',
+      'authorization': _basicAuth(user, pass),
+    };
+    final body = jsonEncode({'stackId': stackId, 'order': order});
+    for (final withIndex in [false, true]) {
+      try {
+        final uri = _buildUri(
+            baseUrl,
+            '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/reorder',
+            withIndex);
+        final res = await _send('PUT', uri, headers, body: body);
+        if (_isOk(res)) return true;
+        if (res.statusCode == 404 || res.statusCode == 405) continue;
+        return false; // Endpoint existiert, lehnt aber ab → kein Retry
+      } catch (_) {}
+    }
+    return false;
   }
 
   // Robust reorder within same stack: try dedicated order endpoint first, then generic update with order field.

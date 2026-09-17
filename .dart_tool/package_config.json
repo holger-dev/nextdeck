@@ -155,7 +155,7 @@
       "name": "flutter",
       "rootUri": "file:///Users/holgerheidkamp/Development/nextdeck/.flutter-sdk/packages/flutter",
       "packageUri": "lib/",
-      "languageVersion": "3.9"
+      "languageVersion": "3.11"
     },
     {
       "name": "flutter_launcher_icons",
@@ -197,7 +197,7 @@
       "name": "flutter_localizations",
       "rootUri": "file:///Users/holgerheidkamp/Development/nextdeck/.flutter-sdk/packages/flutter_localizations",
       "packageUri": "lib/",
-      "languageVersion": "3.9"
+      "languageVersion": "3.11"
     },
     {
       "name": "flutter_markdown",
@@ -251,7 +251,7 @@
       "name": "flutter_test",
       "rootUri": "file:///Users/holgerheidkamp/Development/nextdeck/.flutter-sdk/packages/flutter_test",
       "packageUri": "lib/",
-      "languageVersion": "3.9"
+      "languageVersion": "3.11"
     },
     {
       "name": "flutter_timezone",
@@ -263,7 +263,7 @@
       "name": "flutter_web_plugins",
       "rootUri": "file:///Users/holgerheidkamp/Development/nextdeck/.flutter-sdk/packages/flutter_web_plugins",
       "packageUri": "lib/",
-      "languageVersion": "3.9"
+      "languageVersion": "3.11"
     },
     {
       "name": "glob",
@@ -357,9 +357,9 @@
     },
     {
       "name": "intl",
-      "rootUri": "file:///Users/holgerheidkamp/.pub-cache/hosted/pub.dev/intl-0.20.2",
+      "rootUri": "file:///Users/holgerheidkamp/.pub-cache/hosted/pub.dev/intl-0.20.3",
       "packageUri": "lib/",
-      "languageVersion": "3.3"
+      "languageVersion": "3.9"
     },
     {
       "name": "jni",
@@ -404,6 +404,12 @@
       "languageVersion": "3.8"
     },
     {
+      "name": "liquid_glass_widgets",
+      "rootUri": "file:///Users/holgerheidkamp/.pub-cache/hosted/pub.dev/liquid_glass_widgets-1.2.3",
+      "packageUri": "lib/",
+      "languageVersion": "3.5"
+    },
+    {
       "name": "logging",
       "rootUri": "file:///Users/holgerheidkamp/.pub-cache/hosted/pub.dev/logging-1.3.0",
       "packageUri": "lib/",
@@ -417,9 +423,9 @@
     },
     {
       "name": "matcher",
-      "rootUri": "file:///Users/holgerheidkamp/.pub-cache/hosted/pub.dev/matcher-0.12.19",
+      "rootUri": "file:///Users/holgerheidkamp/.pub-cache/hosted/pub.dev/matcher-0.12.20",
       "packageUri": "lib/",
-      "languageVersion": "3.7"
+      "languageVersion": "3.10"
     },
     {
       "name": "material_color_utilities",
@@ -429,7 +435,7 @@
     },
     {
       "name": "meta",
-      "rootUri": "file:///Users/holgerheidkamp/.pub-cache/hosted/pub.dev/meta-1.17.0",
+      "rootUri": "file:///Users/holgerheidkamp/.pub-cache/hosted/pub.dev/meta-1.19.0",
       "packageUri": "lib/",
       "languageVersion": "3.5"
     },
@@ -557,7 +563,7 @@
       "name": "sky_engine",
       "rootUri": "file:///Users/holgerheidkamp/Development/nextdeck/.flutter-sdk/bin/cache/pkg/sky_engine",
       "packageUri": "lib/",
-      "languageVersion": "3.9"
+      "languageVersion": "3.11"
     },
     {
       "name": "source_span",
@@ -591,9 +597,9 @@
     },
     {
       "name": "test_api",
-      "rootUri": "file:///Users/holgerheidkamp/.pub-cache/hosted/pub.dev/test_api-0.7.10",
+      "rootUri": "file:///Users/holgerheidkamp/.pub-cache/hosted/pub.dev/test_api-0.7.12",
       "packageUri": "lib/",
-      "languageVersion": "3.7"
+      "languageVersion": "3.10"
     },
     {
       "name": "timezone",
@@ -663,9 +669,9 @@
     },
     {
       "name": "vector_math",
-      "rootUri": "file:///Users/holgerheidkamp/.pub-cache/hosted/pub.dev/vector_math-2.2.0",
+      "rootUri": "file:///Users/holgerheidkamp/.pub-cache/hosted/pub.dev/vector_math-2.4.2",
       "packageUri": "lib/",
-      "languageVersion": "3.1"
+      "languageVersion": "3.10"
     },
     {
       "name": "vm_service",
@@ -711,8 +717,8 @@
     }
   ],
   "generator": "pub",
-  "generatorVersion": "3.11.3",
+  "generatorVersion": "3.13.3",
   "flutterRoot": "file:///Users/holgerheidkamp/Development/nextdeck/.flutter-sdk",
-  "flutterVersion": "3.41.5",
+  "flutterVersion": "3.47.4",
   "pubCache": "file:///Users/holgerheidkamp/.pub-cache"
 }

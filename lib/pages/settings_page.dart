@@ -1411,25 +1411,44 @@ class _SettingsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // NC 2.0: Sektions-Header als tap-freundliche Zeile mit animiertem
+    // Chevron in Kreis-Chip; Inhalt als Panel mit großem Radius, heller
+    // Licht-Oberkante und weichem Schatten — gleiche Design-Sprache wie
+    // Karten und Detail-Panels.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: onToggle,
-          child: Row(
-            children: [
-              Icon(
-                  expanded
-                      ? CupertinoIcons.chevron_down
-                      : CupertinoIcons.chevron_right,
-                  size: 16,
-                  color: CupertinoColors.systemGrey),
-              const SizedBox(width: 6),
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.w600)),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(title,
+                      style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4)),
+                ),
+                AnimatedRotation(
+                  turns: expanded ? 0.25 : 0,
+                  duration: DT.durationFast,
+                  curve: DT.curveStandard,
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      color: CupertinoColors.systemGrey.withOpacity(0.14),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(CupertinoIcons.chevron_right,
+                        size: 15, color: CupertinoColors.systemGrey),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         if (expanded) ...[
@@ -1439,12 +1458,16 @@ class _SettingsSection extends StatelessWidget {
               color: CupertinoTheme.of(context)
                   .barBackgroundColor
                   .withOpacity(isDarkMode ? 0.25 : 0.7),
-              borderRadius: BorderRadius.circular(DT.radiusM),
-              // Modernerer Look: Soft-Shadow statt 1-px-Border. Sektionen
-              // wirken dadurch als eigene Karten statt umrandeter Boxen.
+              borderRadius: BorderRadius.circular(DT.radiusXl),
+              border: Border(
+                top: BorderSide(
+                    color: CupertinoColors.white
+                        .withOpacity(isDarkMode ? 0.10 : 0.55),
+                    width: 1),
+              ),
               boxShadow: DT.shadowS(isDarkMode),
             ),
-            padding: const EdgeInsets.all(DT.spaceM),
+            padding: const EdgeInsets.all(DT.spaceL),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: children,
