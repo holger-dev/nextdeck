@@ -4,6 +4,16 @@ All notable changes are documented in this file.
 
 This changelog is based on `STORE.md` and links to detailed release notes in `changelog/`.
 
+## [2.0]
+- Complete "Liquid Glass" redesign (iOS 26 style): refractive floating tab bar with morphing indicator, glass popover board menu, glass FAB, pager pill, light-edged cards with tinted due badges and assignee avatars, redesigned Overview/Upcoming/Settings/Card detail, board-color accent across the whole chrome, iPad grid up to 4 columns.
+- Edit PDF attachments in-app (native Markup: draw, sign, annotate) and attach the result as a new version with an auto-suffixed filename (#77/#86.3).
+- File upload fixed for current Deck servers (missing required `data` parameter; hardened with timeouts, duplicate protection, fallback routes) (#83, #86.2).
+- Configurable due-date reminder lead times from 15 minutes to 1 week (#73); "No due date" bucket in Upcoming (#84); Enter continues checklists (#82).
+- Fixes: done cards no longer flagged overdue (#75), PDFs open on iPad (#78), no accidental card moves while scrolling (#70, #85), person filter in wide iPad layout (#87), hidden boards excluded from Upcoming everywhere, instant card open from Upcoming, reliable credential storage on fresh installs (#69).
+- Sync: parallel boot sync, official lightweight `/reorder` endpoint, per-board error isolation (a failing board can no longer wipe cached cards), hidden boards skipped in delta refresh.
+- Platform: UIScene lifecycle migration (required by upcoming iOS versions), deep links via SceneDelegate.
+- Details: `changelog/2.0.md`
+
 ## [1.8]
 - Modernized UI: floating glass tab bar (iOS 17/18 look), softer card shadows, design-token system.
 - Faster sync: HTTP keep-alive pool, large JSON payloads decoded in a background isolate, ~80x fewer UI rebuilds per sync via notify coalescing.

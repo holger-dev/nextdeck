@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show compute;
+import 'package:flutter/foundation.dart' show compute, debugPrint;
 import 'package:http/http.dart' as http;
 
 import '../models/board.dart';
@@ -9,6 +9,25 @@ import '../models/column.dart' as deck;
 import '../models/card_item.dart';
 import '../models/user_ref.dart';
 import 'log_service.dart';
+
+/// Abbruch-Token für lang laufende Anhang-Transfers (Upload/Download).
+/// `cancel()` setzt das Flag und schließt den gerade aktiven HTTP-Client —
+/// der laufende Request bricht damit sofort ab, statt nur ignoriert zu
+/// werden. Die API-Methoden prüfen das Flag zusätzlich zwischen ihren
+/// Fallback-Versuchen.
+class TransferCancelToken {
+  bool _cancelled = false;
+  bool get cancelled => _cancelled;
+  void Function()? _abortCurrent;
+  void cancel() {
+    _cancelled = true;
+    final abort = _abortCurrent;
+    _abortCurrent = null;
+    try {
+      abort?.call();
+    } catch (_) {}
+  }
+}
 
 class NextcloudDeckApi {
   static const _ocsHeader = {
@@ -1950,70 +1969,157 @@ class NextcloudDeckApi {
       required int stackId,
       required int cardId,
       required List<int> bytes,
-      required String filename}) async {
-    final candidates = <String>[
-      '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/attachments',
-      '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/attachments',
+      required String filename,
+      TransferCancelToken? cancelToken}) async {
+    // Issue #83 — Umbau nach Lektüre der Deck-Server-Quelle
+    // (AttachmentApiController / AttachmentService / FileService /
+    // FilesAppService / routes.php):
+    //  * Binär-Uploads gehen AUSSCHLIESSLICH über type=deck_file mit
+    //    Multipart-Feld `file` (FileService::getUploadedFile('file')).
+    //  * type=file ist KEIN Upload — FilesAppService erwartet in `data`
+    //    einen Pfad in der Files-App. Unser blindes type=file war also
+    //    grundsätzlich falsch und lieferte 400.
+    //  * `type` ist Pflichtparameter ohne Default — „ohne type" ist
+    //    IMMER 400. Beide Fehl-Varianten sind entfernt.
+    //  * Zusätzliche offizielle Upload-Wege als Fallback: die interne
+    //    Route POST /cards/{cardId}/attachment (nutzt die Deck-Web-UI
+    //    selbst) und die OCS-Route attachment_ocs#create.
+    //  * OCS-APIRequest-Header nur auf der OCS-Route — auf den
+    //    /api/v*-Routen gehört er nicht hin.
+    // Stabilitäts-Regeln bleiben: Timeout pro Versuch; Abbruch bei
+    // Timeout/5xx (Duplikat-Risiko) und 401/403; HTML-200 ≠ Erfolg.
+    final attempts = <({String path, bool ocs})>[
+      (
+        path:
+            '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/attachments',
+        ocs: false
+      ),
+      (
+        path:
+            '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/attachments',
+        ocs: false
+      ),
+      // Interne (Web-UI-)Route — singular „attachment"
+      (path: '/apps/deck/cards/$cardId/attachment', ocs: false),
+      // OCS-Route
+      (
+        path: '/ocs/v2.php/apps/deck/api/v1.0/cards/$cardId/attachment',
+        ocs: true
+      ),
     ];
-    // Issue #83: Deck kennt zwei Attachment-Typen — 'file' (neuer,
-    // Nextcloud-Files-Storage, Deck >= 1.3) und 'deck_file' (älterer,
-    // Deck-interner Storage). Welche Variante der Server akzeptiert,
-    // hängt von Deck-Version und Server-Konfiguration ab. Wir probieren
-    // beide (plus „ohne type" für sehr alte Server), statt wie bisher
-    // nur 'file' — sonst schlägt der Upload auf manchen Servern mit
-    // "Invalid attachment type" fehl.
-    const typeVariants = <String?>['file', 'deck_file', null];
-    for (final p in candidates) {
+    const uploadTimeout = Duration(seconds: 45);
+    for (final attempt in attempts) {
       for (final withIndex in [false, true]) {
-        for (final typeVariant in typeVariants) {
+        // OCS-Pfade laufen nie über index.php
+        if (attempt.ocs && withIndex) continue;
+        if (cancelToken?.cancelled == true) return false;
+        final uri = _buildUri(baseUrl, attempt.path, withIndex);
+        final t0 = DateTime.now();
+        http.Response res;
+        try {
+          final req = http.MultipartRequest('POST', uri);
+          req.headers['authorization'] = _basicAuth(user, pass);
+          req.headers['Accept'] = 'application/json';
+          // OCS-APIRequest auf ALLEN Routen: Nextcloud befreit damit
+          // Basic-Auth-API-Calls vom CSRF-Check — ohne den Header
+          // antwortet die interne Route mit 412 „CSRF check failed".
+          req.headers['OCS-APIRequest'] = 'true';
+          req.fields['type'] = 'deck_file';
+          // KRITISCH (Issue #83, finale Ursache): In Deck ≤ ~1.14 ist
+          // `data` im Controller ein PFLICHT-Parameter ohne Default
+          // (`create($cardId, $type, $data)`). Fehlt das Feld, scheitert
+          // schon das Parameter-Binding im AppFramework → 400 mit leerem
+          // Body, egal welcher Pfad. Beim deck_file-Upload überschreibt
+          // der Server data ohnehin mit dem echten Dateinamen — der Wert
+          // hier dient nur Binding + Validator (not_empty, max:255).
+          req.fields['data'] =
+              filename.length > 255 ? filename.substring(0, 255) : filename;
+          req.files.add(http.MultipartFile.fromBytes('file', bytes,
+              filename: filename));
+          // Eigener Client pro Versuch: `cancelToken.cancel()` schließt ihn
+          // und bricht den laufenden Upload damit wirklich ab.
+          final client = http.Client();
+          cancelToken?._abortCurrent = client.close;
           try {
-            final uri = _buildUri(baseUrl, p, withIndex);
-            final t0 = DateTime.now();
-            final req = http.MultipartRequest('POST', uri);
-            req.headers['authorization'] = _basicAuth(user, pass);
-            req.headers['Accept'] = 'application/json';
-            req.headers['OCS-APIRequest'] = 'true';
-            if (typeVariant != null) {
-              req.fields['type'] = typeVariant;
-            }
-            req.files.add(http.MultipartFile.fromBytes('file', bytes,
-                filename: filename));
-            final streamed = await req.send();
-            final res = await http.Response.fromStream(streamed);
-            final dur = DateTime.now().difference(t0).inMilliseconds;
-            final snippet = (res.body.length > 400)
-                ? '${res.body.substring(0, 400)}…'
-                : res.body;
-            LogService().add(LogEntry(
-              at: t0,
-              method: 'POST',
-              url: uri.toString(),
-              status: res.statusCode,
-              durationMs: dur,
-              requestBody:
-                  'multipart attachment filename=$filename bytes=${bytes.length} type=${typeVariant ?? 'none'}',
-              responseSnippet: snippet,
-            ));
-            if (_isOk(res)) return true;
-            // 4xx außer 404/405: Endpoint existiert, aber Request-Form
-            // passt nicht — nächste type-Variante probieren.
-            // 404/405: Endpoint existiert nicht — direkt zum nächsten Pfad.
-            if (res.statusCode == 404 || res.statusCode == 405) break;
-          } catch (e) {
-            LogService().add(LogEntry(
-              at: DateTime.now(),
-              method: 'POST',
-              url: _buildUri(baseUrl, p, withIndex).toString(),
-              status: null,
-              durationMs: 0,
-              requestBody:
-                  'multipart attachment filename=$filename bytes=${bytes.length} type=${typeVariant ?? 'none'}',
-              error: e.toString(),
-            ));
+            final streamed = await client.send(req).timeout(uploadTimeout);
+            res = await http.Response.fromStream(streamed)
+                .timeout(uploadTimeout);
+          } finally {
+            cancelToken?._abortCurrent = null;
+            client.close();
           }
+        } catch (e) {
+          // Bewusster Abbruch durch den User: kein Fehler-Log nötig.
+          if (cancelToken?.cancelled == true) return false;
+          LogService().add(LogEntry(
+            at: t0,
+            method: 'POST',
+            url: uri.toString(),
+            status: null,
+            durationMs: DateTime.now().difference(t0).inMilliseconds,
+            requestBody:
+                'multipart attachment filename=$filename bytes=${bytes.length} type=deck_file',
+            error: e.toString(),
+          ));
+          // Timeout/Netzwerkfehler: Server-Zustand unbekannt → Abbruch,
+          // um Duplikate zu vermeiden. User kann bewusst neu versuchen.
+          return false;
         }
+        final dur = DateTime.now().difference(t0).inMilliseconds;
+        final snippet = (res.body.length > 400)
+            ? '${res.body.substring(0, 400)}…'
+            : res.body;
+        LogService().add(LogEntry(
+          at: t0,
+          method: 'POST',
+          url: uri.toString(),
+          status: res.statusCode,
+          durationMs: dur,
+          requestBody:
+              'multipart attachment filename=$filename bytes=${bytes.length} type=deck_file',
+          responseSnippet: snippet,
+        ));
+        if (!_isOk(res)) {
+          // Diagnose direkt in der Konsole: Server-Meldung der Fehlantwort
+          // (z. B. „No file uploaded or file size exceeds maximum of …").
+          debugPrint('[NET][UPLOAD-FAIL] ${res.statusCode} $uri → $snippet');
+        }
+        if (_isOk(res)) {
+          // Login-Redirect-Falle: abgelaufene Session liefert 200 mit
+          // HTML-Login-Seite. Das ist KEIN erfolgreicher Upload.
+          final bodyStart = res.body.trimLeft();
+          final looksLikeHtml = bodyStart.startsWith('<!DOCTYPE') ||
+              bodyStart.startsWith('<html');
+          if (!looksLikeHtml) return true;
+          return false;
+        }
+        if (res.statusCode == 401 || res.statusCode == 403) {
+          return false; // Auth-Problem — weitere Versuche sinnlos
+        }
+        if (res.statusCode == 409) {
+          // Datei existiert bereits an der Karte (ConflictException) —
+          // aus User-Sicht ist der Anhang da: als Erfolg werten.
+          return true;
+        }
+        if (res.statusCode >= 500) {
+          return false; // Server-Fehler — Duplikat-Risiko, abbrechen
+        }
+        if (res.statusCode == 404 || res.statusCode == 405) {
+          break; // Endpoint existiert nicht — nächster Pfad
+        }
+        // 400/415/422: nächster Kandidat
       }
     }
+    // Alle Versuche fehlgeschlagen. Diagnose-Hinweis: 400 MIT LEEREM Body
+    // auf den API-Routen ist das typische Muster für ein überschrittenes
+    // PHP-Limit (post_max_size / upload_max_filesize) — der Server
+    // verwirft dann den kompletten Body, $_POST ist leer und der
+    // Pflichtparameter `type` „fehlt".
+    debugPrint(
+        '[NET][UPLOAD-FAIL] Alle Upload-Routen fehlgeschlagen für '
+        '"$filename" (${(bytes.length / (1024 * 1024)).toStringAsFixed(1)} MB). '
+        'Bei leeren 400-Bodies: Server-Upload-Limit prüfen '
+        '(php.ini: post_max_size / upload_max_filesize).');
     return false;
   }
 
@@ -2022,39 +2128,59 @@ class NextcloudDeckApi {
       {required int boardId,
       required int stackId,
       required int cardId,
-      required int attachmentId}) async {
+      required int attachmentId,
+      TransferCancelToken? cancelToken}) async {
     final candidates = <String>[
       '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/attachments/$attachmentId',
       '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/attachments/$attachmentId',
     ];
     for (final p in candidates) {
       for (final withIndex in [false, true]) {
-        try {
-          final res = await _send('GET', _buildUri(baseUrl, p, withIndex),
-              {'authorization': _basicAuth(user, pass)});
-          if (_isOk(res)) return res;
-        } catch (_) {}
+        final res = await _cancellableGet(
+            _buildUri(baseUrl, p, withIndex), user, pass, cancelToken);
+        if (cancelToken?.cancelled == true) return null;
+        if (res != null && _isOk(res)) return res;
       }
     }
     return null;
   }
 
   // Download a file via WebDAV using a known remote path under the user's files
-  Future<http.Response?> webdavDownload(String baseUrl, String user,
-      String pass, String username, String remotePath) async {
-    final candidates = <String>[
-      '/remote.php/dav/files/$username$remotePath',
-    ];
-    for (final p in candidates) {
-      for (final withIndex in [false, true]) {
-        try {
-          final res = await _send('GET', _buildUri(baseUrl, p, withIndex),
-              {'authorization': _basicAuth(user, pass)});
-          if (_isOk(res)) return res;
-        } catch (_) {}
-      }
+  Future<http.Response?> webdavDownload(
+      String baseUrl, String user, String pass, String username,
+      String remotePath,
+      {TransferCancelToken? cancelToken}) async {
+    for (final withIndex in [false, true]) {
+      final res = await _cancellableGet(
+          _buildUri(
+              baseUrl, '/remote.php/dav/files/$username$remotePath', withIndex),
+          user,
+          pass,
+          cancelToken);
+      if (cancelToken?.cancelled == true) return null;
+      if (res != null && _isOk(res)) return res;
     }
     return null;
+  }
+
+  // GET mit eigenem, abbrechbarem Client für Anhang-Downloads. Großzügiges
+  // Timeout, weil Anhänge groß sein können — der User hat dafür jetzt einen
+  // Abbrechen-Button (TransferCancelToken schließt den Client).
+  Future<http.Response?> _cancellableGet(Uri uri, String user, String pass,
+      TransferCancelToken? cancelToken) async {
+    if (cancelToken?.cancelled == true) return null;
+    final client = http.Client();
+    cancelToken?._abortCurrent = client.close;
+    try {
+      return await client.get(uri, headers: {
+        'authorization': _basicAuth(user, pass)
+      }).timeout(const Duration(minutes: 3));
+    } catch (_) {
+      return null;
+    } finally {
+      cancelToken?._abortCurrent = null;
+      client.close();
+    }
   }
 
   Future<bool> uploadFileToWebdav(String baseUrl, String user, String pass,
@@ -2545,6 +2671,36 @@ class NextcloudDeckApi {
     }
   }
 
+  /// Offizieller Reorder-Endpoint (card_api#reorder):
+  /// PUT /api/v1.0/boards/{b}/stacks/{s}/cards/{c}/reorder mit
+  /// Body {stackId, order}. Winziger Payload, überschreibt KEINE
+  /// Karteninhalte (kein Titel/Beschreibung im Request) — im Gegensatz
+  /// zum alten Voll-PUT-Fallback. Gegen Deck-Quelle v1.14 verifiziert:
+  /// CardApiController::reorder($stackId, $order).
+  Future<bool> reorderCardOfficial(String baseUrl, String user, String pass,
+      int boardId, int stackId, int cardId, int order) async {
+    final headers = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'OCS-APIRequest': 'true',
+      'authorization': _basicAuth(user, pass),
+    };
+    final body = jsonEncode({'stackId': stackId, 'order': order});
+    for (final withIndex in [false, true]) {
+      try {
+        final uri = _buildUri(
+            baseUrl,
+            '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/reorder',
+            withIndex);
+        final res = await _send('PUT', uri, headers, body: body);
+        if (_isOk(res)) return true;
+        if (res.statusCode == 404 || res.statusCode == 405) continue;
+        return false; // Endpoint existiert, lehnt aber ab → kein Retry
+      } catch (_) {}
+    }
+    return false;
+  }
+
   // Robust reorder within same stack: try dedicated order endpoint first, then generic update with order field.
   Future<void> reorderCard(String baseUrl, String user, String pass,
       int boardId, int stackId, int cardId, int newIndex,
@@ -2890,218 +3046,91 @@ class NextcloudDeckApi {
     _ensureOk(res, 'Label löschen fehlgeschlagen');
   }
 
+  // Label einer Karte zuweisen/entfernen — ausschließlich über Endpunkte,
+  // die es in Deck wirklich gibt (appinfo/routes.php, geprüft gegen v1.14.2):
+  //   1. card_api#assignLabel/removeLabel:
+  //      PUT /apps/deck/api/v{1.1|1.0}/boards/{b}/stacks/{s}/cards/{c}/assignLabel
+  //      Body {"labelId": …} — braucht Board-/Stack-Kontext.
+  //   2. Interne Route card#assignLabel/removeLabel:
+  //      POST bzw. DELETE /apps/deck/cards/{c}/label/{l} — kommt mit der
+  //      cardId allein aus; der OCS-APIRequest-Header befreit den
+  //      Basic-Auth-Call vom CSRF-Check (gleiches Muster wie beim
+  //      Attachment-Upload-Fix).
+  // Die früheren Fallback-Routen (…/cards/{c}/labels u. ä.) existieren
+  // serverseitig nicht und erzeugten die gemeldeten 404/405-Kaskaden.
   Future<void> addLabelToCard(
       String baseUrl, String user, String pass, int cardId, int labelId,
-      {int? boardId, int? stackId}) async {
-    // Prefer API v1.1 assign endpoint when boardId/stackId known
-    if (boardId != null && stackId != null) {
-      final assignPaths = <String>[
-        '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/assignLabel',
-        '/ocs/v1.php/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/assignLabel',
-      ];
-      final body = jsonEncode({'labelId': labelId});
-      for (final p in assignPaths) {
-        final isOcs = p.startsWith('/ocs/');
-        final headers = {
-          if (isOcs) ..._ocsHeader,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'authorization': _basicAuth(user, pass),
-        };
-        try {
-          var res = await _send('PUT', _buildUri(baseUrl, p, false), headers,
-              body: body);
-          if (_isOk(res)) {
-            _parseBodyOk(res);
-            return;
-          }
-          res = await _send('PUT', _buildUri(baseUrl, p, true), headers,
-              body: body);
-          if (_isOk(res)) {
-            _parseBodyOk(res);
-            return;
-          }
-        } catch (_) {}
-      }
-    }
-    // Try multiple payload keys and REST/OCS variants, including path-with-id forms
-    final payloads = [
-      jsonEncode({'labelId': labelId}),
-      jsonEncode({'label': labelId}),
-    ];
-    final postPaths = <String>[
-      if (boardId != null && stackId != null)
-        '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/labels',
-      if (boardId != null)
-        '/apps/deck/api/v1.0/boards/$boardId/cards/$cardId/labels',
-      '/apps/deck/api/v1.0/cards/$cardId/labels',
-      if (boardId != null && stackId != null)
-        '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/labels',
-      if (boardId != null)
-        '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId/cards/$cardId/labels',
-      '/ocs/v1.php/apps/deck/api/v1.0/cards/$cardId/labels',
-      '/ocs/v2.php/apps/deck/api/v1.0/cards/$cardId/labels',
-    ];
-    http.Response? last;
-    // Body-based variants
-    for (final p in postPaths) {
-      for (final b in payloads) {
-        final isOcs = p.startsWith('/ocs/');
-        final headers = {
-          if (isOcs) ..._ocsHeader,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'authorization': _basicAuth(user, pass),
-        };
-        try {
-          last = await _send('POST', _buildUri(baseUrl, p, false), headers,
-              body: b);
-          if (_isOk(last)) {
-            try {
-              _parseBodyOk(last);
-              return;
-            } catch (_) {}
-          }
-          last = await _send('POST', _buildUri(baseUrl, p, true), headers,
-              body: b);
-          if (_isOk(last)) {
-            try {
-              _parseBodyOk(last);
-              return;
-            } catch (_) {}
-          }
-        } catch (_) {}
-      }
-    }
-    // Path-based variants (no body)
-    final pathIdVariants = <String>[
-      if (boardId != null && stackId != null)
-        '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/labels/$labelId',
-      if (boardId != null)
-        '/apps/deck/api/v1.0/boards/$boardId/cards/$cardId/labels/$labelId',
-      '/apps/deck/api/v1.0/cards/$cardId/labels/$labelId',
-      if (boardId != null && stackId != null)
-        '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/labels/$labelId',
-      if (boardId != null)
-        '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId/cards/$cardId/labels/$labelId',
-      '/ocs/v1.php/apps/deck/api/v1.0/cards/$cardId/labels/$labelId',
-      '/ocs/v2.php/apps/deck/api/v1.0/cards/$cardId/labels/$labelId',
-    ];
-    for (final p in pathIdVariants) {
-      final isOcs = p.startsWith('/ocs/');
-      final headers = {
-        if (isOcs) ..._ocsHeader,
-        'Accept': 'application/json',
-        'authorization': _basicAuth(user, pass),
-      };
-      try {
-        last = await _send('PUT', _buildUri(baseUrl, p, false), headers);
-        if (_isOk(last)) {
-          try {
-            _parseBodyOk(last);
-            return;
-          } catch (_) {}
-        }
-        last = await _send('POST', _buildUri(baseUrl, p, false), headers);
-        if (_isOk(last)) {
-          try {
-            _parseBodyOk(last);
-            return;
-          } catch (_) {}
-        }
-        last = await _send('PUT', _buildUri(baseUrl, p, true), headers);
-        if (_isOk(last)) {
-          try {
-            _parseBodyOk(last);
-            return;
-          } catch (_) {}
-        }
-        last = await _send('POST', _buildUri(baseUrl, p, true), headers);
-        if (_isOk(last)) {
-          try {
-            _parseBodyOk(last);
-            return;
-          } catch (_) {}
-        }
-      } catch (_) {}
-    }
-    _ensureOk(last, 'Label hinzufügen fehlgeschlagen');
+      {int? boardId, int? stackId}) {
+    return _labelCall(baseUrl, user, pass,
+        cardId: cardId,
+        labelId: labelId,
+        boardId: boardId,
+        stackId: stackId,
+        apiSuffix: 'assignLabel',
+        internalMethod: 'POST',
+        errorMessage: 'Label hinzufügen fehlgeschlagen');
   }
 
   Future<void> removeLabelFromCard(
       String baseUrl, String user, String pass, int cardId, int labelId,
-      {int? boardId, int? stackId}) async {
-    // Prefer API v1.1 remove endpoint when boardId/stackId known
+      {int? boardId, int? stackId}) {
+    return _labelCall(baseUrl, user, pass,
+        cardId: cardId,
+        labelId: labelId,
+        boardId: boardId,
+        stackId: stackId,
+        apiSuffix: 'removeLabel',
+        internalMethod: 'DELETE',
+        errorMessage: 'Label entfernen fehlgeschlagen');
+  }
+
+  Future<void> _labelCall(String baseUrl, String user, String pass,
+      {required int cardId,
+      required int labelId,
+      int? boardId,
+      int? stackId,
+      required String apiSuffix,
+      required String internalMethod,
+      required String errorMessage}) async {
+    final headers = {
+      ..._ocsHeader,
+      'Content-Type': 'application/json',
+      'authorization': _basicAuth(user, pass),
+    };
+    http.Response? last;
+
+    Future<bool> attempt(String method, String path, bool withIndex,
+        {String? body}) async {
+      try {
+        final res = await _send(
+            method, _buildUri(baseUrl, path, withIndex), headers,
+            body: body);
+        last = res;
+        // 2xx mit HTML-Body wäre ein Login-Redirect, kein Erfolg.
+        if (_isOk(res) && !res.body.trimLeft().startsWith('<')) return true;
+        debugPrint(
+            '[NET][LABEL] $method $path${withIndex ? ' (index.php)' : ''} -> ${res.statusCode}');
+      } catch (e) {
+        debugPrint('[NET][LABEL] $method $path -> $e');
+      }
+      return false;
+    }
+
+    // 1) Offizielle Deck-API, wenn Board-/Stack-Kontext bekannt ist
     if (boardId != null && stackId != null) {
-      final removePaths = <String>[
-        '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/removeLabel',
-        '/ocs/v1.php/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/removeLabel',
-      ];
       final body = jsonEncode({'labelId': labelId});
-      for (final p in removePaths) {
-        final isOcs = p.startsWith('/ocs/');
-        final headers = {
-          if (isOcs) ..._ocsHeader,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'authorization': _basicAuth(user, pass),
-        };
-        try {
-          var res = await _send('PUT', _buildUri(baseUrl, p, false), headers,
-              body: body);
-          if (_isOk(res)) {
-            _parseBodyOk(res);
-            return;
-          }
-          res = await _send('PUT', _buildUri(baseUrl, p, true), headers,
-              body: body);
-          if (_isOk(res)) {
-            _parseBodyOk(res);
-            return;
-          }
-        } catch (_) {}
+      for (final v in const ['v1.1', 'v1.0']) {
+        final p =
+            '/apps/deck/api/$v/boards/$boardId/stacks/$stackId/cards/$cardId/$apiSuffix';
+        if (await attempt('PUT', p, false, body: body)) return;
+        if (await attempt('PUT', p, true, body: body)) return;
       }
     }
-    // DELETE variants: REST and OCS v1/v2
-    final paths = <String>[
-      if (boardId != null && stackId != null)
-        '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/labels/$labelId',
-      if (boardId != null)
-        '/apps/deck/api/v1.0/boards/$boardId/cards/$cardId/labels/$labelId',
-      '/apps/deck/api/v1.0/cards/$cardId/labels/$labelId',
-      if (boardId != null && stackId != null)
-        '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/labels/$labelId',
-      if (boardId != null)
-        '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId/cards/$cardId/labels/$labelId',
-      '/ocs/v1.php/apps/deck/api/v1.0/cards/$cardId/labels/$labelId',
-      '/ocs/v2.php/apps/deck/api/v1.0/cards/$cardId/labels/$labelId',
-    ];
-    http.Response? res;
-    for (final p in paths) {
-      final isOcs = p.startsWith('/ocs/');
-      final headers = {
-        if (isOcs) ..._ocsHeader,
-        'Accept': 'application/json',
-        'authorization': _basicAuth(user, pass),
-      };
-      try {
-        res = await http.delete(_buildUri(baseUrl, p, false), headers: headers);
-        if (_isOk(res)) {
-          try {
-            _parseBodyOk(res!);
-            return;
-          } catch (_) {}
-        }
-        res = await http.delete(_buildUri(baseUrl, p, true), headers: headers);
-        if (_isOk(res)) {
-          try {
-            _parseBodyOk(res!);
-            return;
-          } catch (_) {}
-        }
-      } catch (_) {}
-    }
-    _ensureOk(res, 'Label entfernen fehlgeschlagen');
+    // 2) Interne Route: braucht nur die cardId
+    final internal = '/apps/deck/cards/$cardId/label/$labelId';
+    if (await attempt(internalMethod, internal, false)) return;
+    if (await attempt(internalMethod, internal, true)) return;
+    _ensureOk(last, errorMessage);
   }
 
   // Move card to another stack (robust across NC variants)

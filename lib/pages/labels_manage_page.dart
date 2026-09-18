@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../models/label.dart';
 import '../l10n/app_localizations.dart';
+import '../widgets/glass_back_button.dart';
 
 class LabelsManagePage extends StatefulWidget {
   const LabelsManagePage({super.key});
@@ -50,7 +51,8 @@ class _LabelsManagePageState extends State<LabelsManagePage> {
   Widget build(BuildContext context) {
     final l10n = L10n.of(context);
     return CupertinoPageScaffold(
-      navigationBar: CupertinoNavigationBar(middle: Text(l10n.manageLabels)),
+      navigationBar: CupertinoNavigationBar(
+          leading: const GlassBackButton(), middle: Text(l10n.manageLabels)),
       child: SafeArea(
         child: _loading
             ? const Center(child: CupertinoActivityIndicator())

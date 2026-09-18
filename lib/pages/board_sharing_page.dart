@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../models/user_ref.dart';
 import '../l10n/app_localizations.dart';
+import '../widgets/glass_back_button.dart';
 
 class BoardSharingPage extends StatefulWidget {
   const BoardSharingPage({super.key});
@@ -43,7 +44,8 @@ class _BoardSharingPageState extends State<BoardSharingPage> {
     final app = context.watch<AppState>();
     final l10n = L10n.of(context);
     return CupertinoPageScaffold(
-      navigationBar: CupertinoNavigationBar(middle: Text(l10n.shareBoard)),
+      navigationBar: CupertinoNavigationBar(
+          leading: const GlassBackButton(), middle: Text(l10n.shareBoard)),
       child: SafeArea(
         child: _loading
             ? const Center(child: CupertinoActivityIndicator())

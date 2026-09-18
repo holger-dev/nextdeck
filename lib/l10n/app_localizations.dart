@@ -199,6 +199,21 @@ class L10n {
       : _isEs
           ? 'Error de carga'
           : 'Upload failed';
+  String get attachmentUploading => _isDe
+      ? 'Anhang wird hochgeladen …'
+      : _isEs
+          ? 'Subiendo el adjunto…'
+          : 'Uploading attachment…';
+  String get attachmentDownloading => _isDe
+      ? 'Anhang wird geladen …'
+      : _isEs
+          ? 'Cargando el adjunto…'
+          : 'Loading attachment…';
+  String get attachmentTransferHint => _isDe
+      ? 'Je nach Dateigröße und Verbindung kann das einen Moment dauern.'
+      : _isEs
+          ? 'Según el tamaño del archivo y la conexión, esto puede tardar un momento.'
+          : 'Depending on file size and connection, this can take a moment.';
   String get fileReadFailed => _isDe
       ? 'Datei konnte nicht gelesen werden.'
       : _isEs
@@ -1355,6 +1370,27 @@ class L10n {
       : _isEs
           ? 'Sin fecha límite'
           : 'No due date';
+  // Issue #86.3: PDF im QuickLook-Editor bearbeitet → als neue Version anhängen
+  String get attachEditedTitle => _isDe
+      ? 'Änderungen anhängen?'
+      : _isEs
+          ? '¿Adjuntar cambios?'
+          : 'Attach changes?';
+  String get attachEditedMessage => _isDe
+      ? 'Du hast die Datei bearbeitet. Soll die bearbeitete Version als neuer Anhang an die Karte gehängt werden? Das Original bleibt erhalten.'
+      : _isEs
+          ? 'Has editado el archivo. ¿Quieres adjuntar la versión editada como nuevo adjunto? El original se conserva.'
+          : 'You edited this file. Attach the edited version as a new attachment? The original is kept.';
+  String get attachAsNewVersion => _isDe
+      ? 'Als neue Version anhängen'
+      : _isEs
+          ? 'Adjuntar como nueva versión'
+          : 'Attach as new version';
+  String get discardChanges => _isDe
+      ? 'Verwerfen'
+      : _isEs
+          ? 'Descartar'
+          : 'Discard';
 }
 
 class _L10nDelegate extends LocalizationsDelegate<L10n> {

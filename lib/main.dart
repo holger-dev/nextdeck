@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 
 import 'state/app_state.dart';
 import 'pages/overview_page.dart';
@@ -18,7 +19,6 @@ import 'models/card_item.dart';
 import 'theme/app_theme.dart';
 import 'theme/design_tokens.dart';
 import 'pages/card_detail_page.dart';
-import 'widgets/glass_tab_bar.dart';
 import 'services/background_poll_service.dart';
 
 import 'package:hive_flutter/hive_flutter.dart';
@@ -27,7 +27,10 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
   await Hive.openBox('nextdeck_cache');
-  runApp(const NextDeckApp());
+  // NC 2.0: Liquid-Glass-Shader vorwärmen, bevor die UI hochkommt —
+  // verhindert Ruckler beim ersten Glass-Rendering.
+  await LiquidGlassWidgets.initialize();
+  runApp(LiquidGlassWidgets.wrap(child: const NextDeckApp()));
   // iOS Background Fetch wird ERST NACH dem ersten Frame initialisiert,
   // damit ein langsamer BGTaskScheduler-Init die UI nicht blockiert.
   // Plus Try-Catch, falls das Plugin auf neueren iOS-Versionen
@@ -52,12 +55,36 @@ class NextDeckApp extends StatelessWidget {
       create: (_) => AppState()..init(),
       child: Consumer<AppState>(
         builder: (context, app, _) {
-          final l10n = L10n.of(context);
           final platformBrightness = MediaQuery.platformBrightnessOf(context);
           app.updatePlatformBrightness(platformBrightness);
           final isDark = app.isDarkMode;
           final theme = CupertinoThemeData(
             brightness: isDark ? Brightness.dark : Brightness.light,
+          );
+          // NC 2.0 „farbstark": der Glass-Glow folgt der aktiven Board-Farbe.
+          // Dadurch färbt sich das UI-Chrome (Tab-Bar-Indikator, Buttons)
+          // dezent nach dem Board, in dem der User gerade arbeitet.
+          final Color accent =
+              AppTheme.boardColorFrom(app.activeBoard?.color) ??
+                  const Color(0xFF1E88E5);
+          final glassTheme = GlassThemeData(
+            brightness: isDark ? Brightness.dark : Brightness.light,
+            light: GlassThemeVariant.light.copyWith(
+              glowColors: GlassGlowColors(
+                primary: accent,
+                glowBlurRadius: 24,
+                glowOpacity: 0.55,
+              ),
+              borderRadius: DT.radiusXl,
+            ),
+            dark: GlassThemeVariant.dark.copyWith(
+              glowColors: GlassGlowColors(
+                primary: accent,
+                glowBlurRadius: 24,
+                glowOpacity: 0.6,
+              ),
+              borderRadius: DT.radiusXl,
+            ),
           );
           return CupertinoApp(
             debugShowCheckedModeBanner: false,
@@ -83,7 +110,7 @@ class NextDeckApp extends StatelessWidget {
               Locale('en'),
               Locale('es'),
             ],
-            home: const _RootTabs(),
+            home: GlassTheme(data: glassTheme, child: const _RootTabs()),
           );
         },
       ),
@@ -271,29 +298,43 @@ class _RootTabsState extends State<_RootTabs> {
                 ),
               ),
 
-              // 2) Schwebende Glass-Tab-Bar.
+              // 2) NC 2.0: Liquid-Glass-Tab-Bar mit echter Refraktion.
+              // Icons neu gedacht: Kalender (Anstehend), Kanban-Spalten
+              // (Board), App-Grid (Übersicht), Regler (Einstellungen).
+              // Der Indikator glüht in der aktiven Board-Farbe.
               Positioned(
-                left: DT.spaceM,
-                right: DT.spaceM,
-                bottom: mqBottom + DT.spaceS,
-                child: GlassTabBar(
-                  currentIndex: currentIndex,
-                  onTap: handleTap,
-                  items: [
-                    GlassTabBarItem(
-                      icon: CupertinoIcons.time,
+                left: 0,
+                right: 0,
+                bottom: mqBottom > 0 ? 0 : DT.spaceS,
+                child: GlassTabBar.bottom(
+                  selectedIndex: currentIndex,
+                  onTabSelected: handleTap,
+                  indicatorColor:
+                      AppTheme.boardColorFrom(app.activeBoard?.color)
+                          ?.withOpacity(0.35),
+                  tabs: [
+                    GlassTab(
+                      icon: const Icon(CupertinoIcons.calendar),
+                      activeIcon:
+                          const Icon(CupertinoIcons.calendar_badge_plus),
                       label: l10n.navUpcoming,
                     ),
-                    GlassTabBarItem(
-                      icon: CupertinoIcons.square_list,
+                    GlassTab(
+                      icon: const Icon(CupertinoIcons.rectangle_split_3x1),
+                      activeIcon: const Icon(
+                          CupertinoIcons.rectangle_split_3x1_fill),
                       label: l10n.navBoard,
+                      glowColor:
+                          AppTheme.boardColorFrom(app.activeBoard?.color),
                     ),
-                    GlassTabBarItem(
-                      icon: CupertinoIcons.rectangle_grid_2x2,
+                    GlassTab(
+                      icon: const Icon(CupertinoIcons.square_grid_2x2),
+                      activeIcon:
+                          const Icon(CupertinoIcons.square_grid_2x2_fill),
                       label: l10n.overview,
                     ),
-                    GlassTabBarItem(
-                      icon: CupertinoIcons.gear,
+                    GlassTab(
+                      icon: const Icon(CupertinoIcons.slider_horizontal_3),
                       label: l10n.settingsTitle,
                     ),
                   ],

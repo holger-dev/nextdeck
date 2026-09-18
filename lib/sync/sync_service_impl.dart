@@ -90,9 +90,19 @@ class SyncServiceImpl implements SyncService {
       
       final boardsData = jsonDecode(boardsResponse.body) as List;
       final boards = <Map<String, dynamic>>[];
+      // Boards, deren Karten nicht im details=true-Response stecken und
+      // die einen separaten Stacks-Call brauchen — werden NACH der
+      // Schleife PARALLEL geladen (statt wie früher sequenziell).
+      final needsStackFetch = <int>[];
 
-      // Step 2: Process each board and its stacks from the boards response
+      // Step 2: Process each board and its stacks from the boards response.
+      // Stabilität: jedes Board hat sein EIGENES try/catch — vorher hat ein
+      // einziges Board mit kaputten Daten (oder ein Timeout mittendrin) den
+      // Sync ALLER nachfolgenden Boards abgebrochen, inklusive des
+      // abschließenden cache.put('boards', ...). Ergebnis war eine halb
+      // aktualisierte, inkonsistente App („Synchronisation klappt nicht").
       for (final boardData in boardsData.cast<Map<String, dynamic>>()) {
+        try {
         final boardId = boardData['id'] as int;
         // Skip boards marked as deleted (Nextcloud sets deletedAt timestamp)
         final deletedAt = boardData['deletedAt'] ?? boardData['deleted_at'] ?? boardData['deleted_at_utc'];
@@ -150,54 +160,41 @@ class SyncServiceImpl implements SyncService {
             });
           }
         } else {
-          // Fallback: Use separate GET /boards/{boardId}/stacks call
-          final stacksResponse = await _get('/boards/$boardId/stacks');
-
-          if (stacksResponse.statusCode == 200) {
-            final stacksWithCards = jsonDecode(stacksResponse.body) as List;
-
-            for (final stackData in stacksWithCards.cast<Map<String, dynamic>>()) {
-              final stackId = stackData['id'] as int;
-              final stackTitle = stackData['title'] as String;
-              final stackOrder = stackData['order'] as int?;
-
-              stacks.add({'id': stackId, 'title': stackTitle});
-
-              // Cards are already included in the stacks response!
-              final cardsData = stackData['cards'] as List? ?? [];
-              final cards = <Map<String, dynamic>>[];
-
-              for (final cardData in cardsData.cast<Map<String, dynamic>>()) {
-                cards.add(_buildCardCache(cardData));
-              }
-
-              columns.add({
-                'id': stackId,
-                'title': stackTitle,
-                'order': stackOrder,
-                'cards': cards,
-              });
-            }
-          } else {
-            // Fallback to stacks from boards response without cards
-            for (final stackData in stacksData.cast<Map<String, dynamic>>()) {
-              final stackId = stackData['id'] as int;
-              final stackTitle = stackData['title'] as String;
-              final stackOrder = stackData['order'] as int?;
-              stacks.add({'id': stackId, 'title': stackTitle});
-              columns.add({
-                'id': stackId,
-                'title': stackTitle,
-                'order': stackOrder,
-                'cards': <Map<String, dynamic>>[],
-              });
-            }
-          }
+          // Fallback nötig: Karten stecken nicht im Boards-Response.
+          // Board für den PARALLELEN Nachlade-Pass nach der Schleife
+          // vormerken (früher: sequenzieller Einzel-Fetch hier im Loop —
+          // bei 15 Boards und trägem Server viele Sekunden Boot-Sync).
+          // Cache-Schutz bleibt: _loadSingleBoardWithStacksAndCards fasst
+          // den Board-Cache bei Fehlern nicht an.
+          needsStackFetch.add(boardId);
+          continue;
         }
-        
+
         // Save stacks and columns for this board
         cache.put('stacks_$boardId', stacks);
         cache.put('columns_$boardId', columns);
+        } catch (e) {
+          // Board-lokaler Fehler: Cache dieses Boards bleibt auf letztem
+          // gutem Stand, die übrigen Boards synchronisieren weiter.
+          debugPrint('[sync] board sync failed, keeping cache: $e');
+        }
+      }
+
+      // Paralleler Nachlade-Pass für Boards ohne eingebettete Karten:
+      // Batches à 4 gleichzeitig — schont den Server, ist aber um ein
+      // Vielfaches schneller als die alte sequenzielle Kette.
+      if (needsStackFetch.isNotEmpty) {
+        const parallel = 4;
+        for (var i = 0; i < needsStackFetch.length; i += parallel) {
+          final batch = needsStackFetch.skip(i).take(parallel);
+          await Future.wait(batch.map((bId) async {
+            try {
+              await _loadSingleBoardWithStacksAndCards(bId);
+            } catch (e) {
+              debugPrint('[sync] parallel stacks load for $bId failed: $e');
+            }
+          }));
+        }
       }
       
       // Remove caches for boards that no longer exist (compare previous IDs)
@@ -342,19 +339,25 @@ class SyncServiceImpl implements SyncService {
   Map<String, dynamic> _buildCardCache(Map<String, dynamic> cardData) {
     final rawDone = cardData['done'] ?? cardData['doneDate'] ?? cardData['doneAt'];
     final rawAssignees = cardData['assignedUsers'] ?? cardData['assigned'] ?? cardData['members'];
+    // Stabilität: alle Felder defensiv lesen. Harte `as`-Casts haben hier
+    // früher bei einzelnen Karten mit unerwarteten Werten (null-Titel,
+    // Label ohne Farbe, id als String) den Sync des ganzen Boards gekillt.
     return {
-      'id': cardData['id'] as int,
-      'title': cardData['title'] as String,
+      'id': (cardData['id'] as num).toInt(),
+      'title': (cardData['title'] ?? '').toString(),
       'description': cardData['description'] ?? '',
       'duedate': _parseDueDate(cardData['duedate']),
       'done': _parseDoneDate(rawDone),
-      'order': cardData['order'] as int?,
+      'order': (cardData['order'] is num)
+          ? (cardData['order'] as num).toInt()
+          : null,
       'labels': (cardData['labels'] as List? ?? [])
-          .cast<Map<String, dynamic>>()
+          .whereType<Map>()
+          .where((l) => l['id'] is num)
           .map((l) => {
-                'id': l['id'] as int,
-                'title': l['title'] as String,
-                'color': l['color'] as String,
+                'id': (l['id'] as num).toInt(),
+                'title': (l['title'] ?? '').toString(),
+                'color': (l['color'] ?? '999999').toString(),
               })
           .toList(),
       'assignedUsers': _normalizeAssignees(rawAssignees),

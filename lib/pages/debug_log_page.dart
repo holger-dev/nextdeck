@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../services/log_service.dart';
 import '../l10n/app_localizations.dart';
+import '../widgets/glass_back_button.dart';
 
 class DebugLogPage extends StatelessWidget {
   const DebugLogPage({super.key});
@@ -17,6 +18,7 @@ class DebugLogPage extends StatelessWidget {
           final items = log.entries;
           return CupertinoPageScaffold(
             navigationBar: CupertinoNavigationBar(
+              leading: const GlassBackButton(),
               middle: Text(L10n.of(context).networkLogs),
               trailing: CupertinoButton(
                 padding: EdgeInsets.zero,

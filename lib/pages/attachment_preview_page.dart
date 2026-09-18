@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/cupertino.dart';
+import '../widgets/glass_back_button.dart';
 
 class AttachmentPreviewPage extends StatelessWidget {
   final String name;
@@ -11,7 +12,9 @@ class AttachmentPreviewPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final isImage = (mime ?? '').startsWith('image/');
     return CupertinoPageScaffold(
-      navigationBar: CupertinoNavigationBar(middle: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+      navigationBar: CupertinoNavigationBar(
+          leading: const GlassBackButton(),
+          middle: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis)),
       child: SafeArea(
         child: Center(
           child: isImage

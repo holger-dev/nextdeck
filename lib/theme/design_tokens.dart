@@ -27,15 +27,17 @@ class DT {
   /// 32 px – Großer Abstand zwischen Block-Sektionen
   static const double spaceXxl = 32;
 
-  // ---- Border Radius ----
-  /// 6 px – Kleine Pills (Tags)
-  static const double radiusS = 6;
-  /// 10 px – Standard-Cards
-  static const double radiusM = 10;
-  /// 14 px – Hervorgehobene Cards (Board-Summary)
-  static const double radiusL = 14;
-  /// 20 px – Sheet-Top-Corners
-  static const double radiusXl = 20;
+  // ---- Border Radius (NC 2.0: weicher, organischer) ----
+  /// 8 px – Kleine Pills (Tags)
+  static const double radiusS = 8;
+  /// 14 px – Standard-Cards
+  static const double radiusM = 14;
+  /// 18 px – Hervorgehobene Cards (Board-Summary, Stack-Spalten)
+  static const double radiusL = 18;
+  /// 24 px – Sheet-Top-Corners, Glass-Chrome
+  static const double radiusXl = 24;
+  /// 28 px – Hero-Flächen (schwebende Panels)
+  static const double radiusXxl = 28;
   /// Voll abgerundet (Buttons, kompakte Pills)
   static const double radiusFull = 999;
 
@@ -140,7 +142,9 @@ class DT {
   ///   padding: EdgeInsets.only(
   ///     bottom: DT.tabBarReserve + MediaQuery.of(context).padding.bottom,
   ///   ),
-  static const double tabBarReserve = 96.0;
+  /// NC 2.0: GlassTabBar.bottom ist höher (barHeight 64 + Padding) —
+  /// Reserve entsprechend angehoben.
+  static const double tabBarReserve = 120.0;
 
   // ---- Tab-Bar / Glass ----
   /// Hintergrund für Glass-/Translucent-Effekte (iOS 17+ Look).
