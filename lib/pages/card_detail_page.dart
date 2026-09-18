@@ -2611,7 +2611,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
       final baseUrl = app.baseUrl;
       final user = app.username;
       final pass = await app.storage.read(key: 'password');
-      final boardId = app.activeBoard?.id ?? widget.boardId;
+      final boardId = widget.boardId ?? app.activeBoard?.id;
       if (baseUrl != null && user != null && pass != null && boardId != null) {
         // Prefer board detail (tends to include labels)
         final detail =
@@ -2745,7 +2745,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
     });
     // push to app state immediately for board list consistency
     final app = context.read<AppState>();
-    final bIdInit = app.activeBoard?.id ?? widget.boardId;
+    final bIdInit = widget.boardId ?? app.activeBoard?.id;
     final sIdInit = _currentStackId ?? widget.stackId;
     if (bIdInit != null && sIdInit != null) {
       app.updateLocalCard(
@@ -2758,7 +2758,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
     final baseUrl = app.baseUrl;
     final user = app.username;
     final pass = await app.storage.read(key: 'password');
-    final bId = app.activeBoard?.id ?? widget.boardId;
+    final bId = widget.boardId ?? app.activeBoard?.id;
     final sId = _currentStackId ?? widget.stackId;
     bool ok = false;
     if (baseUrl != null &&
@@ -2807,7 +2807,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
       });
     }
     // sync app state columns immediately
-    final boardId = app.activeBoard?.id ?? widget.boardId;
+    final boardId = widget.boardId ?? app.activeBoard?.id;
     final stackId = _currentStackId ?? widget.stackId;
     if (boardId != null && stackId != null) {
       app.updateLocalCard(
@@ -3121,7 +3121,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
         order: _card!.order,
       );
     });
-    final bId2 = app.activeBoard?.id ?? widget.boardId;
+    final bId2 = widget.boardId ?? app.activeBoard?.id;
     final sId2 = _currentStackId ?? widget.stackId;
     if (bId2 != null && sId2 != null) {
       app.updateLocalCard(
@@ -3176,7 +3176,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
       }
       if (ok) {
         // fetch fresh card to ensure UI and board state exactly match server
-        final boardId = app.activeBoard?.id ?? widget.boardId;
+        final boardId = widget.boardId ?? app.activeBoard?.id;
         final stackId = _currentStackId ?? widget.stackId;
         if (boardId != null && stackId != null) {
           unawaited(() async {

@@ -2994,218 +2994,91 @@ class NextcloudDeckApi {
     _ensureOk(res, 'Label löschen fehlgeschlagen');
   }
 
+  // Label einer Karte zuweisen/entfernen — ausschließlich über Endpunkte,
+  // die es in Deck wirklich gibt (appinfo/routes.php, geprüft gegen v1.14.2):
+  //   1. card_api#assignLabel/removeLabel:
+  //      PUT /apps/deck/api/v{1.1|1.0}/boards/{b}/stacks/{s}/cards/{c}/assignLabel
+  //      Body {"labelId": …} — braucht Board-/Stack-Kontext.
+  //   2. Interne Route card#assignLabel/removeLabel:
+  //      POST bzw. DELETE /apps/deck/cards/{c}/label/{l} — kommt mit der
+  //      cardId allein aus; der OCS-APIRequest-Header befreit den
+  //      Basic-Auth-Call vom CSRF-Check (gleiches Muster wie beim
+  //      Attachment-Upload-Fix).
+  // Die früheren Fallback-Routen (…/cards/{c}/labels u. ä.) existieren
+  // serverseitig nicht und erzeugten die gemeldeten 404/405-Kaskaden.
   Future<void> addLabelToCard(
       String baseUrl, String user, String pass, int cardId, int labelId,
-      {int? boardId, int? stackId}) async {
-    // Prefer API v1.1 assign endpoint when boardId/stackId known
-    if (boardId != null && stackId != null) {
-      final assignPaths = <String>[
-        '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/assignLabel',
-        '/ocs/v1.php/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/assignLabel',
-      ];
-      final body = jsonEncode({'labelId': labelId});
-      for (final p in assignPaths) {
-        final isOcs = p.startsWith('/ocs/');
-        final headers = {
-          if (isOcs) ..._ocsHeader,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'authorization': _basicAuth(user, pass),
-        };
-        try {
-          var res = await _send('PUT', _buildUri(baseUrl, p, false), headers,
-              body: body);
-          if (_isOk(res)) {
-            _parseBodyOk(res);
-            return;
-          }
-          res = await _send('PUT', _buildUri(baseUrl, p, true), headers,
-              body: body);
-          if (_isOk(res)) {
-            _parseBodyOk(res);
-            return;
-          }
-        } catch (_) {}
-      }
-    }
-    // Try multiple payload keys and REST/OCS variants, including path-with-id forms
-    final payloads = [
-      jsonEncode({'labelId': labelId}),
-      jsonEncode({'label': labelId}),
-    ];
-    final postPaths = <String>[
-      if (boardId != null && stackId != null)
-        '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/labels',
-      if (boardId != null)
-        '/apps/deck/api/v1.0/boards/$boardId/cards/$cardId/labels',
-      '/apps/deck/api/v1.0/cards/$cardId/labels',
-      if (boardId != null && stackId != null)
-        '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/labels',
-      if (boardId != null)
-        '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId/cards/$cardId/labels',
-      '/ocs/v1.php/apps/deck/api/v1.0/cards/$cardId/labels',
-      '/ocs/v2.php/apps/deck/api/v1.0/cards/$cardId/labels',
-    ];
-    http.Response? last;
-    // Body-based variants
-    for (final p in postPaths) {
-      for (final b in payloads) {
-        final isOcs = p.startsWith('/ocs/');
-        final headers = {
-          if (isOcs) ..._ocsHeader,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'authorization': _basicAuth(user, pass),
-        };
-        try {
-          last = await _send('POST', _buildUri(baseUrl, p, false), headers,
-              body: b);
-          if (_isOk(last)) {
-            try {
-              _parseBodyOk(last);
-              return;
-            } catch (_) {}
-          }
-          last = await _send('POST', _buildUri(baseUrl, p, true), headers,
-              body: b);
-          if (_isOk(last)) {
-            try {
-              _parseBodyOk(last);
-              return;
-            } catch (_) {}
-          }
-        } catch (_) {}
-      }
-    }
-    // Path-based variants (no body)
-    final pathIdVariants = <String>[
-      if (boardId != null && stackId != null)
-        '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/labels/$labelId',
-      if (boardId != null)
-        '/apps/deck/api/v1.0/boards/$boardId/cards/$cardId/labels/$labelId',
-      '/apps/deck/api/v1.0/cards/$cardId/labels/$labelId',
-      if (boardId != null && stackId != null)
-        '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/labels/$labelId',
-      if (boardId != null)
-        '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId/cards/$cardId/labels/$labelId',
-      '/ocs/v1.php/apps/deck/api/v1.0/cards/$cardId/labels/$labelId',
-      '/ocs/v2.php/apps/deck/api/v1.0/cards/$cardId/labels/$labelId',
-    ];
-    for (final p in pathIdVariants) {
-      final isOcs = p.startsWith('/ocs/');
-      final headers = {
-        if (isOcs) ..._ocsHeader,
-        'Accept': 'application/json',
-        'authorization': _basicAuth(user, pass),
-      };
-      try {
-        last = await _send('PUT', _buildUri(baseUrl, p, false), headers);
-        if (_isOk(last)) {
-          try {
-            _parseBodyOk(last);
-            return;
-          } catch (_) {}
-        }
-        last = await _send('POST', _buildUri(baseUrl, p, false), headers);
-        if (_isOk(last)) {
-          try {
-            _parseBodyOk(last);
-            return;
-          } catch (_) {}
-        }
-        last = await _send('PUT', _buildUri(baseUrl, p, true), headers);
-        if (_isOk(last)) {
-          try {
-            _parseBodyOk(last);
-            return;
-          } catch (_) {}
-        }
-        last = await _send('POST', _buildUri(baseUrl, p, true), headers);
-        if (_isOk(last)) {
-          try {
-            _parseBodyOk(last);
-            return;
-          } catch (_) {}
-        }
-      } catch (_) {}
-    }
-    _ensureOk(last, 'Label hinzufügen fehlgeschlagen');
+      {int? boardId, int? stackId}) {
+    return _labelCall(baseUrl, user, pass,
+        cardId: cardId,
+        labelId: labelId,
+        boardId: boardId,
+        stackId: stackId,
+        apiSuffix: 'assignLabel',
+        internalMethod: 'POST',
+        errorMessage: 'Label hinzufügen fehlgeschlagen');
   }
 
   Future<void> removeLabelFromCard(
       String baseUrl, String user, String pass, int cardId, int labelId,
-      {int? boardId, int? stackId}) async {
-    // Prefer API v1.1 remove endpoint when boardId/stackId known
+      {int? boardId, int? stackId}) {
+    return _labelCall(baseUrl, user, pass,
+        cardId: cardId,
+        labelId: labelId,
+        boardId: boardId,
+        stackId: stackId,
+        apiSuffix: 'removeLabel',
+        internalMethod: 'DELETE',
+        errorMessage: 'Label entfernen fehlgeschlagen');
+  }
+
+  Future<void> _labelCall(String baseUrl, String user, String pass,
+      {required int cardId,
+      required int labelId,
+      int? boardId,
+      int? stackId,
+      required String apiSuffix,
+      required String internalMethod,
+      required String errorMessage}) async {
+    final headers = {
+      ..._ocsHeader,
+      'Content-Type': 'application/json',
+      'authorization': _basicAuth(user, pass),
+    };
+    http.Response? last;
+
+    Future<bool> attempt(String method, String path, bool withIndex,
+        {String? body}) async {
+      try {
+        final res = await _send(
+            method, _buildUri(baseUrl, path, withIndex), headers,
+            body: body);
+        last = res;
+        // 2xx mit HTML-Body wäre ein Login-Redirect, kein Erfolg.
+        if (_isOk(res) && !res.body.trimLeft().startsWith('<')) return true;
+        debugPrint(
+            '[NET][LABEL] $method $path${withIndex ? ' (index.php)' : ''} -> ${res.statusCode}');
+      } catch (e) {
+        debugPrint('[NET][LABEL] $method $path -> $e');
+      }
+      return false;
+    }
+
+    // 1) Offizielle Deck-API, wenn Board-/Stack-Kontext bekannt ist
     if (boardId != null && stackId != null) {
-      final removePaths = <String>[
-        '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/removeLabel',
-        '/ocs/v1.php/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/removeLabel',
-      ];
       final body = jsonEncode({'labelId': labelId});
-      for (final p in removePaths) {
-        final isOcs = p.startsWith('/ocs/');
-        final headers = {
-          if (isOcs) ..._ocsHeader,
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-          'authorization': _basicAuth(user, pass),
-        };
-        try {
-          var res = await _send('PUT', _buildUri(baseUrl, p, false), headers,
-              body: body);
-          if (_isOk(res)) {
-            _parseBodyOk(res);
-            return;
-          }
-          res = await _send('PUT', _buildUri(baseUrl, p, true), headers,
-              body: body);
-          if (_isOk(res)) {
-            _parseBodyOk(res);
-            return;
-          }
-        } catch (_) {}
+      for (final v in const ['v1.1', 'v1.0']) {
+        final p =
+            '/apps/deck/api/$v/boards/$boardId/stacks/$stackId/cards/$cardId/$apiSuffix';
+        if (await attempt('PUT', p, false, body: body)) return;
+        if (await attempt('PUT', p, true, body: body)) return;
       }
     }
-    // DELETE variants: REST and OCS v1/v2
-    final paths = <String>[
-      if (boardId != null && stackId != null)
-        '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/labels/$labelId',
-      if (boardId != null)
-        '/apps/deck/api/v1.0/boards/$boardId/cards/$cardId/labels/$labelId',
-      '/apps/deck/api/v1.0/cards/$cardId/labels/$labelId',
-      if (boardId != null && stackId != null)
-        '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/labels/$labelId',
-      if (boardId != null)
-        '/ocs/v1.php/apps/deck/api/v1.0/boards/$boardId/cards/$cardId/labels/$labelId',
-      '/ocs/v1.php/apps/deck/api/v1.0/cards/$cardId/labels/$labelId',
-      '/ocs/v2.php/apps/deck/api/v1.0/cards/$cardId/labels/$labelId',
-    ];
-    http.Response? res;
-    for (final p in paths) {
-      final isOcs = p.startsWith('/ocs/');
-      final headers = {
-        if (isOcs) ..._ocsHeader,
-        'Accept': 'application/json',
-        'authorization': _basicAuth(user, pass),
-      };
-      try {
-        res = await http.delete(_buildUri(baseUrl, p, false), headers: headers);
-        if (_isOk(res)) {
-          try {
-            _parseBodyOk(res!);
-            return;
-          } catch (_) {}
-        }
-        res = await http.delete(_buildUri(baseUrl, p, true), headers: headers);
-        if (_isOk(res)) {
-          try {
-            _parseBodyOk(res!);
-            return;
-          } catch (_) {}
-        }
-      } catch (_) {}
-    }
-    _ensureOk(res, 'Label entfernen fehlgeschlagen');
+    // 2) Interne Route: braucht nur die cardId
+    final internal = '/apps/deck/cards/$cardId/label/$labelId';
+    if (await attempt(internalMethod, internal, false)) return;
+    if (await attempt(internalMethod, internal, true)) return;
+    _ensureOk(last, errorMessage);
   }
 
   // Move card to another stack (robust across NC variants)
