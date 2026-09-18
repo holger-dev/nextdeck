@@ -1311,9 +1311,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: Text(
                     () {
                       final idx = kAppVersion.indexOf('+');
-                      final pretty = idx > 0
-                          ? '${kAppVersion.substring(0, idx)} (${kAppVersion.substring(idx + 1)})'
-                          : kAppVersion;
+                      // Nur die Marketing-Version anzeigen — die interne
+                      // Buildnummer interessiert keinen User.
+                      final pretty =
+                          idx > 0 ? kAppVersion.substring(0, idx) : kAppVersion;
                       return '${l10n.appVersionLabel}: $pretty';
                     }(),
                     style: const TextStyle(

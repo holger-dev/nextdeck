@@ -10,6 +10,25 @@ import '../models/card_item.dart';
 import '../models/user_ref.dart';
 import 'log_service.dart';
 
+/// Abbruch-Token für lang laufende Anhang-Transfers (Upload/Download).
+/// `cancel()` setzt das Flag und schließt den gerade aktiven HTTP-Client —
+/// der laufende Request bricht damit sofort ab, statt nur ignoriert zu
+/// werden. Die API-Methoden prüfen das Flag zusätzlich zwischen ihren
+/// Fallback-Versuchen.
+class TransferCancelToken {
+  bool _cancelled = false;
+  bool get cancelled => _cancelled;
+  void Function()? _abortCurrent;
+  void cancel() {
+    _cancelled = true;
+    final abort = _abortCurrent;
+    _abortCurrent = null;
+    try {
+      abort?.call();
+    } catch (_) {}
+  }
+}
+
 class NextcloudDeckApi {
   static const _ocsHeader = {
     'OCS-APIRequest': 'true',
@@ -1950,7 +1969,8 @@ class NextcloudDeckApi {
       required int stackId,
       required int cardId,
       required List<int> bytes,
-      required String filename}) async {
+      required String filename,
+      TransferCancelToken? cancelToken}) async {
     // Issue #83 — Umbau nach Lektüre der Deck-Server-Quelle
     // (AttachmentApiController / AttachmentService / FileService /
     // FilesAppService / routes.php):
@@ -1992,6 +2012,7 @@ class NextcloudDeckApi {
       for (final withIndex in [false, true]) {
         // OCS-Pfade laufen nie über index.php
         if (attempt.ocs && withIndex) continue;
+        if (cancelToken?.cancelled == true) return false;
         final uri = _buildUri(baseUrl, attempt.path, withIndex);
         final t0 = DateTime.now();
         http.Response res;
@@ -2015,10 +2036,21 @@ class NextcloudDeckApi {
               filename.length > 255 ? filename.substring(0, 255) : filename;
           req.files.add(http.MultipartFile.fromBytes('file', bytes,
               filename: filename));
-          final streamed = await req.send().timeout(uploadTimeout);
-          res =
-              await http.Response.fromStream(streamed).timeout(uploadTimeout);
+          // Eigener Client pro Versuch: `cancelToken.cancel()` schließt ihn
+          // und bricht den laufenden Upload damit wirklich ab.
+          final client = http.Client();
+          cancelToken?._abortCurrent = client.close;
+          try {
+            final streamed = await client.send(req).timeout(uploadTimeout);
+            res = await http.Response.fromStream(streamed)
+                .timeout(uploadTimeout);
+          } finally {
+            cancelToken?._abortCurrent = null;
+            client.close();
+          }
         } catch (e) {
+          // Bewusster Abbruch durch den User: kein Fehler-Log nötig.
+          if (cancelToken?.cancelled == true) return false;
           LogService().add(LogEntry(
             at: t0,
             method: 'POST',
@@ -2096,39 +2128,59 @@ class NextcloudDeckApi {
       {required int boardId,
       required int stackId,
       required int cardId,
-      required int attachmentId}) async {
+      required int attachmentId,
+      TransferCancelToken? cancelToken}) async {
     final candidates = <String>[
       '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/attachments/$attachmentId',
       '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/attachments/$attachmentId',
     ];
     for (final p in candidates) {
       for (final withIndex in [false, true]) {
-        try {
-          final res = await _send('GET', _buildUri(baseUrl, p, withIndex),
-              {'authorization': _basicAuth(user, pass)});
-          if (_isOk(res)) return res;
-        } catch (_) {}
+        final res = await _cancellableGet(
+            _buildUri(baseUrl, p, withIndex), user, pass, cancelToken);
+        if (cancelToken?.cancelled == true) return null;
+        if (res != null && _isOk(res)) return res;
       }
     }
     return null;
   }
 
   // Download a file via WebDAV using a known remote path under the user's files
-  Future<http.Response?> webdavDownload(String baseUrl, String user,
-      String pass, String username, String remotePath) async {
-    final candidates = <String>[
-      '/remote.php/dav/files/$username$remotePath',
-    ];
-    for (final p in candidates) {
-      for (final withIndex in [false, true]) {
-        try {
-          final res = await _send('GET', _buildUri(baseUrl, p, withIndex),
-              {'authorization': _basicAuth(user, pass)});
-          if (_isOk(res)) return res;
-        } catch (_) {}
-      }
+  Future<http.Response?> webdavDownload(
+      String baseUrl, String user, String pass, String username,
+      String remotePath,
+      {TransferCancelToken? cancelToken}) async {
+    for (final withIndex in [false, true]) {
+      final res = await _cancellableGet(
+          _buildUri(
+              baseUrl, '/remote.php/dav/files/$username$remotePath', withIndex),
+          user,
+          pass,
+          cancelToken);
+      if (cancelToken?.cancelled == true) return null;
+      if (res != null && _isOk(res)) return res;
     }
     return null;
+  }
+
+  // GET mit eigenem, abbrechbarem Client für Anhang-Downloads. Großzügiges
+  // Timeout, weil Anhänge groß sein können — der User hat dafür jetzt einen
+  // Abbrechen-Button (TransferCancelToken schließt den Client).
+  Future<http.Response?> _cancellableGet(Uri uri, String user, String pass,
+      TransferCancelToken? cancelToken) async {
+    if (cancelToken?.cancelled == true) return null;
+    final client = http.Client();
+    cancelToken?._abortCurrent = client.close;
+    try {
+      return await client.get(uri, headers: {
+        'authorization': _basicAuth(user, pass)
+      }).timeout(const Duration(minutes: 3));
+    } catch (_) {
+      return null;
+    } finally {
+      cancelToken?._abortCurrent = null;
+      client.close();
+    }
   }
 
   Future<bool> uploadFileToWebdav(String baseUrl, String user, String pass,

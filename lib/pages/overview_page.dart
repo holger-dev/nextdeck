@@ -55,30 +55,39 @@ class _OverviewPageState extends State<OverviewPage> {
     return CupertinoPageScaffold(
       backgroundColor: AppTheme.appBackground(app),
       navigationBar: CupertinoNavigationBar(
-        leading: CupertinoButton(
-          padding: EdgeInsets.zero,
+        // NC 2.0: NavBar-Aktionen als GlassIconButton — identisch zum Board
+        leading: GlassIconButton(
+          size: 38,
+          icon: Icon(CupertinoIcons.search,
+              size: 19, color: CupertinoColors.label.resolveFrom(context)),
           onPressed: () => Navigator.of(context).push(CupertinoPageRoute(
               builder: (_) =>
                   const BoardSearchPage(initialScope: SearchScope.all))),
-          child: const Icon(CupertinoIcons.search),
         ),
         middle: Text(L10n.of(context).overview),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              onPressed: () async {
-                // Use new sync system instead of old refreshBoards/refreshColumnsFor
-                await app.runWithSyncing(() async {
-                  await app.refreshBoards(forceNetwork: true);
-                  if (app.activeBoard != null) {
-                    await app.refreshSingleBoard(app.activeBoard!.id);
-                  }
-                });
-              },
-              child: const Icon(CupertinoIcons.refresh),
-            ),
+            app.isSyncing
+                ? const SizedBox(
+                    width: 38,
+                    height: 38,
+                    child: Center(child: CupertinoActivityIndicator()))
+                : GlassIconButton(
+                    size: 38,
+                    icon: Icon(CupertinoIcons.refresh,
+                        size: 19,
+                        color: CupertinoColors.label.resolveFrom(context)),
+                    onPressed: () async {
+                      // Use new sync system instead of old refreshBoards/refreshColumnsFor
+                      await app.runWithSyncing(() async {
+                        await app.refreshBoards(forceNetwork: true);
+                        if (app.activeBoard != null) {
+                          await app.refreshSingleBoard(app.activeBoard!.id);
+                        }
+                      });
+                    },
+                  ),
           ],
         ),
       ),

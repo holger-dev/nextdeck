@@ -437,6 +437,17 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
       child: Row(
         children: [
+          // Suche immer oben links erreichbar — hier im Scope des
+          // aktuellen Boards (umschaltbar auf alle Boards in der Suche).
+          GlassIconButton(
+            size: 38,
+            icon: Icon(CupertinoIcons.search, size: 19, color: txtColor),
+            onPressed: () {
+              Navigator.of(context).push(
+                  CupertinoPageRoute(builder: (_) => const BoardSearchPage()));
+            },
+          ),
+          const SizedBox(width: 8),
           Expanded(
             child: CupertinoButton(
               padding: EdgeInsets.zero,

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/cupertino.dart';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
@@ -12,6 +13,7 @@ import 'dart:math' as Math;
 import '../models/board.dart';
 import '../l10n/app_localizations.dart';
 import 'card_detail_page.dart';
+import 'board_search_page.dart';
 
 class UpcomingPage extends StatefulWidget {
   const UpcomingPage({super.key});
@@ -40,6 +42,9 @@ class _UpcomingPageState extends State<UpcomingPage> {
   int _lastScanDone = -1;
   // Fingerprint des Hidden-Board-Sets — triggert Listen-Rebuild bei Änderung
   String _lastHiddenFp = '';
+  // Letzte gesehene Revision des Anstehend-Caches — triggert Listen-Rebuild,
+  // wenn Karten lokal geändert wurden (z. B. Label/Titel in der Detailansicht)
+  int _lastUpcomingRev = -1;
 
   @override
   void initState() {
@@ -284,6 +289,18 @@ class _UpcomingPageState extends State<UpcomingPage> {
         if (mounted) _rebuildFromCacheAndTrackLoading();
       });
     }
+    // Kartenänderungs-Trigger: Wird eine Karte aus der Detailansicht heraus
+    // geändert (Label, Titel, Text, Fälligkeit …), baut AppState den
+    // Anstehend-Cache neu und zählt upcomingRevision hoch. Vorher wurden die
+    // Listen nur bei Tab-Wechsel/Scan neu gebaut — wer aus Anstehend heraus
+    // eine Karte öffnete und zurückkam, sah den alten Stand bis zum
+    // manuellen Sync.
+    if (app.upcomingRevision != _lastUpcomingRev) {
+      _lastUpcomingRev = app.upcomingRevision;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _rebuildFromCacheAndTrackLoading();
+      });
+    }
     // Hidden-Boards-Fix (doppelter Boden, Render-Ebene): egal wie die
     // Listen zustande kamen — ausgeblendete Boards werden nie angezeigt.
     List<_DueHit> vis(List<_DueHit> l) =>
@@ -304,16 +321,30 @@ class _UpcomingPageState extends State<UpcomingPage> {
       }
       _lastSeenTabIndex = currentTab;
     }
+    // NC 2.0: NavBar-Aktionen als GlassIconButton — identisch zum Board
+    // (dort 38 px Button, 19 px Icon), statt nackter CupertinoButtons.
+    final navIconColor = CupertinoColors.label.resolveFrom(context);
     return CupertinoPageScaffold(
       backgroundColor: AppTheme.appBackground(app),
       navigationBar: CupertinoNavigationBar(
+        // Suche immer oben links erreichbar — Anstehend ist boardübergreifend,
+        // also startet die Suche hier im Alle-Boards-Scope.
+        leading: GlassIconButton(
+          size: 38,
+          icon: Icon(CupertinoIcons.search, size: 19, color: navIconColor),
+          onPressed: () => Navigator.of(context).push(CupertinoPageRoute(
+              builder: (_) =>
+                  const BoardSearchPage(initialScope: SearchScope.all))),
+        ),
         middle: Text(l10n.upcomingTitle),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (!app.upcomingSingleColumn)
-              CupertinoButton(
-                padding: EdgeInsets.zero,
+            if (!app.upcomingSingleColumn) ...[
+              GlassIconButton(
+                size: 38,
+                icon: Icon(CupertinoIcons.list_bullet,
+                    size: 19, color: navIconColor),
                 onPressed: () async {
                   final l10n = L10n.of(context);
                   final buckets = [
@@ -351,10 +382,17 @@ class _UpcomingPageState extends State<UpcomingPage> {
                     ),
                   );
                 },
-                child: const Icon(CupertinoIcons.list_bullet),
               ),
-            CupertinoButton(
-              padding: EdgeInsets.zero,
+              const SizedBox(width: 8),
+            ],
+            GlassIconButton(
+              size: 38,
+              icon: Icon(
+                  app.upcomingAssignedOnly
+                      ? CupertinoIcons.person_fill
+                      : CupertinoIcons.person,
+                  size: 19,
+                  color: navIconColor),
               onPressed: () async {
                 final next = !app.upcomingAssignedOnly;
                 app.setUpcomingAssignedOnly(next);
@@ -363,24 +401,24 @@ class _UpcomingPageState extends State<UpcomingPage> {
                 }
                 _rebuildFromCacheAndTrackLoading();
               },
-              child: Icon(app.upcomingAssignedOnly
-                  ? CupertinoIcons.person_fill
-                  : CupertinoIcons.person),
             ),
-            CupertinoButton(
-              padding: EdgeInsets.zero,
-              onPressed: (app.upcomingScanActive || app.isSyncing)
-                  ? null
-                  : () async {
+            const SizedBox(width: 8),
+            (app.upcomingScanActive || app.isSyncing)
+                ? const SizedBox(
+                    width: 38,
+                    height: 38,
+                    child: Center(child: CupertinoActivityIndicator()))
+                : GlassIconButton(
+                    size: 38,
+                    icon: Icon(CupertinoIcons.refresh,
+                        size: 19, color: navIconColor),
+                    onPressed: () async {
                       // Perform delta sync (only changed boards) to avoid overwriting local changes
                       await app.refreshUpcomingDelta(forceFull: false);
                       // Rebuild view from updated cache
                       if (mounted) _rebuildFromCacheAndTrackLoading();
                     },
-              child: (app.upcomingScanActive || app.isSyncing)
-                  ? const CupertinoActivityIndicator()
-                  : const Icon(CupertinoIcons.refresh),
-            ),
+                  ),
           ],
         ),
       ),

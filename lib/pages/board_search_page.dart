@@ -1,13 +1,16 @@
 import 'package:flutter/cupertino.dart';
 import 'dart:async';
+import 'package:liquid_glass_widgets/liquid_glass_widgets.dart';
 import 'package:provider/provider.dart';
 
 import '../state/app_state.dart';
+import '../theme/design_tokens.dart';
 import '../models/card_item.dart';
 import '../models/board.dart';
 import '../theme/app_theme.dart';
 import '../l10n/app_localizations.dart';
 import 'card_detail_page.dart';
+import '../widgets/glass_back_button.dart';
 
 enum SearchScope { current, all }
 
@@ -207,7 +210,8 @@ class _BoardSearchPageState extends State<BoardSearchPage> {
         : (app.activeBoard == null ? l10n.search : l10n.searchInBoard(app.activeBoard!.title));
     return CupertinoPageScaffold(
       backgroundColor: AppTheme.appBackground(app),
-      navigationBar: CupertinoNavigationBar(middle: Text(title)),
+      navigationBar: CupertinoNavigationBar(
+          leading: const GlassBackButton(), middle: Text(title)),
       child: SafeArea(
         child: Column(
           children: [
@@ -226,22 +230,38 @@ class _BoardSearchPageState extends State<BoardSearchPage> {
                 },
               ),
             ),
+            // NC 2.0: Suchfeld als Pill mit nativem Lösch-X (erscheint bei
+            // Eingabe, leert Feld + Trefferliste), daneben der Such-Button
+            // als GlassIconButton — identisch zu den übrigen NavBar-Aktionen.
             Padding(
               padding: const EdgeInsets.all(12),
               child: Row(
                 children: [
                   Expanded(
-                    child: CupertinoTextField(
+                    child: CupertinoSearchTextField(
                       controller: _query,
                       placeholder: l10n.searchPlaceholder,
+                      style: TextStyle(
+                          color: CupertinoColors.label.resolveFrom(context)),
+                      backgroundColor:
+                          CupertinoColors.systemGrey.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(DT.radiusFull),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 10, horizontal: 8),
                       onSubmitted: (_) => _doSearch(),
+                      onSuffixTap: () {
+                        _query.clear();
+                        setState(() => _hits = const []);
+                      },
                     ),
                   ),
                   const SizedBox(width: 8),
-                  CupertinoButton.filled(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  GlassIconButton(
+                    size: 38,
+                    icon: Icon(CupertinoIcons.search,
+                        size: 19,
+                        color: CupertinoColors.label.resolveFrom(context)),
                     onPressed: _doSearch,
-                    child: const Icon(CupertinoIcons.search),
                   ),
                 ],
               ),

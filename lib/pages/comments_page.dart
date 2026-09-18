@@ -7,6 +7,7 @@ import '../models/comment.dart';
 import '../models/user_ref.dart';
 import '../theme/app_theme.dart';
 import '../l10n/app_localizations.dart';
+import '../widgets/glass_back_button.dart';
 
 class CommentsPage extends StatefulWidget {
   final int cardId;
@@ -239,7 +240,8 @@ class _CommentsPageState extends State<CommentsPage> {
     final l10n = L10n.of(context);
     return CupertinoPageScaffold(
       backgroundColor: AppTheme.appBackground(app),
-      navigationBar: CupertinoNavigationBar(middle: Text(l10n.comments)),
+      navigationBar: CupertinoNavigationBar(
+          leading: const GlassBackButton(), middle: Text(l10n.comments)),
       child: SafeArea(
         child: Column(
           children: [

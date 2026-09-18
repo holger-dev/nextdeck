@@ -199,6 +199,21 @@ class L10n {
       : _isEs
           ? 'Error de carga'
           : 'Upload failed';
+  String get attachmentUploading => _isDe
+      ? 'Anhang wird hochgeladen …'
+      : _isEs
+          ? 'Subiendo el adjunto…'
+          : 'Uploading attachment…';
+  String get attachmentDownloading => _isDe
+      ? 'Anhang wird geladen …'
+      : _isEs
+          ? 'Cargando el adjunto…'
+          : 'Loading attachment…';
+  String get attachmentTransferHint => _isDe
+      ? 'Je nach Dateigröße und Verbindung kann das einen Moment dauern.'
+      : _isEs
+          ? 'Según el tamaño del archivo y la conexión, esto puede tardar un momento.'
+          : 'Depending on file size and connection, this can take a moment.';
   String get fileReadFailed => _isDe
       ? 'Datei konnte nicht gelesen werden.'
       : _isEs

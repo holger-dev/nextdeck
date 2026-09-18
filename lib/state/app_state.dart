@@ -619,6 +619,13 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // Zählt bei jedem Neuaufbau des Anstehend-Caches hoch. Die Anstehend-Seite
+  // vergleicht den Wert in build() und liest ihre Listen bei Änderung neu ein —
+  // so erscheinen Kartenänderungen aus der Detailansicht sofort, ohne
+  // manuellen Sync (gleiches Muster wie der Hidden-Board-Fingerprint).
+  int _upcomingRevision = 0;
+  int get upcomingRevision => _upcomingRevision;
+
   void _rebuildUpcomingCacheFromMemory() {
     try {
       final now = DateTime.now();
@@ -697,6 +704,7 @@ class AppState extends ChangeNotifier {
         'later': l,
         'nodue': nd,
       });
+      _upcomingRevision++;
       unawaited(_notifyNewActivityFromMemory());
     } catch (e) {
       debugPrint('[catch] $e');

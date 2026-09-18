@@ -17,6 +17,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../state/app_state.dart';
+import '../services/nextcloud_deck_api.dart' show TransferCancelToken;
 import '../models/card_item.dart';
 import '../models/label.dart';
 import '../models/column.dart' as deck;
@@ -26,6 +27,7 @@ import '../models/comment.dart';
 import '../theme/design_tokens.dart';
 import '../services/quicklook_service.dart';
 import '../l10n/app_localizations.dart';
+import '../widgets/glass_back_button.dart';
 // import 'labels_manage_page.dart';
 
 class CardDetailPage extends StatefulWidget {
@@ -141,13 +143,24 @@ class _CardDetailPageState extends State<CardDetailPage> {
         }
         return;
       }
-      // Preferred: direct Deck upload (multipart) per API docs
-      final okUp = await app.api.uploadCardAttachment(base, user, pass,
-          boardId: boardId,
-          stackId: stackId,
-          cardId: widget.cardId,
-          bytes: bytes,
-          filename: fileName);
+      // Preferred: direct Deck upload (multipart) per API docs — mit
+      // Lade-Overlay (Hinweis + Abbrechen), weil das je nach Dateigröße
+      // einen Moment dauern kann.
+      final token = TransferCancelToken();
+      final okUp = await _runWithTransferOverlay<bool>(
+            title: L10n.of(context).attachmentUploading,
+            token: token,
+            run: () => app.api.uploadCardAttachment(base, user, pass,
+                boardId: boardId,
+                stackId: stackId,
+                cardId: widget.cardId,
+                bytes: bytes,
+                filename: fileName,
+                cancelToken: token),
+          ) ??
+          false;
+      // Bewusster Abbruch: still zurück, kein Fehlerdialog.
+      if (token.cancelled) return;
       if (okUp) {
         await _loadAttachments();
       } else {
@@ -174,6 +187,93 @@ class _CardDetailPageState extends State<CardDetailPage> {
           _uploadingAttachment = false;
         });
     }
+  }
+
+  /// Führt einen Anhang-Transfer aus und zeigt währenddessen ein modales
+  /// Overlay: Spinner, Hinweis („kann je nach Dateigröße einen Moment
+  /// dauern") und Abbrechen. Abbrechen cancelt den laufenden HTTP-Request
+  /// wirklich (das Token schließt den Client) — der Aufrufer erkennt den
+  /// Abbruch an `token.cancelled` und zeigt dann keinen Fehlerdialog.
+  Future<T?> _runWithTransferOverlay<T>({
+    required String title,
+    required TransferCancelToken token,
+    required Future<T> Function() run,
+  }) async {
+    final l10n = L10n.of(context);
+    var dialogOpen = true;
+    unawaited(showCupertinoDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text(title),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 14),
+            const CupertinoActivityIndicator(radius: 13),
+            const SizedBox(height: 14),
+            Text(l10n.attachmentTransferHint),
+          ],
+        ),
+        actions: [
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () {
+              token.cancel();
+              Navigator.of(ctx).pop();
+            },
+            child: Text(l10n.cancel),
+          ),
+        ],
+      ),
+    ).whenComplete(() => dialogOpen = false));
+    try {
+      return await run();
+    } catch (_) {
+      return null;
+    } finally {
+      if (dialogOpen && mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+  }
+
+  /// Lädt einen Anhang herunter (WebDAV bevorzugt, Deck-Endpoint als
+  /// Fallback) — mit Lade-Overlay und Abbrechen-Option. Liefert null bei
+  /// Fehler ODER Abbruch.
+  Future<http.Response?> _downloadAttachmentWithOverlay({
+    required String base,
+    required String? user,
+    required String pass,
+    required String? remotePath,
+    required int? attachmentId,
+  }) async {
+    final app = context.read<AppState>();
+    final token = TransferCancelToken();
+    return _runWithTransferOverlay<http.Response?>(
+      title: L10n.of(context).attachmentDownloading,
+      token: token,
+      run: () async {
+        http.Response? res;
+        if (remotePath != null && remotePath.isNotEmpty && user != null) {
+          res = await app.api.webdavDownload(base, user, pass, user, remotePath,
+              cancelToken: token);
+        }
+        if (res == null && !token.cancelled && user != null) {
+          final boardId = widget.boardId ?? app.activeBoard?.id;
+          final stackId = _currentStackId ?? widget.stackId;
+          if (boardId != null && stackId != null && attachmentId != null) {
+            res = await app.api.fetchAttachmentContent(base, user, pass,
+                boardId: boardId,
+                stackId: stackId,
+                cardId: widget.cardId,
+                attachmentId: attachmentId,
+                cancelToken: token);
+          }
+        }
+        return res;
+      },
+    );
   }
 
   @override
@@ -908,6 +1008,7 @@ class _CardDetailPageState extends State<CardDetailPage> {
     return CupertinoPageScaffold(
       backgroundColor: widget.bgColor,
       navigationBar: CupertinoNavigationBar(
+        leading: const GlassBackButton(),
         middle: Text(
             _titleCtrl.text.isEmpty ? L10n.of(context).card : _titleCtrl.text,
             maxLines: 1,
@@ -1208,12 +1309,6 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                   final user = app.username;
                                                   final pass = await app.storage
                                                       .read(key: 'password');
-                                                  final boardId =
-                                                      widget.boardId ??
-                                                          app.activeBoard?.id;
-                                                  final stackId =
-                                                      _currentStackId ??
-                                                          widget.stackId;
                                                   if (base == null ||
                                                       user == null ||
                                                       pass == null) return;
@@ -1276,32 +1371,14 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                             '/');
                                                   }
 
-                                                  http.Response? res;
-                                                  if (remotePath != null &&
-                                                      remotePath.isNotEmpty &&
-                                                      user != null) {
-                                                    res = await app.api
-                                                        .webdavDownload(
-                                                            base,
-                                                            user,
-                                                            pass,
-                                                            user,
-                                                            remotePath);
-                                                  }
-                                                  // Fallback to Deck content endpoint
-                                                  if (res == null &&
-                                                      boardId != null &&
-                                                      stackId != null &&
-                                                      id != null) {
-                                                    res = await app.api
-                                                        .fetchAttachmentContent(
-                                                            base, user!, pass,
-                                                            boardId: boardId,
-                                                            stackId: stackId,
-                                                            cardId:
-                                                                widget.cardId,
-                                                            attachmentId: id);
-                                                  }
+                                                  final res =
+                                                      await _downloadAttachmentWithOverlay(
+                                                          base: base,
+                                                          user: user,
+                                                          pass: pass,
+                                                          remotePath:
+                                                              remotePath,
+                                                          attachmentId: id);
                                                   if (res == null) return;
                                                   final mime = res
                                                       .headers['content-type'];
@@ -1971,45 +2048,16 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                                 '/');
                                                       }
 
-                                                      http.Response? res;
-                                                      if (remotePath != null &&
-                                                          remotePath
-                                                              .isNotEmpty &&
-                                                          user != null) {
-                                                        res = await app.api
-                                                            .webdavDownload(
-                                                                base,
-                                                                user,
-                                                                pass,
-                                                                user,
-                                                                remotePath);
-                                                      }
-                                                      // Fallback to Deck endpoint
-                                                      if (res == null) {
-                                                        final boardId = widget
-                                                                .boardId ??
-                                                            app.activeBoard?.id;
-                                                        final stackId =
-                                                            _currentStackId ??
-                                                                widget.stackId;
-                                                        if (boardId == null ||
-                                                            stackId == null ||
-                                                            id == null) return;
-                                                        res = await app.api
-                                                            .fetchAttachmentContent(
-                                                                base,
-                                                                user!,
-                                                                pass,
-                                                                boardId:
-                                                                    boardId,
-                                                                stackId:
-                                                                    stackId,
-                                                                cardId: widget
-                                                                    .cardId,
-                                                                attachmentId:
-                                                                    id);
-                                                        if (res == null) return;
-                                                      }
+                                                      final res =
+                                                          await _downloadAttachmentWithOverlay(
+                                                              base: base,
+                                                              user: user,
+                                                              pass: pass,
+                                                              remotePath:
+                                                                  remotePath,
+                                                              attachmentId:
+                                                                  id);
+                                                      if (res == null) return;
                                                       final mime = res.headers[
                                                           'content-type'];
                                                       final bytes =
@@ -2431,13 +2479,20 @@ class _CardDetailPageState extends State<CardDetailPage> {
 
     try {
       final bytes = await File(path).readAsBytes();
-      final ok = await app.api.uploadCardAttachment(base, user, pass,
-          boardId: boardId,
-          stackId: stackId,
-          cardId: widget.cardId,
-          bytes: bytes,
-          filename: newName);
-      if (!mounted) return;
+      final token = TransferCancelToken();
+      final ok = await _runWithTransferOverlay<bool>(
+            title: l10n.attachmentUploading,
+            token: token,
+            run: () => app.api.uploadCardAttachment(base, user, pass,
+                boardId: boardId,
+                stackId: stackId,
+                cardId: widget.cardId,
+                bytes: bytes,
+                filename: newName,
+                cancelToken: token),
+          ) ??
+          false;
+      if (!mounted || token.cancelled) return;
       if (ok) {
         await _loadAttachments();
       } else {

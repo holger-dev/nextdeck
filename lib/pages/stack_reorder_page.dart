@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../state/app_state.dart';
 import '../theme/app_theme.dart';
 import '../l10n/app_localizations.dart';
+import '../widgets/glass_back_button.dart';
 
 class StackReorderPage extends StatefulWidget {
   final int boardId;
@@ -42,6 +43,7 @@ class _StackReorderPageState extends State<StackReorderPage> {
     return CupertinoPageScaffold(
       backgroundColor: AppTheme.appBackground(app),
       navigationBar: CupertinoNavigationBar(
+        leading: const GlassBackButton(),
         middle: Text(l10n.reorderColumnsFor(widget.boardTitle)),
       ),
       child: SafeArea(
