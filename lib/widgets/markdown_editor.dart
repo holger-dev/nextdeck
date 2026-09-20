@@ -216,6 +216,8 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
             Text(L10n.of(context).helpLink),
             const SizedBox(height: 4),
             Text(L10n.of(context).helpLinebreak),
+            const SizedBox(height: 4),
+            Text(L10n.of(context).helpDetails),
           ],
         ),
         cancelButton: CupertinoActionSheetAction(
@@ -368,6 +370,29 @@ class _MarkdownEditorState extends State<MarkdownEditor> {
         }
         cursorOffset = replace.length;
         break;
+      case _MdAction.details:
+        // Aufklappbereich (<details>/<summary>) — wird von Nextcloud Deck
+        // unterstützt und in unserer Vorschau als aufklappbares Panel
+        // gerendert. Selektierter Text wird zum Titel.
+        final phTitle = L10n.of(context).mdDetailsSummary;
+        final phContent = L10n.of(context).mdDetailsContent;
+        final title = selected.isEmpty ? phTitle : selected;
+        // Block auf eigener Zeile beginnen lassen
+        final prefix =
+            (before.isNotEmpty && !before.endsWith('\n')) ? '\n' : '';
+        replace =
+            '$prefix<details><summary>$title</summary>\n\n$phContent\n\n</details>\n';
+        if (selected.isEmpty) {
+          placeholderStart = prefix.length + '<details><summary>'.length;
+          placeholderEnd = placeholderStart + phTitle.length;
+        } else {
+          // Titel stand schon fest → direkt den Inhalts-Platzhalter markieren
+          placeholderStart =
+              '$prefix<details><summary>$title</summary>\n\n'.length;
+          placeholderEnd = placeholderStart + phContent.length;
+        }
+        cursorOffset = replace.length;
+        break;
     }
     final newText = hasSel ? before + replace + after : before + replace;
     final base = before.length;
@@ -431,7 +456,6 @@ class _PreviewWithTasks extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = CupertinoTheme.of(context);
     final lines = text.split('\n');
     final taskLineIndices = <int>[];
     final taskRe = RegExp(r'^(\s*)[-*+] \[( |x|X)\] (.*)$');
@@ -460,19 +484,116 @@ class _PreviewWithTasks extends StatelessWidget {
             ],
           ),
         ],
-        MarkdownBody(
-          data: mdData,
-          extensionSet: md.ExtensionSet.gitHubFlavored,
-          onTapLink: (text, href, title) => _openMarkdownLink(href),
-          styleSheet: MarkdownStyleSheet(
-            p: theme.textTheme.textStyle,
-            code: theme.textTheme.textStyle.copyWith(
-              fontFamily: 'monospace',
-              backgroundColor: const Color(0x11000000),
-            ),
-          ),
-        ),
+        ..._buildSegments(context, mdData),
       ],
+    );
+  }
+
+  // Nextcloud Deck unterstützt <details>/<summary> in Beschreibungen.
+  // flutter_markdown rendert kein HTML — ohne Sonderbehandlung stünden die
+  // Tags als Rohtext in der Vorschau. Wir zerlegen den Text deshalb in
+  // normale Markdown-Segmente und Details-Blöcke, die als aufklappbare
+  // Panels gerendert werden (Standard: zugeklappt, außer <details open> —
+  // wie im Web). Verschachtelte Blöcke werden rekursiv gerendert; bei
+  // kaputtem Markup (fehlendes </details>) greift der Fallback: Tags
+  // ausblenden, Summary fett, Inhalt normal sichtbar.
+  // Bekannte Einschränkung: <details> innerhalb von ```-Codeblöcken wird
+  // ebenfalls erkannt — in Kartenbeschreibungen praktisch nicht relevant.
+  static final _detailsOpenRe =
+      RegExp(r'<details\b([^>]*)>', caseSensitive: false);
+  static final _detailsCloseRe = RegExp(r'</details\s*>', caseSensitive: false);
+  static final _summaryRe = RegExp(r'<summary\b[^>]*>(.*?)</summary\s*>',
+      caseSensitive: false, dotAll: true);
+
+  List<Widget> _buildSegments(BuildContext context, String data) {
+    final widgets = <Widget>[];
+    int pos = 0;
+    while (pos < data.length) {
+      final m = _detailsOpenRe.firstMatch(data.substring(pos));
+      if (m == null) {
+        final tail = data.substring(pos).trim();
+        if (tail.isNotEmpty) widgets.add(_mdBody(context, tail));
+        break;
+      }
+      final head = data.substring(pos, pos + m.start).trim();
+      if (head.isNotEmpty) widgets.add(_mdBody(context, head));
+      final initiallyOpen = (m.group(1) ?? '').toLowerCase().contains('open');
+      // Zugehöriges </details> suchen — verschachtelte Blöcke mitzählen.
+      int depth = 1;
+      int cursor = pos + m.end;
+      int contentEnd = -1;
+      int afterClose = -1;
+      while (cursor < data.length) {
+        final rest = data.substring(cursor);
+        final o = _detailsOpenRe.firstMatch(rest);
+        final c = _detailsCloseRe.firstMatch(rest);
+        if (c == null) break;
+        if (o != null && o.start < c.start) {
+          depth++;
+          cursor += o.end;
+        } else {
+          depth--;
+          if (depth == 0) {
+            contentEnd = cursor + c.start;
+            afterClose = cursor + c.end;
+            break;
+          }
+          cursor += c.end;
+        }
+      }
+      if (contentEnd < 0) {
+        // Fallback bei kaputtem Markup
+        var rest = data.substring(pos + m.end);
+        String summary = '';
+        final sm = _summaryRe.firstMatch(rest);
+        if (sm != null) {
+          summary = _stripTags(sm.group(1)!);
+          rest = rest.replaceRange(sm.start, sm.end, '');
+        }
+        final fallback =
+            (summary.isEmpty ? '' : '**$summary**\n\n') + rest.trim();
+        if (fallback.trim().isNotEmpty) {
+          widgets.add(_mdBody(context, fallback));
+        }
+        break;
+      }
+      var inner = data.substring(pos + m.end, contentEnd);
+      String summary = '';
+      final sm = _summaryRe.firstMatch(inner);
+      if (sm != null) {
+        summary = _stripTags(sm.group(1)!);
+        inner = inner.replaceRange(sm.start, sm.end, '');
+      }
+      final innerTrimmed = inner.trim();
+      widgets.add(_DetailsBlock(
+        summary: summary.isEmpty ? L10n.of(context).detailsLabel : summary,
+        initiallyOpen: initiallyOpen,
+        contentBuilder: (ctx) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: _buildSegments(ctx, innerTrimmed),
+        ),
+      ));
+      pos = afterClose;
+    }
+    return widgets;
+  }
+
+  String _stripTags(String s) =>
+      s.replaceAll(RegExp(r'<[^>]+>'), '').trim();
+
+  Widget _mdBody(BuildContext context, String data) {
+    final theme = CupertinoTheme.of(context);
+    return MarkdownBody(
+      data: data,
+      extensionSet: md.ExtensionSet.gitHubFlavored,
+      onTapLink: (text, href, title) => _openMarkdownLink(href),
+      styleSheet: MarkdownStyleSheet(
+        p: theme.textTheme.textStyle,
+        code: theme.textTheme.textStyle.copyWith(
+          fontFamily: 'monospace',
+          backgroundColor: const Color(0x11000000),
+        ),
+      ),
     );
   }
 
@@ -553,7 +674,7 @@ class _TaskRow extends StatelessWidget {
   }
 }
 
-enum _MdAction { bold, italic, strike, code, link, ul, ol, task, quote }
+enum _MdAction { bold, italic, strike, code, link, ul, ol, task, quote, details }
 
 class _Toolbar extends StatelessWidget {
   final void Function(_MdAction) onAction;
@@ -588,6 +709,8 @@ class _Toolbar extends StatelessWidget {
       _icon(CupertinoIcons.list_number, () => onAction(_MdAction.ol)),
       _icon(CupertinoIcons.checkmark_square, () => onAction(_MdAction.task)),
       _icon(CupertinoIcons.quote_bubble, () => onAction(_MdAction.quote)),
+      _icon(CupertinoIcons.chevron_down_square,
+          () => onAction(_MdAction.details)),
       if (onShowHelp != null) _icon(CupertinoIcons.question, onShowHelp!),
     ];
 
@@ -656,6 +779,83 @@ class _Toolbar extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         onPressed: onPressed,
         child: Icon(icon, size: 20),
+      ),
+    );
+  }
+}
+
+/// Aufklappbares Panel für <details>/<summary>-Bereiche in der
+/// Markdown-Vorschau — Pendant zum nativen HTML-Element der Deck-Web-UI.
+/// Zustand (auf/zu) lebt nur in der Ansicht und wird nicht gespeichert,
+/// genau wie im Browser.
+class _DetailsBlock extends StatefulWidget {
+  final String summary;
+  final bool initiallyOpen;
+  final WidgetBuilder contentBuilder;
+  const _DetailsBlock({
+    required this.summary,
+    required this.initiallyOpen,
+    required this.contentBuilder,
+  });
+
+  @override
+  State<_DetailsBlock> createState() => _DetailsBlockState();
+}
+
+class _DetailsBlockState extends State<_DetailsBlock> {
+  late bool _open = widget.initiallyOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final labelColor = CupertinoColors.label.resolveFrom(context);
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      decoration: BoxDecoration(
+        color: CupertinoColors.systemGrey.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header toggelt — der GestureDetector gewinnt gegen den
+          // "Tap = Bearbeiten"-Detector der umgebenden Vorschau.
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => _open = !_open),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              child: Row(
+                children: [
+                  AnimatedRotation(
+                    turns: _open ? 0.25 : 0,
+                    duration: const Duration(milliseconds: 180),
+                    child: Icon(CupertinoIcons.chevron_right,
+                        size: 15, color: labelColor.withOpacity(0.7)),
+                  ),
+                  const SizedBox(width: 7),
+                  Expanded(
+                    child: Text(
+                      widget.summary,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600, color: labelColor),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: _open
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                    child: widget.contentBuilder(context),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
       ),
     );
   }

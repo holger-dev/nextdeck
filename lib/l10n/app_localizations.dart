@@ -412,12 +412,32 @@ class L10n {
       : _isEs
           ? 'Salto de línea: dos espacios al final'
           : 'Linebreak: two spaces at end of line';
+  String get helpDetails => _isDe
+      ? 'Aufklappbereich: <details><summary>Titel</summary> Inhalt </details>'
+      : _isEs
+          ? 'Sección plegable: <details><summary>Título</summary> Contenido </details>'
+          : 'Collapsible section: <details><summary>Title</summary> Content </details>';
   // Insert defaults
   String get mdBold => _isDe
       ? 'fett'
       : _isEs
           ? 'negrita'
           : 'bold';
+  String get mdDetailsSummary => _isDe
+      ? 'Titel'
+      : _isEs
+          ? 'Título'
+          : 'Title';
+  String get mdDetailsContent => _isDe
+      ? 'Inhalt'
+      : _isEs
+          ? 'Contenido'
+          : 'Content';
+  String get detailsLabel => _isDe
+      ? 'Details'
+      : _isEs
+          ? 'Detalles'
+          : 'Details';
   String get mdItalic => _isDe
       ? 'kursiv'
       : _isEs

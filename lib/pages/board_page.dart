@@ -24,6 +24,7 @@ import '../theme/design_tokens.dart';
 import '../widgets/skeleton.dart';
 import '../l10n/app_localizations.dart';
 import '../navigation/nav_keys.dart';
+import '../utils/description_preview.dart';
 
 const TextStyle _destructiveActionTextStyle =
     TextStyle(color: CupertinoColors.destructiveRed);
@@ -2415,11 +2416,14 @@ class _CardTile extends StatelessWidget {
             if (subtitle != null && subtitle!.isNotEmpty)
               Builder(builder: (context) {
                 final app = context.watch<AppState>();
-                if (app.showDescriptionText) {
+                // <details>-Blöcke aus der Kachel-Vorschau ausklammern —
+                // rohes Markup hat auf der Karte nichts verloren.
+                final previewDesc = descriptionPreview(subtitle);
+                if (app.showDescriptionText && previewDesc != null) {
                   return Padding(
                     padding: const EdgeInsets.only(top: 5),
                     child: Text(
-                      subtitle!,
+                      previewDesc,
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(

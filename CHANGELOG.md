@@ -4,6 +4,20 @@ All notable changes are documented in this file.
 
 This changelog is based on `STORE.md` and links to detailed release notes in `changelog/`.
 
+## [2.2]
+- Collapsible sections: Nextcloud Deck's <details>/<summary> markup in card descriptions now renders as animated expandable panels (closed by default, `open` attribute honored, nested blocks supported, graceful fallback for broken markup) instead of raw tags.
+- New editor toolbar button inserts a collapsible-section scaffold with smart placeholder selection; markdown help updated (DE/EN/ES).
+- Card tiles on Board and Upcoming exclude <details> blocks from the description preview — no more raw markup on cards.
+- Details: `changelog/2.2.md`.
+
+## [2.1]
+- Search everywhere: new glass search button in the top-left of Upcoming, Board (scoped to the current board) and Overview; redesigned search page with pill-style field, native clear button and live results.
+- Upcoming auto-refreshes after local card changes (label, title, text, due date) via a cache revision counter — no manual sync needed.
+- Attachment transfers show a modal progress overlay with a hint and a working Cancel button (uploads and downloads are truly aborted via a cancel token).
+- Fixed: labels could not be assigned to or removed from existing cards (405) — label calls rewritten against the real Deck routes; board context priority fixed in card detail.
+- Unified glass design: `GlassIconButton` in all navigation bars, new `GlassBackButton` on all sub-pages; version shown without build number.
+- Details: `changelog/2.1.md`.
+
 ## [2.0]
 - Complete "Liquid Glass" redesign (iOS 26 style): refractive floating tab bar with morphing indicator, glass popover board menu, glass FAB, pager pill, light-edged cards with tinted due badges and assignee avatars, redesigned Overview/Upcoming/Settings/Card detail, board-color accent across the whole chrome, iPad grid up to 4 columns.
 - Edit PDF attachments in-app (native Markup: draw, sign, annotate) and attach the result as a new version with an auto-suffixed filename (#77/#86.3).

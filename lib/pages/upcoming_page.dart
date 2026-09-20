@@ -14,6 +14,7 @@ import '../models/board.dart';
 import '../l10n/app_localizations.dart';
 import 'card_detail_page.dart';
 import 'board_search_page.dart';
+import '../utils/description_preview.dart';
 
 class UpcomingPage extends StatefulWidget {
   const UpcomingPage({super.key});
@@ -783,10 +784,13 @@ class _UpcomingTile extends StatelessWidget {
             if ((description ?? '').isNotEmpty)
               Builder(builder: (context) {
                 final app = context.watch<AppState>();
-                if (app.showDescriptionText) {
+                // <details>-Blöcke aus der Kachel-Vorschau ausklammern —
+                // rohes Markup hat auf der Karte nichts verloren.
+                final previewDesc = descriptionPreview(description);
+                if (app.showDescriptionText && previewDesc != null) {
                   return Padding(
                     padding: const EdgeInsets.only(top: 5),
-                    child: Text(description!,
+                    child: Text(previewDesc,
                         maxLines: 3,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
