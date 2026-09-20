@@ -78,6 +78,11 @@
 	<string>Zugriff auf die Kamera, um Fotos direkt als Anhänge an Karten aufzunehmen.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Zugriff auf das Mikrofon für Videoaufnahmen, die als Anhänge an Karten hochgeladen werden.</string>
+	<!-- ITMS-90683: Eine eingebundene Systemkomponente (Background-Fetch-
+	     Framework) referenziert Standort-APIs. Next Deck fragt den Standort
+	     nie ab; der Purpose-String ist von Apple trotzdem verpflichtend. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Next Deck nutzt deinen Standort nicht. Diese Angabe ist erforderlich, weil eine eingebundene Systemkomponente Standort-Schnittstellen referenziert.</string>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>de</string>
