@@ -4,6 +4,13 @@ All notable changes are documented in this file.
 
 This changelog is based on `STORE.md` and links to detailed release notes in `changelog/`.
 
+## [2.3]
+- Critical sync fix: after a failed login attempt, Nextcloud's brute-force protection throttles all responses; card loads then died silently in the 15 s timeout and boards showed endless skeletons. Sync requests now retry up to 3 times with backoff (25 s timeout, 429/5xx + Retry-After handling) plus a sequential healing pass for failed boards.
+- Honest status: the login flow now reports boards whose cards could not be loaded yet instead of claiming "all synced"; login test retries once before showing an error (avoids triggering throttling).
+- Board view: skeletons only while a sync is actually running; an empty board now shows a clear message with a Refresh button instead of loading forever.
+- Hardened stacks parsing: `cards: null` in the boards response no longer caches empty columns.
+- Details: `changelog/2.3.md`.
+
 ## [2.2]
 - Collapsible sections: Nextcloud Deck's <details>/<summary> markup in card descriptions now renders as animated expandable panels (closed by default, `open` attribute honored, nested blocks supported, graceful fallback for broken markup) instead of raw tags.
 - New editor toolbar button inserts a collapsible-section scaffold with smart placeholder selection; markdown help updated (DE/EN/ES).
