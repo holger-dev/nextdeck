@@ -559,6 +559,12 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // Boards, deren Karten der letzte Boot-Sync nicht laden konnte — die
+  // Login-Statusmeldung nennt das dann offen, statt „alles synchronisiert"
+  // zu behaupten (User-Report: Boards da, Karten fehlen, nur Ladescreens).
+  int _bootSyncFailedBoards = 0;
+  int get bootSyncFailedBoards => _bootSyncFailedBoards;
+
   Future<void> configureSyncForCurrentAccount() async {
     if (_localMode) return;
     if (_baseUrl == null || _username == null || _password == null) return;
@@ -579,6 +585,9 @@ class AppState extends ChangeNotifier {
       notifyListeners();
 
       await _sync!.initSyncOnAppStart();
+      // Ehrlichkeit statt Fake-Erfolg: merken, ob Karten einzelner Boards
+      // trotz Retries nicht geladen werden konnten (Server drosselt o. ä.).
+      _bootSyncFailedBoards = _sync!.lastSyncFailedBoards;
 
       _bootMessage = 'Bereite Ansicht vor...';
       notifyListeners();

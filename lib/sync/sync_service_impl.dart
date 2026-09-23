@@ -19,7 +19,16 @@ class SyncServiceImpl implements SyncService {
   // Timeout für Sync-Calls. Ohne diesen Wert wartet die App im Worst Case
   // im OS-Default (~75 s+) auf einen toten Server — währenddessen läuft
   // der AutoSync alle 60 s erneut an und Calls stapeln sich.
-  static const Duration _requestTimeout = Duration(seconds: 15);
+  // 25 s statt 15 s: Nextclouds Brute-Force-Protection verzögert nach
+  // Fehlversuchen JEDE Antwort derselben IP um bis zu ~30 s — mit dem
+  // alten 15-s-Timeout liefen gedrosselte Server reihenweise in den
+  // Timeout und die Karten blieben leer (User-Report).
+  static const Duration _requestTimeout = Duration(seconds: 25);
+
+  /// Siehe SyncService.lastSyncFailedBoards.
+  int _lastSyncFailedBoards = 0;
+  @override
+  int get lastSyncFailedBoards => _lastSyncFailedBoards;
 
   SyncServiceImpl({
     required this.baseUrl,
@@ -33,19 +42,53 @@ class SyncServiceImpl implements SyncService {
     _client.close();
   }
 
-  // Simple HTTP helper
+  // Simple HTTP helper — mit Wiederholungsversuchen.
+  //
+  // Hintergrund (User-Report „Boards da, aber keine Karten, nur
+  // Ladescreens"): Ein einziger fehlgeschlagener Login-Versuch reicht,
+  // damit Nextclouds Brute-Force-Protection alle weiteren Antworten der
+  // IP drosselt; auch knappe PHP-Worker bei Shared-Hostern verzögern
+  // parallele Requests stark. Ohne Retry starben die Stacks-Calls dann
+  // still im Timeout. Jetzt: bis zu 3 Versuche mit Backoff, 429/5xx
+  // werden wiederholt, Retry-After wird respektiert.
   Future<http.Response> _get(String endpoint) async {
     final url =
         '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/index.php/apps/deck/api/v1.0$endpoint';
     final uri = Uri.parse(url);
-
-    return await _client.get(uri, headers: {
+    final headers = {
       'Authorization':
           'Basic ${base64Encode(utf8.encode('$username:$password'))}',
       'OCS-APIRequest': 'true',
       'Accept': 'application/json',
-      'Content-Type': 'application/json',
-    }).timeout(_requestTimeout);
+    };
+    Object? lastErr;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) {
+        await Future.delayed(Duration(seconds: attempt == 1 ? 2 : 5));
+      }
+      try {
+        final res =
+            await _client.get(uri, headers: headers).timeout(_requestTimeout);
+        // Drosselung/transiente Serverfehler → erneut versuchen
+        if (res.statusCode == 429 ||
+            res.statusCode == 502 ||
+            res.statusCode == 503 ||
+            res.statusCode == 504) {
+          lastErr = 'HTTP ${res.statusCode}';
+          final ra = int.tryParse(res.headers['retry-after'] ?? '');
+          if (ra != null && ra > 0 && attempt < 2) {
+            await Future.delayed(Duration(seconds: ra > 15 ? 15 : ra));
+          }
+          continue;
+        }
+        return res;
+      } on TimeoutException catch (e) {
+        lastErr = e;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw TimeoutException('GET $endpoint failed after retries: $lastErr');
   }
 
   @override
@@ -128,12 +171,16 @@ class SyncServiceImpl implements SyncService {
         final stacks = <Map<String, dynamic>>[];
         final columns = <Map<String, dynamic>>[];
         
-        // Check if boards response includes complete stack data with cards
-        bool hasCompleteStackData = false;
-        if (stacksData.isNotEmpty) {
-          final firstStack = stacksData.first as Map<String, dynamic>?;
-          hasCompleteStackData = firstStack?.containsKey('cards') == true;
-        }
+        // Check if boards response includes complete stack data with cards.
+        // Verschärft: WIRKLICH nur nutzen, wenn ALLE Stacks eine Karten-
+        // LISTE tragen — `containsKey('cards')` war zu lasch: bei
+        // `cards: null` (je nach Deck-/Serverversion) wurden sonst leere
+        // Spalten gecacht und der Nachlade-Pass übersprungen → Boards
+        // ohne eine einzige Karte.
+        final bool hasCompleteStackData = stacksData.isNotEmpty &&
+            stacksData
+                .cast<Map<String, dynamic>>()
+                .every((s) => s['cards'] is List);
         
         if (hasCompleteStackData) {
           // Use stacks data from boards response (efficient)
@@ -183,18 +230,39 @@ class SyncServiceImpl implements SyncService {
       // Paralleler Nachlade-Pass für Boards ohne eingebettete Karten:
       // Batches à 4 gleichzeitig — schont den Server, ist aber um ein
       // Vielfaches schneller als die alte sequenzielle Kette.
+      final failedStacks = <int>{};
       if (needsStackFetch.isNotEmpty) {
         const parallel = 4;
         for (var i = 0; i < needsStackFetch.length; i += parallel) {
           final batch = needsStackFetch.skip(i).take(parallel);
           await Future.wait(batch.map((bId) async {
             try {
-              await _loadSingleBoardWithStacksAndCards(bId);
+              if (!await _loadSingleBoardWithStacksAndCards(bId)) {
+                failedStacks.add(bId);
+              }
             } catch (e) {
+              failedStacks.add(bId);
               debugPrint('[sync] parallel stacks load for $bId failed: $e');
             }
           }));
         }
+      }
+      // Heil-Pass: gescheiterte Boards nach kurzer Pause SEQUENZIELL
+      // nachladen — wenn der Server drosselt (Brute-Force-Protection,
+      // knappe PHP-Worker), macht Parallelität es nur schlimmer.
+      if (failedStacks.isNotEmpty) {
+        await Future.delayed(const Duration(seconds: 3));
+        for (final bId in List<int>.of(failedStacks)) {
+          try {
+            if (await _loadSingleBoardWithStacksAndCards(bId)) {
+              failedStacks.remove(bId);
+            }
+          } catch (_) {}
+        }
+      }
+      _lastSyncFailedBoards = failedStacks.length;
+      if (failedStacks.isNotEmpty) {
+        debugPrint('[sync] cards still missing for boards: $failedStacks');
       }
       
       // Remove caches for boards that no longer exist (compare previous IDs)
@@ -223,14 +291,18 @@ class SyncServiceImpl implements SyncService {
     }
   }
 
-  /// Load one board's stacks and cards completely
-  Future<void> _loadSingleBoardWithStacksAndCards(int boardId) async {
+  /// Load one board's stacks and cards completely.
+  /// Liefert true bei Erfolg (Cache aktualisiert), false wenn der Fetch
+  /// scheiterte — der Aufrufer kann dann ehrlich melden statt zu schweigen.
+  Future<bool> _loadSingleBoardWithStacksAndCards(int boardId) async {
     try {
       // Use GET /boards/{boardId}/stacks to get stacks WITH cards included!
       final stacksResponse = await _get('/boards/$boardId/stacks');
-      
+
       if (stacksResponse.statusCode != 200) {
-        return;
+        debugPrint(
+            '[sync] stacks for board $boardId -> HTTP ${stacksResponse.statusCode}');
+        return false;
       }
       
       final stacksWithCards = jsonDecode(stacksResponse.body) as List;
@@ -263,10 +335,13 @@ class SyncServiceImpl implements SyncService {
       // Save to cache
       cache.put('stacks_$boardId', stacks);
       cache.put('columns_$boardId', columns);
+      return true;
     } on TimeoutException catch (e) {
       debugPrint('[sync] board $boardId refresh timed out: $e');
+      return false;
     } catch (e, st) {
       debugPrint('[sync] board $boardId refresh failed: $e\n$st');
+      return false;
     }
   }
 

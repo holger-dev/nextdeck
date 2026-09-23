@@ -228,12 +228,42 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                 children: [
                   if (board == null)
                     Center(child: Text(L10n.of(context).pleaseSelectBoard))
-                  else if ((app.bootSyncing && columns.isEmpty) ||
-                      (columns.isEmpty && (app.lastError == null)))
+                  else if (columns.isEmpty &&
+                      (app.bootSyncing || app.isSyncing))
                     // Skeleton-Loader: zeigt schon das Card-Layout an,
                     // bevor echte Karten geladen sind. Wirkt schneller
-                    // als ein einsamer Spinner.
+                    // als ein einsamer Spinner. WICHTIG: nur solange
+                    // wirklich ein Sync läuft — vorher blieb die Ansicht
+                    // bei still gescheitertem Sync ENDLOS im Skeleton
+                    // (User-Report „nur Ladescreens").
                     const SafeArea(child: CardListSkeleton())
+                  else if (columns.isEmpty && app.lastError == null)
+                    // Sync vorbei, aber keine Spalten/Karten geladen
+                    // (z. B. weil der Server drosselte): ehrlicher
+                    // Zustand mit Retry statt Endlos-Skeleton.
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              L10n.of(context).cardsNotLoadedYet,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  color: CupertinoColors.secondaryLabel
+                                      .resolveFrom(context)),
+                            ),
+                            const SizedBox(height: 14),
+                            CupertinoButton.filled(
+                              onPressed: () =>
+                                  app.refreshSingleBoard(board.id),
+                              child: Text(L10n.of(context).refresh),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
                   else if (app.lastError != null)
                     Center(
                       child: Padding(

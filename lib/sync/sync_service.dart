@@ -1,5 +1,10 @@
 abstract class SyncService {
   Future<void> initSyncOnAppStart();
+
+  /// Anzahl der Boards, deren Karten der letzte Voll-Sync trotz
+  /// Wiederholungsversuchen nicht laden konnte. Die UI nutzt das für
+  /// ehrliche Statusmeldungen statt eines pauschalen „alles synchronisiert".
+  int get lastSyncFailedBoards;
   Future<void> periodicDeltaSync();
   Future<void> refreshUpcoming();
   Future<void> ensureBoardFresh(int boardId);

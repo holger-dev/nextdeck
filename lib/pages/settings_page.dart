@@ -181,7 +181,15 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
     try {
-      final ok = await app.testLogin();
+      var ok = await app.testLogin();
+      if (!ok) {
+        // Transienten Fehler (kalter Server, kurze Drosselung, Redirect)
+        // abfedern, bevor wir „Fehler: Login" zeigen — der gemeldete
+        // Fehlversuch triggert sonst Nextclouds Brute-Force-Drosselung
+        // und macht den anschließenden Sync quälend langsam.
+        await Future.delayed(const Duration(seconds: 2));
+        ok = await app.testLogin();
+      }
       if (!ok) {
         setState(() {
           _testing = false;
@@ -220,12 +228,17 @@ class _SettingsPageState extends State<SettingsPage> {
 
         if (!mounted) return;
         final count = app.boards.length;
+        final failed = app.bootSyncFailedBoards;
         setState(() {
           _testing = false;
           _testMsg = count == 0
               ? l10n.loginOkNoBoards
-              : 'Login OK - $count Boards gefunden, alle Stacks und Karten synchronisiert';
-          _testOk = true;
+              : failed > 0
+                  // Ehrlich bleiben: Karten einzelner Boards fehlen noch
+                  // (Server drosselt vermutlich) — User weiß, was zu tun ist.
+                  ? l10n.loginOkPartial(count, failed)
+                  : 'Login OK - $count Boards gefunden, alle Stacks und Karten synchronisiert';
+          _testOk = failed == 0;
         });
       } catch (e) {
         if (!mounted) return;

@@ -984,6 +984,16 @@ class L10n {
       : _isEs
           ? 'Listas: $done / $total'
           : 'Lists: $done / $total';
+  String loginOkPartial(int total, int failed) => _isDe
+      ? 'Login OK – $total Boards geladen, aber die Karten von $failed Board(s) fehlen noch. Der Server drosselt vermutlich (z. B. nach einem Login-Fehlversuch). Bitte kurz warten und erneut auf „Anmeldung testen & Boards laden" tippen.'
+      : _isEs
+          ? 'Inicio de sesión correcto: $total tableros cargados, pero faltan las tarjetas de $failed tablero(s). El servidor probablemente está limitando las peticiones. Espera un momento y vuelve a pulsar el botón.'
+          : 'Login OK – $total boards loaded, but cards for $failed board(s) are still missing. The server is probably rate-limiting (e.g. after a failed login attempt). Please wait a moment and tap the button again.';
+  String get cardsNotLoadedYet => _isDe
+      ? 'Die Karten konnten noch nicht geladen werden — der Server hat möglicherweise gedrosselt.'
+      : _isEs
+          ? 'Aún no se pudieron cargar las tarjetas; puede que el servidor esté limitando las peticiones.'
+          : 'Cards could not be loaded yet — the server may be rate-limiting.';
   String get loginOkNoBoards => _isDe
       ? 'Login ok – keine Boards gefunden'
       : _isEs
