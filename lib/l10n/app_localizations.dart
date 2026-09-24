@@ -984,6 +984,36 @@ class L10n {
       : _isEs
           ? 'Listas: $done / $total'
           : 'Lists: $done / $total';
+  String get serverNotFound => _isDe
+      ? 'Server nicht gefunden — die Adresse konnte nicht aufgelöst werden. Bitte auf Tippfehler prüfen; manche Server sind nur mit „www." davor erreichbar.'
+      : _isEs
+          ? 'Servidor no encontrado: no se pudo resolver la dirección. Comprueba si hay errores tipográficos; algunos servidores solo funcionan con «www.» delante.'
+          : 'Server not found — the address could not be resolved. Check for typos; some servers are only reachable with a leading "www.".';
+  String get serverCooldownBanner => _isDe
+      ? 'Der Server drosselt Anfragen — Synchronisierung pausiert kurz und startet automatisch wieder.'
+      : _isEs
+          ? 'El servidor está limitando las peticiones: la sincronización se pausa brevemente y se reanuda automáticamente.'
+          : 'The server is rate-limiting requests — sync is paused briefly and resumes automatically.';
+  String get passwordRequired => _isDe
+      ? 'Bitte gib dein App-Passwort ein.'
+      : _isEs
+          ? 'Introduce tu contraseña de aplicación.'
+          : 'Please enter your app password.';
+  String get loginFailedAuth => _isDe
+      ? 'Anmeldung abgelehnt (401). Bitte prüfe Benutzername und Passwort. Bei aktivierter Zwei-Faktor-Authentifizierung MUSS ein App-Passwort verwendet werden (Nextcloud → Einstellungen → Sicherheit → App-Passwort erzeugen).'
+      : _isEs
+          ? 'Inicio de sesión rechazado (401). Comprueba usuario y contraseña. Con la autenticación de dos factores activada DEBES usar una contraseña de aplicación (Nextcloud → Ajustes → Seguridad).'
+          : 'Login rejected (401). Please check username and password. With two-factor authentication enabled you MUST use an app password (Nextcloud → Settings → Security → create app password).';
+  String get loginFailedThrottle => _isDe
+      ? 'Der Server drosselt Anmeldeversuche (429) — vermutlich nach früheren Fehlversuchen. Bitte einige Minuten warten und dann erneut versuchen.'
+      : _isEs
+          ? 'El servidor está limitando los intentos de inicio de sesión (429). Espera unos minutos y vuelve a intentarlo.'
+          : 'The server is throttling login attempts (429) — likely after earlier failed attempts. Please wait a few minutes and try again.';
+  String get authFailedBanner => _isDe
+      ? 'Anmeldung abgelehnt — bitte Zugangsdaten in den Einstellungen prüfen. Synchronisierung pausiert.'
+      : _isEs
+          ? 'Inicio de sesión rechazado: comprueba tus credenciales en Ajustes. Sincronización en pausa.'
+          : 'Sign-in rejected — please check your credentials in Settings. Sync is paused.';
   String loginOkPartial(int total, int failed) => _isDe
       ? 'Login OK – $total Boards geladen, aber die Karten von $failed Board(s) fehlen noch. Der Server drosselt vermutlich (z. B. nach einem Login-Fehlversuch). Bitte kurz warten und erneut auf „Anmeldung testen & Boards laden" tippen.'
       : _isEs

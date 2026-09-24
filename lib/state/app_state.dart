@@ -580,6 +580,7 @@ class AppState extends ChangeNotifier {
           username: _username!,
           password: _password!,
           cache: cache);
+      (_sync as SyncServiceImpl).onRateLimited = _registerRateLimit;
 
       _bootMessage = 'Lade Boards und Daten...';
       notifyListeners();
@@ -1027,6 +1028,8 @@ class AppState extends ChangeNotifier {
       required String username,
       required String password}) async {
     _localMode = false;
+    // Neue Zugangsdaten = neuer Versuch: Auth-Schutzschalter zurücksetzen
+    _clearAuthFailure();
     _stopAutoSync();
     _sync?.dispose();
     _sync = null;
@@ -1150,10 +1153,68 @@ class AppState extends ChangeNotifier {
     return v;
   }
 
+  // ---- Auth-Schutzschalter -------------------------------------------
+  // Lehnt der Server die Zugangsdaten wiederholt ab (401/403), pausieren
+  // wir ALLES Hintergrund-Polling. Sonst zählt jeder weitere 401 bei
+  // Nextcloud als Login-Fehlversuch, die Brute-Force-Drosselung eskaliert
+  // und blockiert am Ende auch korrekte Logins (User-Report).
+  bool _authFailed = false;
+  bool get authFailed => _authFailed;
+  int _authFailStreak = 0;
+
+  void _registerAuthFailure() {
+    _authFailStreak++;
+    if (_authFailStreak >= 2 && !_authFailed) {
+      _authFailed = true;
+      debugPrint(
+          '[auth] credentials rejected repeatedly — background polling paused');
+      notifyListeners();
+    }
+  }
+
+  // Abkühlphase nach Server-Drosselung (HTTP/OCS 429 „Reached maximum
+  // delay"): AutoSync + Polling pausieren, damit die Brute-Force-Drossel
+  // des Servers abklingen kann, statt sie minütlich neu aufzuheizen.
+  DateTime? _serverCooldownUntil;
+  bool get serverCoolingDown =>
+      _serverCooldownUntil != null &&
+      DateTime.now().isBefore(_serverCooldownUntil!);
+
+  void _registerRateLimit() {
+    final wasCooling = serverCoolingDown;
+    _serverCooldownUntil = DateTime.now().add(const Duration(minutes: 15));
+    if (!wasCooling) {
+      debugPrint('[auth] server rate-limits (429) — cooling down 15 min');
+      notifyListeners();
+    }
+  }
+
+  void _clearAuthFailure() {
+    _authFailStreak = 0;
+    final hadCooldown = serverCoolingDown;
+    _serverCooldownUntil = null;
+    if (_authFailed || hadCooldown) {
+      _authFailed = false;
+      notifyListeners();
+    }
+  }
+
   Future<bool> testLogin() async {
     if (_baseUrl == null || _username == null || _password == null)
       return false;
-    return api.testLogin(_baseUrl!, _username!, _password!);
+    final ok = await api.testLogin(_baseUrl!, _username!, _password!);
+    if (ok) _clearAuthFailure();
+    return ok;
+  }
+
+  /// Login-Test mit HTTP-Status für aussagekräftige Fehlermeldungen.
+  Future<int?> testLoginStatus() async {
+    if (_baseUrl == null || _username == null || _password == null)
+      return null;
+    final status =
+        await api.testLoginStatus(_baseUrl!, _username!, _password!);
+    if (status != null && status >= 200 && status < 300) _clearAuthFailure();
+    return status;
   }
 
   Future<void> refreshBoards({bool forceNetwork = false}) async {
@@ -2205,9 +2266,17 @@ class AppState extends ChangeNotifier {
         _baseUrl == null ||
         _username == null ||
         _password == null) return;
+    // Schutzschalter scharf schalten: 401/403 und 429 beim Polling melden
+    api.onAuthError = (_) => _registerAuthFailure();
+    api.onRateLimited = _registerRateLimit;
     _syncTimer = Timer.periodic(const Duration(seconds: 60), (_) async {
       try {
         if (_isSyncing || _sync == null) return;
+        // Zugangsdaten abgelehnt ODER Server drosselt: KEIN Hintergrund-
+        // Sync/-Polling, bis der User die Daten korrigiert bzw. die
+        // Abkühlphase vorbei ist — sonst eskaliert Nextclouds
+        // Brute-Force-Drosselung weiter.
+        if (_authFailed || serverCoolingDown) return;
 
         // Auto-Sync: NUR das aktive Board (entlastet den Server, Notifs
         // für andere Boards kommen jetzt über die zentrale OCS-API).
@@ -2327,6 +2396,7 @@ class AppState extends ChangeNotifier {
     final raw = await api.fetchServerNotifications(
         _baseUrl!, _username!, _password!);
     if (raw == null) return;
+    _authFailStreak = 0; // erfolgreicher Poll → Fehlerserie beendet
     final seenList = cache.get(_kSeenNotifsKey);
     final seen = seenList is List
         ? seenList.map((e) => e.toString()).toSet()
@@ -2375,6 +2445,7 @@ class AppState extends ChangeNotifier {
       ));
       return;
     }
+    _authFailStreak = 0; // erfolgreicher Poll → Fehlerserie beendet
     final seenList = cache.get(_kSeenActivitiesKey);
     final seen = seenList is List
         ? seenList.map((e) => e.toString()).toSet()

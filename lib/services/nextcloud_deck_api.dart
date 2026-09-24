@@ -30,6 +30,20 @@ class TransferCancelToken {
 }
 
 class NextcloudDeckApi {
+  /// Wird gerufen, wenn der Server die Zugangsdaten ablehnt (401/403) —
+  /// der AppState stoppt darüber das Hintergrund-Polling. Ohne diesen
+  /// Schutzschalter pollte die App minütlich mit abgelehnten Credentials
+  /// weiter; jeder 401 zählt bei Nextcloud als Fehlversuch und eskaliert
+  /// die Brute-Force-Drosselung, bis selbst korrekte Logins scheitern
+  /// (User-Report „kann mich nicht mehr einloggen").
+  void Function(int statusCode)? onAuthError;
+
+  /// Wird gerufen, wenn der Server drosselt (HTTP 429 oder OCS-429
+  /// „Reached maximum delay" in einem 200er-Body). Der AppState legt
+  /// darüber eine Abkühlphase ein — weiteres Anfragen hält Nextclouds
+  /// Brute-Force-Drossel sonst dauerhaft auf Maximum.
+  void Function()? onRateLimited;
+
   static const _ocsHeader = {
     'OCS-APIRequest': 'true',
     'Accept': 'application/json'
@@ -149,15 +163,48 @@ class NextcloudDeckApi {
 
   Future<bool> testLogin(
       String baseUrl, String username, String password) async {
-    final res =
-        await _get(baseUrl, username, password, '/ocs/v2.php/cloud/user');
-    if (res == null) return false;
-    try {
-      _parseBodyOk(_ensureOk(res, 'Login fehlgeschlagen'));
-      return true;
-    } catch (_) {
-      return false;
+    final s = await testLoginStatus(baseUrl, username, password);
+    return s != null && s >= 200 && s < 300;
+  }
+
+  /// Login-Test mit HTTP-Status für aussagekräftige Fehlermeldungen
+  /// (401/403 → App-Passwort/2FA-Hinweis, 429 → Server drosselt).
+  /// `null` = keine Antwort/Netzwerkfehler, `-1` = Hostname nicht
+  /// auflösbar (DNS). Ein 2xx mit OCS-failure-Body (z. B. 997
+  /// „Unauthorised") wird als 401 gewertet.
+  ///
+  /// Bewusst KEINE Varianten-Kaskade mehr: früher liefen pro Test bis zu
+  /// 8 Requests (v1/v2 × index.php × Wiederholung) — gegen gedrosselte
+  /// Server hat das Nextclouds Brute-Force-Schutz nur weiter aufgeheizt.
+  /// Jetzt: die Standard-OCS-URL, und NUR bei 404 einmal die
+  /// index.php-Variante (Setups ohne Rewrite).
+  Future<int?> testLoginStatus(
+      String baseUrl, String username, String password) async {
+    final headers = {
+      ..._ocsHeader,
+      'authorization': _basicAuth(username, password),
+    };
+    http.Response? res;
+    for (final withIndex in [false, true]) {
+      try {
+        res = await _send('GET',
+            _buildUri(baseUrl, '/ocs/v2.php/cloud/user', withIndex), headers);
+      } catch (e) {
+        if (e.toString().contains('Failed host lookup')) return -1;
+        continue;
+      }
+      if (res.statusCode != 404) break;
     }
+    if (res == null) return null;
+    if (_isOk(res)) {
+      try {
+        _parseBodyOk(res);
+        return res.statusCode;
+      } catch (_) {
+        return 401;
+      }
+    }
+    return res.statusCode;
   }
 
   /// Holt den Aktivitäts-Stream des Users (Nextcloud `activity`-App).
@@ -192,6 +239,12 @@ class NextcloudDeckApi {
       final res = await _send('GET', uri, headers,
           priority: false, timeout: const Duration(seconds: 10));
       if (res.statusCode == 404) return null;
+      if (res.statusCode == 401 || res.statusCode == 403) {
+        try {
+          onAuthError?.call(res.statusCode);
+        } catch (_) {}
+        return null;
+      }
       if (!_isOk(res)) return null;
       final data = await _parseBodyOkAsync(res);
       if (data is! List) return null;
@@ -229,6 +282,12 @@ class NextcloudDeckApi {
       final res = await _send('GET', uri, headers,
           priority: false, timeout: const Duration(seconds: 8));
       if (res.statusCode == 404) return null;
+      if (res.statusCode == 401 || res.statusCode == 403) {
+        try {
+          onAuthError?.call(res.statusCode);
+        } catch (_) {}
+        return null;
+      }
       if (!_isOk(res)) return null;
       final data = await _parseBodyOkAsync(res);
       // OCS gibt das Notification-Array unter `data` zurück; _parseBodyOk*
@@ -3751,6 +3810,14 @@ class NextcloudDeckApi {
         requestBody: body,
         responseSnippet: snippet,
       ));
+      // Drosselung zentral erkennen — auch die OCS-Variante, bei der
+      // Nextcloud HTTP 200 mit `"statuscode":429` im Body liefert.
+      if (res.statusCode == 429 ||
+          (res.statusCode == 200 && res.body.contains('"statuscode":429'))) {
+        try {
+          onRateLimited?.call();
+        } catch (_) {}
+      }
       return res;
     } catch (e) {
       final tNow = DateTime.now();

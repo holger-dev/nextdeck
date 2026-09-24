@@ -147,16 +147,35 @@ class _SettingsPageState extends State<SettingsPage> {
     });
   }
 
+  /// Bereinigt kopierte Browser-URLs: Nextclouds Web-UI zeigt Adressen wie
+  /// `…/nextcloud/index.php/apps/dashboard` — alles ab `/index.php`,
+  /// `/login` oder `/apps/` gehört NICHT zur Server-Basis und erzeugte
+  /// vorher kaputte API-Pfade (`…/index.php/ocs/…` → 404 auf allem).
+  String _normalizeServerInput(String hostPath) {
+    var s = hostPath.trim();
+    s = s.split('?').first.split('#').first;
+    for (final marker in ['/index.php', '/login', '/apps/']) {
+      final i = s.indexOf(marker);
+      if (i >= 0) s = s.substring(0, i);
+    }
+    while (s.endsWith('/')) {
+      s = s.substring(0, s.length - 1);
+    }
+    return s;
+  }
+
   Future<void> _saveAndTest() async {
     final app = context.read<AppState>();
     final l10n = L10n.of(context);
-    final hostOnly = _stripScheme(_url.text);
+    final hostOnly = _normalizeServerInput(_stripScheme(_url.text));
     if (!_isValidHost(hostOnly)) {
       setState(() {
         _testMsg = l10n.invalidServerAddress;
       });
       return;
     }
+    // Dem User zeigen, was tatsächlich gespeichert wird
+    if (_url.text.trim() != hostOnly) _url.text = hostOnly;
     final fullUrl = hostOnly.startsWith('/') ? hostOnly : 'https://$hostOnly';
     setState(() {
       _testing = true;
@@ -168,9 +187,34 @@ class _SettingsPageState extends State<SettingsPage> {
     // Diese Fehler dürfen NICHT unter den Tisch fallen — sonst denkt der
     // User „ich hab doch geklickt" und stellt später fest, dass die
     // Anmeldung nicht persistiert wurde.
+    // trim(): Beim Kopieren des App-Passworts aus Nextcloud hängt iOS
+    // gern ein unsichtbares Leerzeichen oder einen Zeilenumbruch an —
+    // ein einziges Zeichen davon ergibt 401, obwohl „alles stimmt".
+    var passInput = _pass.text.trim();
+    if (passInput.isEmpty) {
+      // KRITISCH: Das Passwortfeld startet immer leer. Ein leeres Feld
+      // heißt bei Bestandsnutzern „ist doch gespeichert" — dann das
+      // gespeicherte Passwort weiterverwenden und NIEMALS mit einem
+      // Leerstring überschreiben. Genau das hat gültige Logins zerstört:
+      // Testaccounts gingen (alle Felder frisch getippt), Bestands-
+      // accounts brachen nach einem Klick auf „Anmeldung testen" mit
+      // leerem Feld → 401-Kaskade + Brute-Force-Drosselung.
+      passInput = (await app.storage.read(key: 'password'))?.trim() ?? '';
+      if (passInput.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _testing = false;
+          _testMsg = l10n.passwordRequired;
+          _testOk = false;
+        });
+        return;
+      }
+    }
     try {
       await app.setCredentials(
-          baseUrl: fullUrl, username: _user.text, password: _pass.text);
+          baseUrl: fullUrl,
+          username: _user.text.trim(),
+          password: passInput);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -181,26 +225,40 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
     try {
-      var ok = await app.testLogin();
-      if (!ok) {
+      var status = await app.testLoginStatus();
+      final isOk2xx =
+          status != null && status >= 200 && status < 300;
+      // -1 = DNS-Fehler (Hostname nicht auflösbar): Retry sinnlos
+      if (!isOk2xx && status != -1) {
         // Transienten Fehler (kalter Server, kurze Drosselung, Redirect)
-        // abfedern, bevor wir „Fehler: Login" zeigen — der gemeldete
+        // abfedern, bevor wir einen Fehler zeigen — der gemeldete
         // Fehlversuch triggert sonst Nextclouds Brute-Force-Drosselung
         // und macht den anschließenden Sync quälend langsam.
         await Future.delayed(const Duration(seconds: 2));
-        ok = await app.testLogin();
+        status = await app.testLoginStatus();
       }
+      final ok = status != null && status >= 200 && status < 300;
       if (!ok) {
         setState(() {
           _testing = false;
-          _testMsg = l10n.errorMsg('Login');
+          // Konkreten Grund nennen statt pauschal „Fehler: Login" —
+          // 401/403 heißt fast immer: App-Passwort nötig (2FA) oder
+          // Passwort geändert/widerrufen.
+          _testMsg = status == -1
+              ? l10n.serverNotFound
+              : (status == 401 || status == 403)
+                  ? l10n.loginFailedAuth
+                  : status == 429
+                      ? l10n.loginFailedThrottle
+                      : l10n.errorMsg(
+                          'Login${status != null ? ' (HTTP $status)' : ''}');
           _testOk = false;
         });
         return;
       }
       // Prüfen, ob Deck aktiviert ist
       final hasDeck =
-          await app.api.hasDeckEnabled(app.baseUrl!, app.username!, _pass.text);
+          await app.api.hasDeckEnabled(app.baseUrl!, app.username!, passInput);
       if (!hasDeck) {
         setState(() {
           _testing = false;
@@ -391,6 +449,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   controller: _pass,
                   placeholder: l10n.appPassword,
                   obscureText: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
                 ),
                 const SizedBox(height: 6),
                 Text(

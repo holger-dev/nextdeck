@@ -4,12 +4,19 @@ All notable changes are documented in this file.
 
 This changelog is based on `STORE.md` and links to detailed release notes in `changelog/`.
 
-## [2.3]
+## [2.4]
+- CRITICAL login fix: tapping "Test login" with an empty password field silently overwrote the stored keychain password with an empty string — breaking existing accounts (401 everywhere) while fresh test accounts kept working. An empty field now reuses the stored password; with none stored, a clear message asks for the app password.
+- Username and app password are trimmed on login (invisible spaces/newlines from iOS copy-paste caused 401s); password field disables autocorrect/suggestions.
+- Auth circuit breaker: after repeated 401/403 the app pauses ALL background polling/sync (previously every poll fed Nextcloud's brute-force throttle until even correct logins failed), shows a tappable banner in Upcoming, and resumes after new credentials or a successful login test.
+- Login test reports the actual reason: 401/403 → app-password/2FA guidance, 429 → throttling hint with wait advice, DNS failure → "server not found (try www.)"; retries once on transient errors — and no longer hammers 4 URL variants per attempt.
+- Server URL input is normalized: everything from `/index.php`, `/login` or `/apps/` on is stripped, so URLs copied from the browser address bar just work (previously they produced 404 on every API call).
+- Sync speaks BOTH URL forms: `/index.php/apps/…` and pretty URLs, falling back on 404 — fixes "boards load but cards never do" on servers that only route one form (seen on NC 35 subpath installs answering 404 with a correct body).
+- Rate-limit circuit breaker: on HTTP/OCS 429 ("Reached maximum delay") the app enters a cool-down (no retries, background sync paused, orange self-healing banner) instead of keeping the server's brute-force throttle at maximum.
 - Critical sync fix: after a failed login attempt, Nextcloud's brute-force protection throttles all responses; card loads then died silently in the 15 s timeout and boards showed endless skeletons. Sync requests now retry up to 3 times with backoff (25 s timeout, 429/5xx + Retry-After handling) plus a sequential healing pass for failed boards.
 - Honest status: the login flow now reports boards whose cards could not be loaded yet instead of claiming "all synced"; login test retries once before showing an error (avoids triggering throttling).
 - Board view: skeletons only while a sync is actually running; an empty board now shows a clear message with a Refresh button instead of loading forever.
 - Hardened stacks parsing: `cards: null` in the boards response no longer caches empty columns.
-- Details: `changelog/2.3.md`.
+- Details: `changelog/2.4.md`.
 
 ## [2.2]
 - Collapsible sections: Nextcloud Deck's <details>/<summary> markup in card descriptions now renders as animated expandable panels (closed by default, `open` attribute honored, nested blocks supported, graceful fallback for broken markup) instead of raw tags.

@@ -488,6 +488,44 @@ class _UpcomingPageState extends State<UpcomingPage> {
                   onNext: () => _animateToBucket(_page + 1),
                 ),
               ),
+            // Schutzschalter aktiv: Zugangsdaten abgelehnt (rot) oder
+            // Server drosselt (orange, heilt sich selbst) — dem User klar
+            // sagen, statt ihn vor stillen, veralteten Listen rätseln zu
+            // lassen.
+            if (app.authFailed || app.serverCoolingDown)
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: DT.tabBarReserve + 12,
+                child: GestureDetector(
+                  onTap: app.authFailed
+                      ? () => app.tabController.index = 3
+                      : null,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: (app.authFailed
+                              ? CupertinoColors.systemRed
+                              : CupertinoColors.systemOrange)
+                          .resolveFrom(context)
+                          .withOpacity(0.92),
+                      borderRadius: BorderRadius.circular(DT.radiusL),
+                      boxShadow: DT.shadowM(app.isDarkMode),
+                    ),
+                    child: Text(
+                      app.authFailed
+                          ? l10n.authFailedBanner
+                          : l10n.serverCooldownBanner,
+                      style: const TextStyle(
+                          color: CupertinoColors.white,
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w600,
+                          height: 1.3),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

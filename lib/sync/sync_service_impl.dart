@@ -42,19 +42,37 @@ class SyncServiceImpl implements SyncService {
     _client.close();
   }
 
-  // Simple HTTP helper — mit Wiederholungsversuchen.
+  /// Wird gerufen, wenn der Server drosselt (429) — der AppState pausiert
+  /// darüber den AutoSync für eine Abkühlphase.
+  void Function()? onRateLimited;
+
+  // Lokale Abkühlphase nach 429: weitere Sync-Calls werden bis dahin
+  // abgebrochen, statt Nextclouds Brute-Force-Drossel („Reached maximum
+  // delay") mit jedem Request neu aufzuheizen. Kurz-Retries bei 429 (wie
+  // in der nie veröffentlichten 2.3) waren kontraproduktiv — die Drossel
+  // braucht MINUTEN Funkstille, nicht Sekunden.
+  DateTime? _rateLimitedUntil;
+
+  // Simple HTTP helper — mit Wiederholungsversuchen und BEIDEN URL-Formen.
   //
-  // Hintergrund (User-Report „Boards da, aber keine Karten, nur
-  // Ladescreens"): Ein einziger fehlgeschlagener Login-Versuch reicht,
-  // damit Nextclouds Brute-Force-Protection alle weiteren Antworten der
-  // IP drosselt; auch knappe PHP-Worker bei Shared-Hostern verzögern
-  // parallele Requests stark. Ohne Retry starben die Stacks-Calls dann
-  // still im Timeout. Jetzt: bis zu 3 Versuche mit Backoff, 429/5xx
-  // werden wiederholt, Retry-After wird respektiert.
+  // Hintergrund 1 (User-Report „Boards da, aber keine Karten"): manche
+  // Server routen nur über /index.php/..., andere nur über Pretty-URLs —
+  // und liefern für die jeweils falsche Form 404 (teils sogar mit
+  // korrektem JSON-Body, gesehen auf NC 35 Subpfad-Installation). Der
+  // API-Client probiert längst beide Formen; der Sync konnte das nicht
+  // und gab bei „nicht 200" still auf → Boards da, Karten weg.
+  // Hintergrund 2: Timeouts/5xx werden mit Backoff wiederholt (drosselnde
+  // Brute-Force-Protection, knappe PHP-Worker bei Shared-Hostern).
   Future<http.Response> _get(String endpoint) async {
-    final url =
-        '${baseUrl.replaceAll(RegExp(r'/+$'), '')}/index.php/apps/deck/api/v1.0$endpoint';
-    final uri = Uri.parse(url);
+    final until = _rateLimitedUntil;
+    if (until != null && DateTime.now().isBefore(until)) {
+      throw TimeoutException('rate-limited: cooling down until $until');
+    }
+    final base = baseUrl.replaceAll(RegExp(r'/+$'), '');
+    final uris = [
+      Uri.parse('$base/index.php/apps/deck/api/v1.0$endpoint'),
+      Uri.parse('$base/apps/deck/api/v1.0$endpoint'),
+    ];
     final headers = {
       'Authorization':
           'Basic ${base64Encode(utf8.encode('$username:$password'))}',
@@ -62,32 +80,47 @@ class SyncServiceImpl implements SyncService {
       'Accept': 'application/json',
     };
     Object? lastErr;
+    http.Response? notFound;
     for (var attempt = 0; attempt < 3; attempt++) {
       if (attempt > 0) {
         await Future.delayed(Duration(seconds: attempt == 1 ? 2 : 5));
       }
-      try {
-        final res =
-            await _client.get(uri, headers: headers).timeout(_requestTimeout);
-        // Drosselung/transiente Serverfehler → erneut versuchen
-        if (res.statusCode == 429 ||
-            res.statusCode == 502 ||
-            res.statusCode == 503 ||
-            res.statusCode == 504) {
-          lastErr = 'HTTP ${res.statusCode}';
-          final ra = int.tryParse(res.headers['retry-after'] ?? '');
-          if (ra != null && ra > 0 && attempt < 2) {
-            await Future.delayed(Duration(seconds: ra > 15 ? 15 : ra));
+      for (final uri in uris) {
+        try {
+          final res = await _client
+              .get(uri, headers: headers)
+              .timeout(_requestTimeout);
+          if (res.statusCode == 429) {
+            // KEIN Retry bei Drosselung: Abkühlphase setzen und melden.
+            _rateLimitedUntil =
+                DateTime.now().add(const Duration(minutes: 10));
+            try {
+              onRateLimited?.call();
+            } catch (_) {}
+            return res;
           }
-          continue;
+          if (res.statusCode == 404 || res.statusCode == 405) {
+            // Falsche URL-Form für dieses Server-Setup → andere probieren
+            notFound = res;
+            continue;
+          }
+          if (res.statusCode == 502 ||
+              res.statusCode == 503 ||
+              res.statusCode == 504) {
+            lastErr = 'HTTP ${res.statusCode}';
+            continue;
+          }
+          return res;
+        } on TimeoutException catch (e) {
+          lastErr = e;
+        } catch (e) {
+          lastErr = e;
         }
-        return res;
-      } on TimeoutException catch (e) {
-        lastErr = e;
-      } catch (e) {
-        lastErr = e;
       }
+      // 404 auf BEIDEN Formen ist kein transienter Fehler → nicht retrien
+      if (notFound != null && lastErr == null) return notFound;
     }
+    if (notFound != null) return notFound;
     throw TimeoutException('GET $endpoint failed after retries: $lastErr');
   }
 
