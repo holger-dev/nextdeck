@@ -37,6 +37,11 @@ class _SettingsPageState extends State<SettingsPage> {
   // testen" mit gespeichertem Passwort wie gewohnt erreichbar bleibt und
   // nicht bei jedem Test ein neues App-Passwort entsteht.
   bool _showManualLogin = false;
+  // Die Seite wird beim App-Start schon im Hintergrund gebaut — oft BEVOR
+  // AppState die Zugangsdaten aus dem Keychain gelesen hat. Dann starten
+  // die Felder leer; dieses Flag sorgt dafür, dass sie einmalig
+  // nachgefüllt werden, sobald die Daten da sind.
+  bool _prefilledFromApp = false;
   bool _updatingUrl = false;
   bool _hostValid = true;
   bool _slashMode = false;
@@ -121,6 +126,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _user = TextEditingController(text: app.username ?? '');
     _pass = TextEditingController(text: '');
     _showManualLogin = (app.username ?? '').isNotEmpty;
+    _prefilledFromApp = (app.baseUrl ?? '').isNotEmpty;
     // live cleanup: strip any entered scheme so the field stays domain-only
     _url.addListener(() {
       if (_updatingUrl) return;
@@ -553,6 +559,21 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
     final l10n = L10n.of(context);
+    // Zugangsdaten erst nach dem Aufbau der Seite geladen → Felder einmalig
+    // nachfüllen (nach dem Frame, weil Controller-Änderungen Listener mit
+    // setState auslösen). Nur leere Felder, nie User-Eingaben überschreiben.
+    if (!_prefilledFromApp && !_testing && (app.baseUrl ?? '').isNotEmpty) {
+      _prefilledFromApp = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_url.text.trim().isEmpty) _url.text = _stripScheme(app.baseUrl!);
+        if (_user.text.trim().isEmpty) _user.text = app.username ?? '';
+        setState(() => _showManualLogin = true);
+      });
+    }
+    final signedIn = !app.localMode &&
+        (app.baseUrl ?? '').isNotEmpty &&
+        (app.username ?? '').isNotEmpty;
     return CupertinoPageScaffold(
       backgroundColor: AppTheme.appBackground(app),
       navigationBar: CupertinoNavigationBar(middle: Text(l10n.settingsTitle)),
@@ -569,6 +590,22 @@ class _SettingsPageState extends State<SettingsPage> {
               onToggle: () =>
                   setState(() => _sectionAccountOpen = !_sectionAccountOpen),
               children: [
+                // Status-Karte: zeigt IMMER den echten, gespeicherten
+                // Zustand (direkt aus AppState, unabhängig von den Feldern).
+                _AccountStatusCard(
+                  state: app.localMode
+                      ? _AccountState.local
+                      : !signedIn
+                          ? _AccountState.signedOut
+                          : app.authFailed
+                              ? _AccountState.rejected
+                              : _AccountState.signedIn,
+                  user: app.username ?? '',
+                  server: (app.baseUrl ?? '').isEmpty
+                      ? ''
+                      : _stripScheme(app.baseUrl!),
+                ),
+                const SizedBox(height: 12),
                 CupertinoTextField(
                   controller: _url,
                   placeholder: l10n.urlPlaceholder,
@@ -1922,6 +1959,84 @@ class _SyncIntervalSegmented extends StatelessWidget {
           onSelect(v);
         }
       },
+    );
+  }
+}
+
+enum _AccountState { signedIn, signedOut, rejected, local }
+
+/// Kompakte Status-Karte oben im Konto-Bereich: Mit welcher Nextcloud und
+/// welchem Benutzer ist die App gerade angemeldet — oder eben nicht.
+class _AccountStatusCard extends StatelessWidget {
+  final _AccountState state;
+  final String user;
+  final String server;
+  const _AccountStatusCard(
+      {required this.state, required this.user, required this.server});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
+    final Color color;
+    final IconData icon;
+    final String title;
+    final String subtitle;
+    switch (state) {
+      case _AccountState.signedIn:
+        color = CupertinoColors.activeGreen.resolveFrom(context);
+        icon = CupertinoIcons.checkmark_seal_fill;
+        title = l10n.accountSignedInAs(user);
+        subtitle = server;
+      case _AccountState.rejected:
+        color = CupertinoColors.systemRed.resolveFrom(context);
+        icon = CupertinoIcons.exclamationmark_triangle_fill;
+        title = l10n.accountRejected;
+        subtitle = '$user · $server';
+      case _AccountState.local:
+        color = CupertinoColors.systemGrey.resolveFrom(context);
+        icon = CupertinoIcons.device_phone_portrait;
+        title = l10n.accountLocalMode;
+        subtitle = l10n.accountLocalModeHint;
+      case _AccountState.signedOut:
+        color = CupertinoColors.systemGrey.resolveFrom(context);
+        icon = CupertinoIcons.person_crop_circle_badge_xmark;
+        title = l10n.accountNotSignedIn;
+        subtitle = l10n.accountNotSignedInHint;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 26),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: CupertinoColors.label.resolveFrom(context))),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 13,
+                        color: CupertinoColors.secondaryLabel
+                            .resolveFrom(context))),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

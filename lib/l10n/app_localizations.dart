@@ -1121,6 +1121,38 @@ class L10n {
           ? 'El adjunto ya está también en «$card». No se pudo eliminar el original aquí y sigue existiendo.'
           : 'The attachment is now also in "$card". The original could not be removed here and still exists.';
 
+  // ---- Konto-Status (2.6) ----
+  String accountSignedInAs(String user) => _isDe
+      ? 'Angemeldet als $user'
+      : _isEs
+          ? 'Sesión iniciada como $user'
+          : 'Signed in as $user';
+  String get accountNotSignedIn => _isDe
+      ? 'Nicht angemeldet'
+      : _isEs
+          ? 'Sin sesión iniciada'
+          : 'Not signed in';
+  String get accountNotSignedInHint => _isDe
+      ? 'Melde dich unten mit deiner Nextcloud an.'
+      : _isEs
+          ? 'Inicia sesión abajo con tu Nextcloud.'
+          : 'Sign in with your Nextcloud below.';
+  String get accountRejected => _isDe
+      ? 'Anmeldung abgelehnt'
+      : _isEs
+          ? 'Inicio de sesión rechazado'
+          : 'Sign-in rejected';
+  String get accountLocalMode => _isDe
+      ? 'Lokaler Modus'
+      : _isEs
+          ? 'Modo local'
+          : 'Local mode';
+  String get accountLocalModeHint => _isDe
+      ? 'Daten werden nur auf diesem Gerät gespeichert.'
+      : _isEs
+          ? 'Los datos solo se guardan en este dispositivo.'
+          : 'Data is stored on this device only.';
+
   // ---- Login Flow v2 (2.6) ----
   String get loginWithBrowser => _isDe
       ? 'Mit Nextcloud anmelden'
