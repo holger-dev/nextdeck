@@ -994,6 +994,184 @@ class L10n {
       : _isEs
           ? 'El servidor está limitando las peticiones: la sincronización se pausa brevemente y se reanuda automáticamente.'
           : 'The server is rate-limiting requests — sync is paused briefly and resumes automatically.';
+  // ---- Anhang-Verwaltung (2.6) ----
+  String get attachmentDetails => _isDe
+      ? 'Details'
+      : _isEs
+          ? 'Detalles'
+          : 'Details';
+  String get attachmentCopyTo => _isDe
+      ? 'In andere Karte kopieren …'
+      : _isEs
+          ? 'Copiar a otra tarjeta…'
+          : 'Copy to another card…';
+  String get attachmentMoveTo => _isDe
+      ? 'In andere Karte verschieben …'
+      : _isEs
+          ? 'Mover a otra tarjeta…'
+          : 'Move to another card…';
+  String get attachmentDetailName => _isDe
+      ? 'Name'
+      : _isEs
+          ? 'Nombre'
+          : 'Name';
+  String get attachmentDetailStorage => _isDe
+      ? 'Speicherort'
+      : _isEs
+          ? 'Ubicación'
+          : 'Storage';
+  String get attachmentDetailSize => _isDe
+      ? 'Größe'
+      : _isEs
+          ? 'Tamaño'
+          : 'Size';
+  String get attachmentDetailType => _isDe
+      ? 'Dateityp'
+      : _isEs
+          ? 'Tipo de archivo'
+          : 'File type';
+  String get attachmentDetailCreated => _isDe
+      ? 'Hinzugefügt'
+      : _isEs
+          ? 'Añadido'
+          : 'Added';
+  String get attachmentDetailModified => _isDe
+      ? 'Zuletzt geändert'
+      : _isEs
+          ? 'Última modificación'
+          : 'Last modified';
+  String get attachmentStoredInFiles => _isDe
+      ? 'Nextcloud-Dateien (in der Dateien-App sichtbar)'
+      : _isEs
+          ? 'Archivos de Nextcloud (visible en la app Archivos)'
+          : 'Nextcloud Files (visible in the Files app)';
+  String get attachmentStoredInDeck => _isDe
+      ? 'Interner Deck-Speicher (nicht in der Dateien-App sichtbar)'
+      : _isEs
+          ? 'Almacenamiento interno de Deck (no visible en Archivos)'
+          : 'Internal Deck storage (not visible in Files)';
+  String get attachmentDeleteTitle => _isDe
+      ? 'Anhang löschen?'
+      : _isEs
+          ? '¿Eliminar adjunto?'
+          : 'Delete attachment?';
+  String attachmentDeleteHint(String name) => _isDe
+      ? '„$name" wird von dieser Karte entfernt.'
+      : _isEs
+          ? '«$name» se eliminará de esta tarjeta.'
+          : '"$name" will be removed from this card.';
+  String attachmentDeleteFilesHint(String name) => _isDe
+      ? '„$name" wird von dieser Karte entfernt. Die Datei selbst bleibt in deinen Nextcloud-Dateien erhalten.'
+      : _isEs
+          ? '«$name» se eliminará de esta tarjeta. El archivo permanece en tus archivos de Nextcloud.'
+          : '"$name" will be removed from this card. The file itself stays in your Nextcloud Files.';
+  String get attachmentSelectCard => _isDe
+      ? 'Karte auswählen'
+      : _isEs
+          ? 'Seleccionar tarjeta'
+          : 'Select card';
+  String get attachmentNoTarget => _isDe
+      ? 'Kein Ziel verfügbar'
+      : _isEs
+          ? 'Ningún destino disponible'
+          : 'No target available';
+  String get attachmentNoLists => _isDe
+      ? 'Dieses Board hat (noch) keine Listen.'
+      : _isEs
+          ? 'Este tablero aún no tiene listas.'
+          : 'This board has no lists (yet).';
+  String get attachmentNoCards => _isDe
+      ? 'In dieser Liste gibt es keine andere Karte.'
+      : _isEs
+          ? 'No hay otra tarjeta en esta lista.'
+          : 'There is no other card in this list.';
+  String get attachmentTransferFailedTitle => _isDe
+      ? 'Nicht möglich'
+      : _isEs
+          ? 'No fue posible'
+          : 'Not possible';
+  String get attachmentTransferFailed => _isDe
+      ? 'Der Anhang konnte nicht übertragen werden. Bitte später erneut versuchen.'
+      : _isEs
+          ? 'No se pudo transferir el adjunto. Inténtalo más tarde.'
+          : 'The attachment could not be transferred. Please try again later.';
+  String get attachmentCopiedTitle => _isDe
+      ? 'Kopiert'
+      : _isEs
+          ? 'Copiado'
+          : 'Copied';
+  String get attachmentMovedTitle => _isDe
+      ? 'Verschoben'
+      : _isEs
+          ? 'Movido'
+          : 'Moved';
+  String attachmentCopiedTo(String card) => _isDe
+      ? 'Der Anhang wurde in „$card" kopiert.'
+      : _isEs
+          ? 'El adjunto se copió a «$card».'
+          : 'The attachment was copied to "$card".';
+  String attachmentMovedTo(String card) => _isDe
+      ? 'Der Anhang wurde nach „$card" verschoben.'
+      : _isEs
+          ? 'El adjunto se movió a «$card».'
+          : 'The attachment was moved to "$card".';
+  String attachmentMovedButKept(String card) => _isDe
+      ? 'Der Anhang liegt jetzt auch in „$card". Das Original konnte hier nicht entfernt werden und ist noch vorhanden.'
+      : _isEs
+          ? 'El adjunto ya está también en «$card». No se pudo eliminar el original aquí y sigue existiendo.'
+          : 'The attachment is now also in "$card". The original could not be removed here and still exists.';
+
+  // ---- Login Flow v2 (2.6) ----
+  String get loginWithBrowser => _isDe
+      ? 'Mit Nextcloud anmelden'
+      : _isEs
+          ? 'Iniciar sesión con Nextcloud'
+          : 'Sign in with Nextcloud';
+  String get loginWithBrowserHint => _isDe
+      ? 'Empfohlen: Die Anmeldung öffnet sich auf deiner Nextcloud-Seite — auch mit Zwei-Faktor-Authentifizierung. Ein App-Passwort wird automatisch erstellt.'
+      : _isEs
+          ? 'Recomendado: el inicio de sesión se abre en tu página de Nextcloud, también con autenticación de dos factores. La contraseña de aplicación se crea automáticamente.'
+          : 'Recommended: sign-in opens on your Nextcloud page — two-factor authentication included. An app password is created automatically.';
+  String get loginFlowStarting => _isDe
+      ? 'Verbinde mit Server …'
+      : _isEs
+          ? 'Conectando con el servidor…'
+          : 'Connecting to server…';
+  String get loginFlowWaiting => _isDe
+      ? 'Bitte im Browser anmelden und „Zugriff gewähren" tippen …'
+      : _isEs
+          ? 'Inicia sesión en el navegador y pulsa «Conceder acceso»…'
+          : 'Please sign in in the browser and tap "Grant access"…';
+  String get loginFlowReopen => _isDe
+      ? 'Browser erneut öffnen'
+      : _isEs
+          ? 'Abrir navegador de nuevo'
+          : 'Reopen browser';
+  String get loginFlowReceived => _isDe
+      ? 'Zugriff erhalten — lade Boards …'
+      : _isEs
+          ? 'Acceso concedido: cargando tableros…'
+          : 'Access granted — loading boards…';
+  String get loginFlowCancelled => _isDe
+      ? 'Anmeldung abgebrochen.'
+      : _isEs
+          ? 'Inicio de sesión cancelado.'
+          : 'Sign-in cancelled.';
+  String get loginFlowTimeout => _isDe
+      ? 'Die Anmeldung wurde nicht rechtzeitig abgeschlossen. Bitte erneut versuchen.'
+      : _isEs
+          ? 'El inicio de sesión no se completó a tiempo. Inténtalo de nuevo.'
+          : 'Sign-in was not completed in time. Please try again.';
+  String get loginFlowUnsupported => _isDe
+      ? 'Dieser Server unterstützt die Browser-Anmeldung nicht. Bitte unten manuell mit App-Passwort anmelden.'
+      : _isEs
+          ? 'Este servidor no admite el inicio de sesión por navegador. Inicia sesión manualmente con una contraseña de aplicación.'
+          : 'This server does not support browser sign-in. Please sign in manually with an app password below.';
+  String get manualLoginToggle => _isDe
+      ? 'Manuell mit App-Passwort anmelden'
+      : _isEs
+          ? 'Iniciar sesión manualmente con contraseña de aplicación'
+          : 'Sign in manually with app password';
   String get passwordRequired => _isDe
       ? 'Bitte gib dein App-Passwort ein.'
       : _isEs
@@ -1020,10 +1198,15 @@ class L10n {
           ? 'Inicio de sesión correcto: $total tableros cargados, pero faltan las tarjetas de $failed tablero(s). El servidor probablemente está limitando las peticiones. Espera un momento y vuelve a pulsar el botón.'
           : 'Login OK – $total boards loaded, but cards for $failed board(s) are still missing. The server is probably rate-limiting (e.g. after a failed login attempt). Please wait a moment and tap the button again.';
   String get cardsNotLoadedYet => _isDe
-      ? 'Die Karten konnten noch nicht geladen werden — der Server hat möglicherweise gedrosselt.'
+      ? 'Die Karten konnten noch nicht geladen werden — der Server war eventuell kurz überlastet. Sie werden automatisch nachgeladen.'
       : _isEs
-          ? 'Aún no se pudieron cargar las tarjetas; puede que el servidor esté limitando las peticiones.'
-          : 'Cards could not be loaded yet — the server may be rate-limiting.';
+          ? 'Aún no se pudieron cargar las tarjetas; puede que el servidor estuviera sobrecargado. Se recargarán automáticamente.'
+          : 'Cards could not be loaded yet — the server may have been briefly overloaded. They will be reloaded automatically.';
+  String get archiveModeBanner => _isDe
+      ? 'Archiv-Ansicht aktiv — es werden nur archivierte Karten angezeigt.'
+      : _isEs
+          ? 'Vista de archivo activa: solo se muestran tarjetas archivadas.'
+          : 'Archive view active — only archived cards are shown.';
   String get loginOkNoBoards => _isDe
       ? 'Login ok – keine Boards gefunden'
       : _isEs

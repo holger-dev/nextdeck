@@ -223,6 +223,13 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
             if (board != null)
               _buildBoardHeader(
                   context, app, board, boardBaseColor!, showBoardBand),
+            // Archiv-Falle entschärfen: Der Modus ist persistent und war
+            // vorher UNSICHTBAR — kombiniert mit einem still scheiternden
+            // Archiv-Abruf wirkten Boards dauerhaft leer. Jetzt zeigt ein
+            // tappbares Band klar an, dass nur archivierte Karten laufen.
+            if (board != null && app.boardArchivedOnly)
+              _ArchiveModeBanner(
+                  onDisable: () => app.setBoardArchivedOnly(false)),
             Expanded(
               child: Stack(
                 children: [
@@ -238,32 +245,12 @@ class _BoardPageState extends State<BoardPage> with TickerProviderStateMixin {
                     // (User-Report „nur Ladescreens").
                     const SafeArea(child: CardListSkeleton())
                   else if (columns.isEmpty && app.lastError == null)
-                    // Sync vorbei, aber keine Spalten/Karten geladen
-                    // (z. B. weil der Server drosselte): ehrlicher
-                    // Zustand mit Retry statt Endlos-Skeleton.
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              L10n.of(context).cardsNotLoadedYet,
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  color: CupertinoColors.secondaryLabel
-                                      .resolveFrom(context)),
-                            ),
-                            const SizedBox(height: 14),
-                            CupertinoButton.filled(
-                              onPressed: () =>
-                                  app.refreshSingleBoard(board.id),
-                              child: Text(L10n.of(context).refresh),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
+                    // Sync vorbei, aber keine Spalten/Karten geladen:
+                    // ehrlicher Zustand MIT Selbstheilung — das Board lädt
+                    // beim Ansehen einmal automatisch nach; der Button
+                    // bleibt als manueller Fallback.
+                    _EmptyBoardRetryView(
+                        key: ValueKey(board.id), boardId: board.id)
                   else if (app.lastError != null)
                     Center(
                       child: Padding(
@@ -3714,3 +3701,104 @@ void _preloadNeighbors(BuildContext context, int boardId,
 final Map<int, DateTime> _preloadMemo = {};
 
 // no-op
+
+/// Tappbares Hinweis-Band unter dem Board-Header, solange der (persistente)
+/// Archiv-Modus aktiv ist. Tipp darauf schaltet zurück auf aktive Karten.
+class _ArchiveModeBanner extends StatelessWidget {
+  final VoidCallback onDisable;
+  const _ArchiveModeBanner({required this.onDisable});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = L10n.of(context);
+    final orange = CupertinoColors.systemOrange.resolveFrom(context);
+    return GestureDetector(
+      onTap: onDisable,
+      child: Container(
+        width: double.infinity,
+        color: orange.withOpacity(0.18),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            Icon(CupertinoIcons.archivebox, size: 15, color: orange),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                l10n.archiveModeBanner,
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: CupertinoColors.label.resolveFrom(context)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              l10n.showActiveCards,
+              style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: orange),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Leeres-Board-Zustand mit Selbstheilung: lädt das Board beim Anzeigen
+/// einmal automatisch nach (key = boardId sorgt für frischen State je
+/// Board). Im Archiv-Modus erklärt er stattdessen die Archiv-Ansicht und
+/// bietet den Rückweg zu den aktiven Karten an.
+class _EmptyBoardRetryView extends StatefulWidget {
+  final int boardId;
+  const _EmptyBoardRetryView({super.key, required this.boardId});
+
+  @override
+  State<_EmptyBoardRetryView> createState() => _EmptyBoardRetryViewState();
+}
+
+class _EmptyBoardRetryViewState extends State<_EmptyBoardRetryView> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final app = context.read<AppState>();
+      if (!app.isSyncing && !app.bootSyncing) {
+        app.refreshSingleBoard(widget.boardId);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final app = context.watch<AppState>();
+    final l10n = L10n.of(context);
+    final archivedMode = app.boardArchivedOnly;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              archivedMode ? l10n.archiveModeBanner : l10n.cardsNotLoadedYet,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: CupertinoColors.secondaryLabel.resolveFrom(context)),
+            ),
+            const SizedBox(height: 14),
+            CupertinoButton.filled(
+              onPressed: archivedMode
+                  ? () => app.setBoardArchivedOnly(false)
+                  : () => app.refreshSingleBoard(widget.boardId),
+              child: Text(
+                  archivedMode ? l10n.showActiveCards : l10n.refresh),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

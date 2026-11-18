@@ -19,6 +19,8 @@ import 'package:image_picker/image_picker.dart';
 import '../state/app_state.dart';
 import '../services/nextcloud_deck_api.dart' show TransferCancelToken;
 import '../models/card_item.dart';
+import '../models/board.dart' show Board;
+import 'package:intl/intl.dart' show DateFormat;
 import '../models/label.dart';
 import '../models/column.dart' as deck;
 import '../widgets/markdown_editor.dart';
@@ -247,15 +249,24 @@ class _CardDetailPageState extends State<CardDetailPage> {
     required String pass,
     required String? remotePath,
     required int? attachmentId,
+    String attachmentType = 'deck_file',
+    TransferCancelToken? cancelToken,
   }) async {
     final app = context.read<AppState>();
-    final token = TransferCancelToken();
+    final token = cancelToken ?? TransferCancelToken();
     return _runWithTransferOverlay<http.Response?>(
       title: L10n.of(context).attachmentDownloading,
       token: token,
       run: () async {
         http.Response? res;
-        if (remotePath != null && remotePath.isNotEmpty && user != null) {
+        // WebDAV NUR für echte Nextcloud-Dateien (type=file, Pfad aus
+        // extendedData). Bei deck_file ist `data` bloß der Dateiname —
+        // der alte Code suchte ihn im Wurzelordner des Users und konnte
+        // so eine gleichnamige FREMDE Datei öffnen.
+        if (attachmentType == 'file' &&
+            remotePath != null &&
+            remotePath.isNotEmpty &&
+            user != null) {
           res = await app.api.webdavDownload(base, user, pass, user, remotePath,
               cancelToken: token);
         }
@@ -268,12 +279,410 @@ class _CardDetailPageState extends State<CardDetailPage> {
                 stackId: stackId,
                 cardId: widget.cardId,
                 attachmentId: attachmentId,
+                type: attachmentType,
                 cancelToken: token);
           }
         }
         return res;
       },
     );
+  }
+
+  // ---- Anhang-Verwaltung (2.6) -------------------------------------------
+
+  /// Echter Deck-Anhang-Typ: 'deck_file' = Decks interner Speicher,
+  /// 'file' = Datei in Nextcloud-Dateien (Ordner „Deck"), mit der Karte
+  /// geteilt. Fehlt das Feld (sehr alte Server), gilt Decks Default.
+  String _attachmentType(Map<String, dynamic> a) {
+    final t = (a['type'] ?? '').toString().trim();
+    return t.isEmpty ? 'deck_file' : t;
+  }
+
+  bool _isFileAttachment(Map<String, dynamic> a) {
+    final t = _attachmentType(a);
+    return t == 'deck_file' || t == 'file';
+  }
+
+  int? _attachmentIdOf(Map<String, dynamic> a) {
+    final raw = a['id'] ?? a['attachmentId'] ?? a['attachment_id'];
+    if (raw is num) return raw.toInt();
+    if (raw is String) return int.tryParse(raw);
+    return null;
+  }
+
+  /// Relativer Pfad in Nextcloud-Dateien (nur für type=file sinnvoll).
+  String? _remotePathFor(Map<String, dynamic> a) {
+    final ext = (a['extendedData'] as Map?)?.cast<String, dynamic>();
+    final info = (ext?['info'] as Map?)?.cast<String, dynamic>();
+    var p = (ext?['path'] ?? info?['path'] ?? a['path'])?.toString();
+    if (p == null || p.isEmpty) return null;
+    if (!p.startsWith('/')) p = '/$p';
+    return p.replaceAll(RegExp(r'/{2,}'), '/');
+  }
+
+  Future<void> _showAttachmentActions(
+      Map<String, dynamic> a, String name) async {
+    final l10n = L10n.of(context);
+    final id = _attachmentIdOf(a);
+    final action = await showCupertinoModalPopup<String>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
+        actions: [
+          CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(ctx).pop('details'),
+            child: Text(l10n.attachmentDetails),
+          ),
+          if (id != null) ...[
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(ctx).pop('copy'),
+              child: Text(l10n.attachmentCopyTo),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(ctx).pop('move'),
+              child: Text(l10n.attachmentMoveTo),
+            ),
+            CupertinoActionSheetAction(
+              isDestructiveAction: true,
+              onPressed: () => Navigator.of(ctx).pop('delete'),
+              child: Text(l10n.delete),
+            ),
+          ],
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(l10n.cancel),
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'details':
+        await _showAttachmentDetails(a, name);
+      case 'copy':
+        await _transferAttachment(a, name, move: false);
+      case 'move':
+        await _transferAttachment(a, name, move: true);
+      case 'delete':
+        await _confirmAndDeleteAttachment(a, name);
+    }
+  }
+
+  Future<void> _showAttachmentDetails(
+      Map<String, dynamic> a, String name) async {
+    final l10n = L10n.of(context);
+    final ext = (a['extendedData'] as Map?)?.cast<String, dynamic>();
+    final type = _attachmentType(a);
+    final size = ((ext?['filesize'] ?? a['size']) as num?)?.toInt();
+    final mime = (ext?['mimetype'] ?? '').toString();
+    final path = _remotePathFor(a);
+    DateTime? ts(dynamic v) => (v is num && v > 0)
+        ? DateTime.fromMillisecondsSinceEpoch(v.toInt() * 1000)
+        : null;
+    final created = ts(a['createdAt']);
+    final modified = ts(a['lastModified']);
+    final creator = ((ext?['attachmentCreator'] as Map?)?['displayName'] ??
+            a['createdBy'] ??
+            '')
+        .toString();
+    final fmt = DateFormat.yMMMd(Localizations.localeOf(context).toString())
+        .add_Hm();
+    String human(int b) => b >= 1024 * 1024
+        ? '${(b / (1024 * 1024)).toStringAsFixed(1)} MB'
+        : '${(b / 1024).toStringAsFixed(1)} KB';
+    final rows = <(String, String)>[
+      (l10n.attachmentDetailName, name),
+      (
+        l10n.attachmentDetailStorage,
+        type == 'file'
+            ? (path != null && path.isNotEmpty
+                ? '${l10n.attachmentStoredInFiles}\n$path'
+                : l10n.attachmentStoredInFiles)
+            : l10n.attachmentStoredInDeck
+      ),
+      if (size != null) (l10n.attachmentDetailSize, human(size)),
+      if (mime.isNotEmpty) (l10n.attachmentDetailType, mime),
+      if (created != null)
+        (
+          l10n.attachmentDetailCreated,
+          creator.isEmpty
+              ? fmt.format(created)
+              : '${fmt.format(created)} · $creator'
+        ),
+      if (modified != null)
+        (l10n.attachmentDetailModified, fmt.format(modified)),
+    ];
+    await showCupertinoDialog<void>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text(l10n.attachmentDetails),
+        content: Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (final r in rows)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text.rich(
+                      TextSpan(children: [
+                        TextSpan(
+                            text: '${r.$1}\n',
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w600)),
+                        TextSpan(
+                            text: r.$2, style: const TextStyle(fontSize: 13)),
+                      ]),
+                      textAlign: TextAlign.left,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(l10n.ok),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Löscht einen Anhang auf dem Server — mit dem ECHTEN Typ.
+  Future<bool> _deleteAttachmentOnServer(Map<String, dynamic> a) async {
+    final app = context.read<AppState>();
+    final base = app.baseUrl;
+    final user = app.username;
+    final pass = await app.storage.read(key: 'password');
+    final id = _attachmentIdOf(a);
+    final boardId = widget.boardId ?? app.activeBoard?.id;
+    if (base == null ||
+        user == null ||
+        pass == null ||
+        id == null ||
+        boardId == null) {
+      return false;
+    }
+    return app.api.deleteCardAttachmentEnsureStack(base, user, pass,
+        boardId: boardId,
+        stackId: _currentStackId ?? widget.stackId,
+        cardId: widget.cardId,
+        attachmentId: id,
+        type: _attachmentType(a));
+  }
+
+  void _removeAttachmentLocally(int id) {
+    setState(() {
+      _attachments =
+          _attachments.where((e) => _attachmentIdOf(e) != id).toList();
+    });
+    context
+        .read<AppState>()
+        .setCardAttachmentsCount(widget.cardId, _attachments.length);
+  }
+
+  Future<void> _showSimpleInfo(String title, String message) {
+    return showCupertinoDialog<void>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          CupertinoDialogAction(
+            isDefaultAction: true,
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(L10n.of(context).ok),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _confirmAndDeleteAttachment(
+      Map<String, dynamic> a, String name) async {
+    final l10n = L10n.of(context);
+    final id = _attachmentIdOf(a);
+    if (id == null) return;
+    final isFiles = _attachmentType(a) == 'file';
+    final confirmed = await showCupertinoDialog<bool>(
+      context: context,
+      builder: (ctx) => CupertinoAlertDialog(
+        title: Text(l10n.attachmentDeleteTitle),
+        content: Text(isFiles
+            ? l10n.attachmentDeleteFilesHint(name)
+            : l10n.attachmentDeleteHint(name)),
+        actions: [
+          CupertinoDialogAction(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(l10n.cancel),
+          ),
+          CupertinoDialogAction(
+            isDestructiveAction: true,
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(l10n.delete),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final ok = await _deleteAttachmentOnServer(a);
+    if (!mounted) return;
+    if (ok) {
+      _removeAttachmentLocally(id);
+    } else {
+      await _showSimpleInfo(
+          l10n.deleteFailed, l10n.serverDeniedDeleteAttachment);
+    }
+  }
+
+  // ---- Anhang kopieren/verschieben (2.6) ---------------------------------
+  // Die Deck-API kennt kein „Anhang verschieben" — daher: herunterladen →
+  // an die Zielkarte hochladen → (nur bei „Verschieben") Original löschen.
+  // Scheitert das Löschen, bleibt die Kopie bestehen und der User erfährt
+  // es — es geht nie etwas verloren.
+
+  Future<T?> _pickFromList<T>(
+      {required String title,
+      required List<T> items,
+      required String Function(T) label}) {
+    return showCupertinoModalPopup<T>(
+      context: context,
+      builder: (ctx) => CupertinoActionSheet(
+        title: Text(title),
+        actions: [
+          for (final it in items)
+            CupertinoActionSheetAction(
+              onPressed: () => Navigator.of(ctx).pop(it),
+              child: Text(label(it),
+                  maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+        ],
+        cancelButton: CupertinoActionSheetAction(
+          isDefaultAction: true,
+          onPressed: () => Navigator.of(ctx).pop(),
+          child: Text(L10n.of(context).cancel),
+        ),
+      ),
+    );
+  }
+
+  Future<({int boardId, int stackId, int cardId, String cardTitle})?>
+      _pickTargetCard() async {
+    final app = context.read<AppState>();
+    final l10n = L10n.of(context);
+    final boards = app.boards.where((b) => !b.archived).toList()
+      ..sort((x, y) => x.title.toLowerCase().compareTo(y.title.toLowerCase()));
+    if (boards.isEmpty) return null;
+    final board = await _pickFromList<Board>(
+        title: l10n.selectBoard, items: boards, label: (b) => b.title);
+    if (board == null || !mounted) return null;
+    var cols = app.columnsForBoard(board.id);
+    if (cols.isEmpty) {
+      await app.refreshSingleBoard(board.id);
+      if (!mounted) return null;
+      cols = app.columnsForBoard(board.id);
+    }
+    if (cols.isEmpty) {
+      await _showSimpleInfo(l10n.attachmentNoTarget, l10n.attachmentNoLists);
+      return null;
+    }
+    final col = await _pickFromList<deck.Column>(
+        title: l10n.selectColumn, items: cols, label: (c) => c.title);
+    if (col == null || !mounted) return null;
+    final cards = col.cards.where((c) => c.id != widget.cardId).toList();
+    if (cards.isEmpty) {
+      await _showSimpleInfo(l10n.attachmentNoTarget, l10n.attachmentNoCards);
+      return null;
+    }
+    final card = await _pickFromList<CardItem>(
+        title: l10n.attachmentSelectCard,
+        items: cards,
+        label: (c) => c.title);
+    if (card == null) return null;
+    return (
+      boardId: board.id,
+      stackId: col.id,
+      cardId: card.id,
+      cardTitle: card.title
+    );
+  }
+
+  Future<void> _transferAttachment(Map<String, dynamic> a, String name,
+      {required bool move}) async {
+    final l10n = L10n.of(context);
+    final app = context.read<AppState>();
+    final target = await _pickTargetCard();
+    if (target == null || !mounted) return;
+    final base = app.baseUrl;
+    final user = app.username;
+    final pass = await app.storage.read(key: 'password');
+    if (base == null || user == null || pass == null || !mounted) return;
+
+    // 1) Herunterladen
+    final dlToken = TransferCancelToken();
+    final res = await _downloadAttachmentWithOverlay(
+        base: base,
+        user: user,
+        pass: pass,
+        remotePath: _remotePathFor(a),
+        attachmentId: _attachmentIdOf(a),
+        attachmentType: _attachmentType(a),
+        cancelToken: dlToken);
+    if (!mounted || dlToken.cancelled) return;
+    if (res == null) {
+      await _showSimpleInfo(l10n.attachmentTransferFailedTitle,
+          l10n.attachmentTransferFailed);
+      return;
+    }
+
+    // 2) An die Zielkarte hochladen
+    final upToken = TransferCancelToken();
+    final ok = await _runWithTransferOverlay<bool>(
+          title: l10n.attachmentUploading,
+          token: upToken,
+          run: () => app.api.uploadCardAttachment(base, user, pass,
+              boardId: target.boardId,
+              stackId: target.stackId,
+              cardId: target.cardId,
+              bytes: res.bodyBytes,
+              filename: name,
+              cancelToken: upToken),
+        ) ??
+        false;
+    if (!mounted || upToken.cancelled) return;
+    if (!ok) {
+      await _showSimpleInfo(l10n.attachmentTransferFailedTitle,
+          l10n.attachmentTransferFailed);
+      return;
+    }
+    app.setCardAttachmentsCount(
+        target.cardId, (app.attachmentsCountFor(target.cardId) ?? 0) + 1);
+
+    // 3) Nur beim Verschieben: Original entfernen
+    if (move) {
+      final id = _attachmentIdOf(a);
+      final deleted = await _deleteAttachmentOnServer(a);
+      if (!mounted) return;
+      if (deleted && id != null) {
+        _removeAttachmentLocally(id);
+      } else {
+        await _showSimpleInfo(l10n.attachmentMovedTitle,
+            l10n.attachmentMovedButKept(target.cardTitle));
+        return;
+      }
+    }
+    if (!mounted) return;
+    await _showSimpleInfo(
+        move ? l10n.attachmentMovedTitle : l10n.attachmentCopiedTitle,
+        move
+            ? l10n.attachmentMovedTo(target.cardTitle)
+            : l10n.attachmentCopiedTo(target.cardTitle));
   }
 
   @override
@@ -1317,11 +1726,11 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                   final dataStr =
                                                       (a['data'] ?? '')
                                                           .toString();
-                                                  if (dataStr.startsWith(
+                                                  if (!_isFileAttachment(a) && (dataStr.startsWith(
                                                           'http://') ||
                                                       dataStr.startsWith(
                                                           'https://') ||
-                                                      dataStr.startsWith('/')) {
+                                                      dataStr.startsWith('/'))) {
                                                     try {
                                                       final String b =
                                                           (base ?? '').trim();
@@ -1378,7 +1787,8 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                           pass: pass,
                                                           remotePath:
                                                               remotePath,
-                                                          attachmentId: id);
+                                                          attachmentId: id,
+ attachmentType: _attachmentType(a));
                                                   if (res == null) return;
                                                   final mime = res
                                                       .headers['content-type'];
@@ -1444,101 +1854,11 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                             ),
                                             if (id != null)
                                               CupertinoButton(
-                                                padding: EdgeInsets.zero,
-                                                onPressed: () async {
-                                                  final app =
-                                                      context.read<AppState>();
-                                                  final base = app.baseUrl;
-                                                  final user = app.username;
-                                                  final pass = await app.storage
-                                                      .read(key: 'password');
-                                                  if (base == null ||
-                                                      user == null ||
-                                                      pass == null) return;
-                                                  final boardId2 =
-                                                      widget.boardId ??
-                                                          app.activeBoard?.id;
-                                                  final stackId2 =
-                                                      _currentStackId ??
-                                                          widget.stackId;
-                                                  if (boardId2 == null ||
-                                                      stackId2 == null) return;
-                                                  // Best-effort type detection for API (helps some servers): default file, link if URL
-                                                  final dataStr =
-                                                      (a['data'] ?? '')
-                                                          .toString();
-                                                  // Treat absolute and server-relative links as URL-type attachments
-                                                  final isUrl = dataStr
-                                                          .startsWith(
-                                                              'http://') ||
-                                                      dataStr.startsWith(
-                                                          'https://') ||
-                                                      dataStr.startsWith('/');
-                                                  final delType =
-                                                      isUrl ? 'link' : 'file';
-                                                  final ok = await app.api
-                                                      .deleteCardAttachmentEnsureStack(
-                                                          base, user, pass,
-                                                          boardId: boardId2,
-                                                          stackId: stackId2,
-                                                          cardId: widget.cardId,
-                                                          attachmentId: id!,
-                                                          type: delType);
-                                                  if (ok) {
-                                                    setState(() {
-                                                      _attachments =
-                                                          _attachments
-                                                              .where((e) {
-                                                        final raw = e['id'] ??
-                                                            e['attachmentId'] ??
-                                                            e['attachment_id'];
-                                                        int? eId;
-                                                        if (raw is num)
-                                                          eId = raw.toInt();
-                                                        if (raw is String)
-                                                          eId =
-                                                              int.tryParse(raw);
-                                                        return eId != id;
-                                                      }).toList();
-                                                    });
-                                                    context
-                                                        .read<AppState>()
-                                                        .setCardAttachmentsCount(
-                                                            widget.cardId,
-                                                            _attachments
-                                                                .length);
-                                                  } else {
-                                                    if (!mounted) return;
-                                                    await showCupertinoDialog(
-                                                      context: context,
-                                                      builder: (ctx) =>
-                                                          CupertinoAlertDialog(
-                                                        title: Text(
-                                                            L10n.of(context)
-                                                                .deleteFailed),
-                                                        content: Text(L10n.of(
-                                                                context)
-                                                            .serverDeniedDeleteAttachment),
-                                                        actions: [
-                                                          CupertinoDialogAction(
-                                                              onPressed: () =>
-                                                                  Navigator.of(
-                                                                          ctx)
-                                                                      .pop(),
-                                                              child: Text(
-                                                                  L10n.of(context)
-                                                                      .ok)),
-                                                        ],
-                                                      ),
-                                                    );
-                                                  }
-                                                },
-                                                child: const Icon(
-                                                    CupertinoIcons
-                                                        .delete_simple,
-                                                    color: CupertinoColors
-                                                        .destructiveRed,
-                                                    size: 18),
+                                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                                // 2.6: ⋯-Menü statt sofort löschendem Mülleimer
+                                                onPressed: () => _showAttachmentActions(a, name),
+                                                child: const Icon(CupertinoIcons.ellipsis_circle,
+                                                    size: 20),
                                               ),
                                           ],
                                         );
@@ -1984,12 +2304,12 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                       final dataStr =
                                                           (a['data'] ?? '')
                                                               .toString();
-                                                      if (dataStr.startsWith(
+                                                      if (!_isFileAttachment(a) && (dataStr.startsWith(
                                                               'http://') ||
                                                           dataStr.startsWith(
                                                               'https://') ||
                                                           dataStr.startsWith(
-                                                              '/')) {
+                                                              '/'))) {
                                                         try {
                                                           final String b =
                                                               (base ?? '')
@@ -2056,7 +2376,8 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                               remotePath:
                                                                   remotePath,
                                                               attachmentId:
-                                                                  id);
+                                                                  id,
+ attachmentType: _attachmentType(a));
                                                       if (res == null) return;
                                                       final mime = res.headers[
                                                           'content-type'];
@@ -2130,101 +2451,11 @@ class _CardDetailPageState extends State<CardDetailPage> {
                                                 ),
                                                 if (id != null)
                                                   CupertinoButton(
-                                                    padding: EdgeInsets.zero,
-                                                    onPressed: () async {
-                                                      final app = context
-                                                          .read<AppState>();
-                                                      final base = app.baseUrl;
-                                                      final user = app.username;
-                                                      final pass = await app
-                                                          .storage
-                                                          .read(
-                                                              key: 'password');
-                                                      if (base == null ||
-                                                          user == null ||
-                                                          pass == null) return;
-                                                      final boardId2 = widget
-                                                              .boardId ??
-                                                          app.activeBoard?.id;
-                                                      final stackId2 =
-                                                          _currentStackId ??
-                                                              widget.stackId;
-                                                      if (boardId2 == null ||
-                                                          stackId2 == null)
-                                                        return;
-                                                      final dataStr =
-                                                          (a['data'] ?? '')
-                                                              .toString();
-                                                      final isUrl = dataStr
-                                                              .startsWith(
-                                                                  'http://') ||
-                                                          dataStr.startsWith(
-                                                              'https://') ||
-                                                          dataStr
-                                                              .startsWith('/');
-                                                      final delType = isUrl
-                                                          ? 'link'
-                                                          : 'file';
-                                                      final ok = await app.api
-                                                          .deleteCardAttachmentEnsureStack(
-                                                              base, user, pass,
-                                                              boardId: boardId2,
-                                                              stackId: stackId2,
-                                                              cardId:
-                                                                  widget.cardId,
-                                                              attachmentId: id!,
-                                                              type: delType);
-                                                      if (ok)
-                                                        setState(() {
-                                                          _attachments =
-                                                              _attachments
-                                                                  .where((e) {
-                                                            final raw = e[
-                                                                    'id'] ??
-                                                                e['attachmentId'] ??
-                                                                e['attachment_id'];
-                                                            int? eId;
-                                                            if (raw is num)
-                                                              eId = raw.toInt();
-                                                            if (raw is String)
-                                                              eId =
-                                                                  int.tryParse(
-                                                                      raw);
-                                                            return eId != id;
-                                                          }).toList();
-                                                        });
-                                                      else {
-                                                        if (!mounted) return;
-                                                        await showCupertinoDialog(
-                                                          context: context,
-                                                          builder: (ctx) =>
-                                                              CupertinoAlertDialog(
-                                                            title: Text(L10n.of(
-                                                                    context)
-                                                                .deleteFailed),
-                                                            content: Text(L10n
-                                                                    .of(context)
-                                                                .serverDeniedDeleteAttachment),
-                                                            actions: [
-                                                              CupertinoDialogAction(
-                                                                  onPressed: () =>
-                                                                      Navigator.of(
-                                                                              ctx)
-                                                                          .pop(),
-                                                                  child:
-                                                                      const Text(
-                                                                          'OK')),
-                                                            ],
-                                                          ),
-                                                        );
-                                                      }
-                                                    },
-                                                    child: const Icon(
-                                                        CupertinoIcons
-                                                            .delete_simple,
-                                                        color: CupertinoColors
-                                                            .destructiveRed,
-                                                        size: 18),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                                                    // 2.6: ⋯-Menü statt sofort löschendem Mülleimer
+                                                    onPressed: () => _showAttachmentActions(a, name),
+                                                    child: const Icon(CupertinoIcons.ellipsis_circle,
+                                                        size: 20),
                                                   ),
                                               ],
                                             );

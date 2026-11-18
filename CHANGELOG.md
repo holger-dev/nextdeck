@@ -4,6 +4,22 @@ All notable changes are documented in this file.
 
 This changelog is based on `STORE.md` and links to detailed release notes in `changelog/`.
 
+## [2.6]
+- Sign in with Nextcloud (Login Flow v2): enter the server, sign in on the regular Nextcloud page in an in-app browser (2FA/SSO included), and the app receives an automatically generated, per-device app password. No more manual app passwords; the manual login remains as a collapsible fallback. Poll token and app password are never written to the network log.
+- Attachments are stored like in the Deck web UI: uploads now use `type=file`, so files land in the user's Nextcloud "Deck" folder and are visible in the Files app (fixes the "shadow copy" of edited PDFs). Automatic fallback to Deck's internal storage when the server rejects it (e.g. quota full, older Deck). Corrects the #83 assumption that `type=file` is not an upload.
+- Attachment actions via ⋯ menu: details (storage, size, type, dates, creator), copy or move to any card on any board (download → upload → delete original only on success), delete with confirmation.
+- Fixed: attachments could not be deleted (the type was guessed as `file`/`link`; Deck defaults to `deck_file`) — the real type is now used, via the v1.1 typed route with v1.0 fallback.
+- Fixed: opening a Deck-internal attachment could open a same-named file from the user's Files root (WebDAV lookup by name); WebDAV is now used only for real Files attachments, downloads pass the attachment type.
+- Details: `changelog/2.6.md`.
+
+## [2.5]
+- Archive fetch fixed: a 2xx response with an OCS error body (998 "Invalid query") ended the URL-variant cascade before the working index.php forms were tried — the archive list came back silently empty. Cascade now prefers index.php forms, treats a response as success only after parsing, and sends OCS-APIRequest (fixes the 412 CSRF on the internal route).
+- Archive-mode trap defused: the persistent "show archived cards" switch is now visible as a tappable orange banner on the board; "Clear local data" resets it; the empty-board state explains it and offers the way back.
+- Empty boards self-heal: viewing a board without loaded columns automatically triggers one reload (plus the manual Refresh button); the hint text no longer blames throttling.
+- Credential writes hardened: ALL four keychain slots (server, username, password, mode) are now verified after writing with one retry — a silently lost baseUrl/username write could previously leave an invisible mixed state after restart (old server + new password).
+- Rate-limit callback is now also wired on the "Clear local data" sync path; stale stacks_ cache keys are cleaned up on account switch.
+- Details: `changelog/2.5.md`.
+
 ## [2.4]
 - CRITICAL login fix: tapping "Test login" with an empty password field silently overwrote the stored keychain password with an empty string — breaking existing accounts (401 everywhere) while fresh test accounts kept working. An empty field now reuses the stored password; with none stored, a clear message asks for the app password.
 - Username and app password are trimmed on login (invisible spaces/newlines from iOS copy-paste caused 401s); password field disables autocorrect/suggestions.

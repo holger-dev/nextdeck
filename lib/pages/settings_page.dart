@@ -1,8 +1,11 @@
 import 'package:flutter/cupertino.dart';
 import 'dart:io';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../state/app_state.dart';
+import '../services/nextcloud_deck_api.dart'
+    show LoginFlowV2Start, LoginFlowV2Credentials, LoginFlowV2Exception;
 import '../models/board.dart';
 import '../services/log_service.dart';
 import '../l10n/app_localizations.dart';
@@ -25,6 +28,15 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _testing = false;
   String? _testMsg;
   bool _testOk = false;
+  // Login Flow v2 (Browser-Anmeldung, 2.6)
+  bool _flowActive = false;
+  int _flowSeq = 0; // erhöht bei Abbruch/Neustart → laufendes Polling endet
+  String? _flowLoginUrl;
+  // Manueller App-Passwort-Login: für Neu-User eingeklappt (Browser-Login
+  // ist der Hauptweg), für bereits angemeldete User offen — damit „Anmeldung
+  // testen" mit gespeichertem Passwort wie gewohnt erreichbar bleibt und
+  // nicht bei jedem Test ein neues App-Passwort entsteht.
+  bool _showManualLogin = false;
   bool _updatingUrl = false;
   bool _hostValid = true;
   bool _slashMode = false;
@@ -108,6 +120,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _slashMode = initialUrl.trim().startsWith('/');
     _user = TextEditingController(text: app.username ?? '');
     _pass = TextEditingController(text: '');
+    _showManualLogin = (app.username ?? '').isNotEmpty;
     // live cleanup: strip any entered scheme so the field stays domain-only
     _url.addListener(() {
       if (_updatingUrl) return;
@@ -132,6 +145,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
   @override
   void dispose() {
+    _flowSeq++; // laufendes Login-Flow-Polling beenden
     _url.dispose();
     _user.dispose();
     _pass.dispose();
@@ -210,11 +224,167 @@ class _SettingsPageState extends State<SettingsPage> {
         return;
       }
     }
+    await _completeLogin(
+        fullUrl: fullUrl, username: _user.text.trim(), password: passInput);
+  }
+
+  // ---- Login Flow v2: Anmeldung im Browser ------------------------------
+  // Ablauf: POST /login/v2 → Anmeldeseite im In-App-Browser öffnen →
+  // gemächlich pollen (2 s) → Server liefert einmalig loginName +
+  // automatisch erzeugtes App-Passwort → gemeinsamer Abschluss
+  // (_completeLogin, identisch zum manuellen Weg).
+
+  Future<void> _openFlowBrowser() async {
+    final url = _flowLoginUrl;
+    if (url == null) return;
+    try {
+      await launchUrl(Uri.parse(url),
+          mode: Platform.isIOS
+              ? LaunchMode.inAppBrowserView
+              : LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
+  Future<void> _closeFlowBrowser() async {
+    if (!Platform.isIOS) return;
+    try {
+      await closeInAppWebView();
+    } catch (_) {}
+  }
+
+  void _cancelFlow() {
+    _flowSeq++;
+    _closeFlowBrowser();
+    setState(() {
+      _flowActive = false;
+      _testing = false;
+      _flowLoginUrl = null;
+      _testMsg = L10n.of(context).loginFlowCancelled;
+      _testOk = false;
+    });
+  }
+
+  Future<void> _loginWithBrowser() async {
+    final app = context.read<AppState>();
+    final l10n = L10n.of(context);
+    final hostOnly = _normalizeServerInput(_stripScheme(_url.text));
+    if (!_isValidHost(hostOnly)) {
+      setState(() {
+        _testMsg = l10n.invalidServerAddress;
+        _testOk = false;
+      });
+      return;
+    }
+    if (_url.text.trim() != hostOnly) _url.text = hostOnly;
+    final fullUrl = hostOnly.startsWith('/') ? hostOnly : 'https://$hostOnly';
+    final seq = ++_flowSeq;
+    setState(() {
+      _flowActive = true;
+      _testing = true;
+      _testMsg = l10n.loginFlowStarting;
+      _testOk = false;
+    });
+
+    LoginFlowV2Start start;
+    try {
+      start = await app.api.startLoginFlowV2(fullUrl);
+    } on LoginFlowV2Exception catch (e) {
+      if (!mounted || seq != _flowSeq) return;
+      setState(() {
+        _flowActive = false;
+        _testing = false;
+        _testMsg = e.code == 'dns'
+            ? l10n.serverNotFound
+            : e.code == 'throttled'
+                ? l10n.loginFailedThrottle
+                : (e.status == 404 || e.status == 405)
+                    ? l10n.loginFlowUnsupported
+                    : l10n.errorMsg(
+                        'Login Flow${e.status != null ? ' (HTTP ${e.status})' : ''}');
+      });
+      return;
+    }
+    if (!mounted || seq != _flowSeq) return;
+    _flowLoginUrl = start.loginUrl;
+    setState(() => _testMsg = l10n.loginFlowWaiting);
+    await _openFlowBrowser();
+
+    // Pollen: 2 s Takt (Doku empfiehlt ~1 s — wir bleiben bewusst
+    // schonend, siehe Drossel-Erfahrungen aus 2.4). Token gilt 20 min.
+    final deadline = DateTime.now().add(const Duration(minutes: 20));
+    LoginFlowV2Credentials? creds;
+    while (DateTime.now().isBefore(deadline)) {
+      await Future.delayed(const Duration(seconds: 2));
+      if (!mounted || seq != _flowSeq) return;
+      try {
+        creds = await app.api
+            .pollLoginFlowV2(start.pollEndpoint, start.pollToken);
+      } on LoginFlowV2Exception {
+        // Server drosselt → deutlich langsamer weiterpollen
+        await Future.delayed(const Duration(seconds: 10));
+        continue;
+      }
+      if (creds != null) break;
+    }
+    if (!mounted || seq != _flowSeq) return;
+    await _closeFlowBrowser();
+    if (!mounted || seq != _flowSeq) return;
+    _flowLoginUrl = null;
+    if (creds == null) {
+      setState(() {
+        _flowActive = false;
+        _testing = false;
+        _testMsg = l10n.loginFlowTimeout;
+        _testOk = false;
+      });
+      return;
+    }
+
+    // Vom Server gemeldete Adresse nur übernehmen, wenn sie zum
+    // eingegebenen Host passt — falsch konfigurierte Reverse-Proxys melden
+    // sonst z. B. „http://localhost". Die Eingabe ist nachweislich
+    // erreichbar (POST /login/v2 lief ja darüber).
+    var server = creds.server.trim();
+    while (server.endsWith('/')) {
+      server = server.substring(0, server.length - 1);
+    }
+    final enteredHost = Uri.tryParse(fullUrl)?.host.toLowerCase() ?? '';
+    final serverHost = Uri.tryParse(server)?.host.toLowerCase() ?? '';
+    final useUrl = (serverHost.isNotEmpty && serverHost == enteredHost)
+        ? server
+        : fullUrl;
+
+    // Felder zeigen, was jetzt gilt — das Passwortfeld bleibt leer, das
+    // automatisch erzeugte App-Passwort liegt nur im Keychain.
+    _url.text = _stripScheme(useUrl);
+    _user.text = creds.loginName;
+    _pass.clear();
+    setState(() {
+      _flowActive = false;
+      _testMsg = l10n.loginFlowReceived;
+    });
+    await _completeLogin(
+        fullUrl: useUrl,
+        username: creds.loginName,
+        password: creds.appPassword);
+  }
+
+  /// Gemeinsamer Abschluss BEIDER Anmeldewege (manuell + Login Flow v2):
+  /// Keychain-Speicherung, Login-Test, Deck-Prüfung, Erst-Sync. Der Code
+  /// ist 1:1 der bewährte Ablauf aus _saveAndTest (nur Eingaben als
+  /// Parameter) — damit der neue Browser-Login keinen eigenen,
+  /// ungetesteten Pfad bekommt. Erwartet `_testing == true`.
+  Future<void> _completeLogin(
+      {required String fullUrl,
+      required String username,
+      required String password}) async {
+    final app = context.read<AppState>();
+    final l10n = L10n.of(context);
     try {
       await app.setCredentials(
           baseUrl: fullUrl,
-          username: _user.text.trim(),
-          password: passInput);
+          username: username,
+          password: password);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -258,7 +428,7 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       // Prüfen, ob Deck aktiviert ist
       final hasDeck =
-          await app.api.hasDeckEnabled(app.baseUrl!, app.username!, passInput);
+          await app.api.hasDeckEnabled(app.baseUrl!, app.username!, password);
       if (!hasDeck) {
         setState(() {
           _testing = false;
@@ -437,34 +607,108 @@ class _SettingsPageState extends State<SettingsPage> {
                   style: const TextStyle(
                       color: CupertinoColors.systemGrey, fontSize: 12),
                 ),
-                const SizedBox(height: 8),
-                CupertinoTextField(
-                  controller: _user,
-                  placeholder: l10n.username,
-                  autocorrect: false,
-                  enableSuggestions: false,
-                ),
-                const SizedBox(height: 8),
-                CupertinoTextField(
-                  controller: _pass,
-                  placeholder: l10n.appPassword,
-                  obscureText: true,
-                  autocorrect: false,
-                  enableSuggestions: false,
+                const SizedBox(height: 12),
+                // 2.6: Login Flow v2 als Hauptweg — Anmeldung auf der
+                // normalen Nextcloud-Seite (inkl. 2FA/SSO), das App-Passwort
+                // entsteht automatisch.
+                CupertinoButton.filled(
+                  onPressed: _testing ? null : _loginWithBrowser,
+                  child: _testing
+                      ? const CupertinoActivityIndicator()
+                      : Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(CupertinoIcons.globe, size: 20),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(l10n.loginWithBrowser,
+                                  overflow: TextOverflow.ellipsis),
+                            ),
+                          ],
+                        ),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  l10n.appPasswordHint,
+                  l10n.loginWithBrowserHint,
                   style: const TextStyle(
                       color: CupertinoColors.systemGrey, fontSize: 12),
                 ),
-                const SizedBox(height: 12),
-                CupertinoButton.filled(
-                  onPressed: _testing ? null : _saveAndTest,
-                  child: _testing
-                      ? const CupertinoActivityIndicator()
-                      : Text(l10n.loginAndLoadBoards),
+                if (_flowActive)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: CupertinoButton(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          onPressed:
+                              _flowLoginUrl == null ? null : _openFlowBrowser,
+                          child: Text(l10n.loginFlowReopen,
+                              style: const TextStyle(fontSize: 14)),
+                        ),
+                      ),
+                      Expanded(
+                        child: CupertinoButton(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          onPressed: _cancelFlow,
+                          child: Text(l10n.cancel,
+                              style: const TextStyle(
+                                  fontSize: 14,
+                                  color: CupertinoColors.destructiveRed)),
+                        ),
+                      ),
+                    ],
+                  ),
+                const SizedBox(height: 4),
+                // Manueller Weg (bisheriger Login, unverändert) — einklappbar
+                CupertinoButton(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  alignment: Alignment.centerLeft,
+                  onPressed: () =>
+                      setState(() => _showManualLogin = !_showManualLogin),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      AnimatedRotation(
+                        turns: _showManualLogin ? 0.25 : 0,
+                        duration: const Duration(milliseconds: 180),
+                        child:
+                            const Icon(CupertinoIcons.chevron_right, size: 14),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(l10n.manualLoginToggle,
+                          style: const TextStyle(fontSize: 14)),
+                    ],
+                  ),
                 ),
+                if (_showManualLogin) ...[
+                  const SizedBox(height: 4),
+                  CupertinoTextField(
+                    controller: _user,
+                    placeholder: l10n.username,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                  ),
+                  const SizedBox(height: 8),
+                  CupertinoTextField(
+                    controller: _pass,
+                    placeholder: l10n.appPassword,
+                    obscureText: true,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    l10n.appPasswordHint,
+                    style: const TextStyle(
+                        color: CupertinoColors.systemGrey, fontSize: 12),
+                  ),
+                  const SizedBox(height: 12),
+                  CupertinoButton.filled(
+                    onPressed: _testing ? null : _saveAndTest,
+                    child: _testing
+                        ? const CupertinoActivityIndicator()
+                        : Text(l10n.loginAndLoadBoards),
+                  ),
+                ],
                 if (_testMsg != null) ...[
                   const SizedBox(height: 8),
                   Text(_testMsg!,

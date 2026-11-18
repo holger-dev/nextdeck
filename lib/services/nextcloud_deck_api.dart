@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show compute, debugPrint;
 import 'package:http/http.dart' as http;
@@ -9,6 +10,52 @@ import '../models/column.dart' as deck;
 import '../models/card_item.dart';
 import '../models/user_ref.dart';
 import 'log_service.dart';
+
+/// Ergebnis eines einzelnen typisierten Upload-Durchlaufs.
+/// ok = gespeichert; aborted = Zustand unklar/Auth/Abbruch → KEIN
+/// weiterer Versuch (Duplikat-Risiko); rejected = nachweislich nichts
+/// gespeichert → Fallback mit anderem Typ erlaubt.
+enum _UploadOutcome { ok, aborted, rejected }
+
+/// Start-Antwort des Nextcloud Login Flow v2 (POST /login/v2).
+class LoginFlowV2Start {
+  /// Im Browser zu öffnende Anmeldeseite
+  final String loginUrl;
+
+  /// Poll-Endpunkt, wie vom Server geliefert (ggf. auf den eingegebenen
+  /// Host umgeschrieben, siehe [NextcloudDeckApi.startLoginFlowV2])
+  final String pollEndpoint;
+
+  /// Poll-Token — vertraulich: wer ihn hat, kann das App-Passwort abholen
+  final String pollToken;
+  const LoginFlowV2Start(
+      {required this.loginUrl,
+      required this.pollEndpoint,
+      required this.pollToken});
+}
+
+/// Ergebnis eines erfolgreichen Login Flow v2: vom Server erzeugtes,
+/// gerätebezogenes App-Passwort (in Nextcloud einzeln widerrufbar).
+class LoginFlowV2Credentials {
+  final String server;
+  final String loginName;
+  final String appPassword;
+  const LoginFlowV2Credentials(
+      {required this.server,
+      required this.loginName,
+      required this.appPassword});
+}
+
+/// Fehler im Login Flow v2. `code`: 'dns' (Host nicht auflösbar),
+/// 'network', 'http' (siehe [status]), 'parse', 'throttled' (429).
+class LoginFlowV2Exception implements Exception {
+  final String code;
+  final int? status;
+  const LoginFlowV2Exception(this.code, {this.status});
+  @override
+  String toString() =>
+      'LoginFlowV2Exception($code${status != null ? ', HTTP $status' : ''})';
+}
 
 /// Abbruch-Token für lang laufende Anhang-Transfers (Upload/Download).
 /// `cancel()` setzt das Flag und schließt den gerade aktiven HTTP-Client —
@@ -165,6 +212,157 @@ class NextcloudDeckApi {
       String baseUrl, String username, String password) async {
     final s = await testLoginStatus(baseUrl, username, password);
     return s != null && s >= 200 && s < 300;
+  }
+
+  // ---- Nextcloud Login Flow v2 -----------------------------------------
+  // Offizieller Anmeldeweg für Clients (seit NC 16, Doku: developer_manual/
+  // client_apis/LoginFlow): Der User meldet sich auf der normalen
+  // Nextcloud-Seite im Browser an (inkl. 2FA/SSO), die App bekommt danach
+  // automatisch ein gerätebezogenes App-Passwort. Kein manuelles Erzeugen
+  // und Kopieren von App-Passwörtern mehr.
+  //
+  // SICHERHEIT: Poll-Token und App-Passwort dürfen NIE im Netzwerk-Log
+  // landen (User schicken uns Screenshots davon) — deshalb laufen diese
+  // Requests NICHT über `_send`, sondern loggen nur geschwärzt.
+
+  /// Name, unter dem das App-Passwort in Nextcloud erscheint
+  /// (Einstellungen → Sicherheit → Geräte & Sitzungen).
+  static String get _loginFlowUserAgent =>
+      Platform.isMacOS ? 'Next Deck (macOS)' : 'Next Deck (iOS)';
+
+  /// Ersetzt Schema+Host einer vom Server gelieferten URL durch die des
+  /// eingegebenen Servers, falls sie abweichen. Schützt vor falsch
+  /// konfigurierten Reverse-Proxys, die z. B. `http://localhost/...`
+  /// zurückliefern — der eingegebene Host ist nachweislich erreichbar.
+  static String _rehost(String url, Uri base) {
+    final u = Uri.tryParse(url);
+    if (u == null || !u.hasScheme || u.host.isEmpty) return url;
+    if (base.host.isEmpty) return url; // server-relative Basis (Web)
+    if (u.host.toLowerCase() == base.host.toLowerCase()) return url;
+    return u
+        .replace(
+            scheme: base.scheme,
+            host: base.host,
+            port: base.hasPort ? base.port : null)
+        .toString();
+  }
+
+  /// Startet den Login Flow v2. Wirft [LoginFlowV2Exception].
+  Future<LoginFlowV2Start> startLoginFlowV2(String baseUrl) async {
+    final headers = {
+      'Accept': 'application/json',
+      'OCS-APIRequest': 'true',
+      'User-Agent': _loginFlowUserAgent,
+    };
+    int? lastStatus;
+    for (final withIndex in [true, false]) {
+      final uri = _buildUri(baseUrl, '/login/v2', withIndex);
+      final t0 = DateTime.now();
+      http.Response res;
+      try {
+        res = await _httpClient
+            .post(uri, headers: headers)
+            .timeout(const Duration(seconds: 20));
+      } catch (e) {
+        LogService().add(LogEntry(
+            at: t0,
+            method: 'POST',
+            url: uri.toString(),
+            status: null,
+            durationMs: DateTime.now().difference(t0).inMilliseconds,
+            error: e.toString()));
+        if (e.toString().contains('Failed host lookup')) {
+          throw const LoginFlowV2Exception('dns');
+        }
+        throw const LoginFlowV2Exception('network');
+      }
+      LogService().add(LogEntry(
+          at: t0,
+          method: 'POST',
+          url: uri.toString(),
+          status: res.statusCode,
+          durationMs: DateTime.now().difference(t0).inMilliseconds,
+          responseSnippet:
+              _isOk(res) ? '<login flow v2 gestartet — Token geschwärzt>' : null));
+      lastStatus = res.statusCode;
+      if (res.statusCode == 404 || res.statusCode == 405) continue;
+      if (res.statusCode == 429) {
+        throw const LoginFlowV2Exception('throttled', status: 429);
+      }
+      if (!_isOk(res)) {
+        throw LoginFlowV2Exception('http', status: res.statusCode);
+      }
+      try {
+        final j = (jsonDecode(res.body) as Map).cast<String, dynamic>();
+        final poll = (j['poll'] as Map).cast<String, dynamic>();
+        final base = _buildUri(baseUrl, '/', false);
+        final login = j['login']?.toString() ?? '';
+        final endpoint = poll['endpoint']?.toString() ?? '';
+        final token = poll['token']?.toString() ?? '';
+        if (login.isEmpty || endpoint.isEmpty || token.isEmpty) {
+          throw const LoginFlowV2Exception('parse');
+        }
+        return LoginFlowV2Start(
+            loginUrl: _rehost(login, base),
+            pollEndpoint: _rehost(endpoint, base),
+            pollToken: token);
+      } on LoginFlowV2Exception {
+        rethrow;
+      } catch (_) {
+        throw const LoginFlowV2Exception('parse');
+      }
+    }
+    throw LoginFlowV2Exception('http', status: lastStatus);
+  }
+
+  /// Fragt einmal den Poll-Endpunkt ab. `null` = noch nicht freigegeben
+  /// (404) oder kurzer Netzfehler → weiter pollen. Wirft nur bei 429
+  /// ('throttled'), damit der Aufrufer die Frequenz senken kann.
+  /// Der Server liefert die Zugangsdaten GENAU EINMAL aus.
+  Future<LoginFlowV2Credentials?> pollLoginFlowV2(
+      String endpoint, String token) async {
+    final uri = Uri.parse(endpoint);
+    http.Response res;
+    final t0 = DateTime.now();
+    try {
+      res = await _httpClient
+          .post(uri,
+              headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'User-Agent': _loginFlowUserAgent,
+              },
+              body: 'token=${Uri.encodeQueryComponent(token)}')
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      return null; // transient — beim nächsten Poll erneut
+    }
+    // 404-Polls bewusst NICHT loggen (alle 2 s, würde das Log fluten)
+    if (res.statusCode == 404) return null;
+    if (res.statusCode == 429) {
+      throw const LoginFlowV2Exception('throttled', status: 429);
+    }
+    LogService().add(LogEntry(
+        at: t0,
+        method: 'POST',
+        url: uri.toString(),
+        status: res.statusCode,
+        durationMs: DateTime.now().difference(t0).inMilliseconds,
+        responseSnippet: _isOk(res)
+            ? '<Zugangsdaten empfangen — App-Passwort geschwärzt>'
+            : null));
+    if (!_isOk(res)) return null;
+    try {
+      final j = (jsonDecode(res.body) as Map).cast<String, dynamic>();
+      final server = (j['server'] ?? '').toString();
+      final login = (j['loginName'] ?? '').toString();
+      final pass = (j['appPassword'] ?? '').toString();
+      if (login.isEmpty || pass.isEmpty) return null;
+      return LoginFlowV2Credentials(
+          server: server, loginName: login, appPassword: pass);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Login-Test mit HTTP-Status für aussagekräftige Fehlermeldungen
@@ -525,8 +723,11 @@ class NextcloudDeckApi {
 
   Future<List<deck.Column>> fetchArchivedStacks(
       String baseUrl, String user, String pass, int boardId) async {
+    // OCS-APIRequest auch hier: befreit die interne Fallback-Route vom
+    // CSRF-Check (vorher 412) — auf den API-Routen schadet der Header
+    // nicht (gleiches Muster wie Upload-/Label-Fix).
     Map<String, String> headers = {
-      ..._restHeader,
+      ..._ocsHeader,
       'authorization': _basicAuth(user, pass)
     };
     final candidates = [
@@ -538,19 +739,30 @@ class NextcloudDeckApi {
     ];
     http.Response? res;
     dynamic data;
-    for (final withIndex in [false, true]) {
+    // index.php-Form ZUERST: auf Setups ohne URL-Rewriting liefern
+    // Pretty-URLs 404 (teils mit korrektem Body) und /ocs/v1.php sogar
+    // HTTP 200 mit OCS-998-Fehlerbody („Invalid query"). Der alte Code
+    // setzte `res` VOR dem Parsen — der 200er-Fehlerbody beendete damit
+    // die Kaskade, bevor die funktionierenden index.php-Varianten je
+    // liefen → stille LEERE Archivliste. Bei aktivem Archiv-Modus wirkte
+    // das Board dadurch dauerhaft leer (User-Report cloud.itech-bs14.de).
+    outer:
+    for (final withIndex in [true, false]) {
       for (final path in candidates) {
+        // OCS-Pfade laufen nie über index.php
+        if (withIndex && path.startsWith('/ocs/')) continue;
         try {
           final url = _buildUri(baseUrl, path, withIndex);
           final r = await _send('GET', url, headers);
-          if (_isOk(r)) {
-            res = r;
-            data = _parseBodyOk(r);
-            break;
-          }
+          if (!_isOk(r)) continue;
+          // Erfolg erst, wenn der Body auch WIRKLICH parsebar ist —
+          // ein 2xx mit OCS-Fehlerbody zählt nicht als Treffer.
+          final parsed = _parseBodyOk(r);
+          res = r;
+          data = parsed;
+          break outer;
         } catch (_) {}
       }
-      if (res != null) break;
     }
     if (res == null) {
       _ensureOk(res, 'Archivierte Stacks laden fehlgeschlagen');
@@ -1940,11 +2152,26 @@ class NextcloudDeckApi {
       required int cardId,
       required int attachmentId,
       String? type}) async {
-    // Strict per docs: REST v1.0 board/stack/card/attachment only, with and without index.php
-    final path =
-        '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/attachments/$attachmentId';
     // Some instances require OCS header even on /apps endpoints; include it to avoid 403s
     final headers = {..._ocsHeader, 'authorization': _basicAuth(user, pass)};
+    // 2.6: Der Typ MUSS zum Anhang passen — Deck v1.14.2
+    // AttachmentApiController::delete($cardId, $attachmentId,
+    // $type = 'deck_file'). Früher wurde er geraten ('file'/'link'), womit
+    // deck_file-Anhänge (z. B. bearbeitete PDF-Kopien) nicht löschbar
+    // waren. v1.1 trägt den Typ im Pfad, v1.0 als Parameter.
+    if (type != null && type.isNotEmpty) {
+      final p11 =
+          '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/attachments/$type/$attachmentId';
+      for (final withIndex in [true, false]) {
+        try {
+          final res =
+              await _send('DELETE', _buildUri(baseUrl, p11, withIndex), headers);
+          if (_isOk(res)) return true;
+        } catch (_) {}
+      }
+    }
+    final path =
+        '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/attachments/$attachmentId';
     for (final withIndex in [false, true]) {
       try {
         final baseUri = _buildUri(baseUrl, path, withIndex);
@@ -2023,6 +2250,20 @@ class NextcloudDeckApi {
         type: type);
   }
 
+  /// Lädt eine Datei als Karten-Anhang hoch.
+  ///
+  /// 2.6: Standard ist `type=file` — wie die Deck-Weboberfläche. Deck legt
+  /// die Datei dann im Nextcloud-Ordner „Deck" des Users ab und teilt sie
+  /// mit der Karte: Sie ist in der Dateien-App sichtbar, bearbeitbar und
+  /// wiederauffindbar (User-Report „Schattenkopie" bei bearbeiteten PDFs).
+  /// Quelle: Deck v1.14.2 FilesAppService::create (Upload über Feld
+  /// `file`). Die Annahme aus #83, type=file sei kein Upload, war falsch —
+  /// die damaligen 400er kamen vom fehlenden `data`-Feld.
+  ///
+  /// Fallback auf `deck_file` (Decks interner Speicher) NUR, wenn der
+  /// file-Versuch nachweislich nichts gespeichert hat (4xx, 507 Quote voll,
+  /// ältere Deck-Versionen). Bei Timeout/5xx/Auth-Fehler/Abbruch KEIN
+  /// zweiter Versuch — Duplikat-Risiko.
   Future<bool> uploadCardAttachment(String baseUrl, String user, String pass,
       {required int boardId,
       required int stackId,
@@ -2030,14 +2271,48 @@ class NextcloudDeckApi {
       required List<int> bytes,
       required String filename,
       TransferCancelToken? cancelToken}) async {
+    final first = await _uploadAttachmentTyped(baseUrl, user, pass,
+        boardId: boardId,
+        stackId: stackId,
+        cardId: cardId,
+        bytes: bytes,
+        filename: filename,
+        type: 'file',
+        cancelToken: cancelToken);
+    if (first == _UploadOutcome.ok) return true;
+    if (first == _UploadOutcome.aborted) return false;
+    if (cancelToken?.cancelled == true) return false;
+    debugPrint('[upload] type=file abgelehnt → Fallback deck_file');
+    final second = await _uploadAttachmentTyped(baseUrl, user, pass,
+        boardId: boardId,
+        stackId: stackId,
+        cardId: cardId,
+        bytes: bytes,
+        filename: filename,
+        type: 'deck_file',
+        cancelToken: cancelToken);
+    return second == _UploadOutcome.ok;
+  }
+
+  Future<_UploadOutcome> _uploadAttachmentTyped(
+      String baseUrl, String user, String pass,
+      {required int boardId,
+      required int stackId,
+      required int cardId,
+      required List<int> bytes,
+      required String filename,
+      required String type,
+      TransferCancelToken? cancelToken}) async {
     // Issue #83 — Umbau nach Lektüre der Deck-Server-Quelle
     // (AttachmentApiController / AttachmentService / FileService /
     // FilesAppService / routes.php):
-    //  * Binär-Uploads gehen AUSSCHLIESSLICH über type=deck_file mit
-    //    Multipart-Feld `file` (FileService::getUploadedFile('file')).
-    //  * type=file ist KEIN Upload — FilesAppService erwartet in `data`
-    //    einen Pfad in der Files-App. Unser blindes type=file war also
-    //    grundsätzlich falsch und lieferte 400.
+    //  * Binär-Uploads laufen über das Multipart-Feld `file` — sowohl bei
+    //    type=deck_file (FileService, Decks interner Speicher) als auch
+    //    bei type=file (FilesAppService: legt die Datei im Nextcloud-
+    //    Ordner „Deck" ab und teilt sie mit der Karte).
+    //    KORREKTUR 2.6: Die frühere Notiz „type=file ist kein Upload" war
+    //    falsch (geprüft gegen v1.14.2 FilesAppService::create) — die
+    //    400er damals kamen vom fehlenden Pflichtfeld `data`.
     //  * `type` ist Pflichtparameter ohne Default — „ohne type" ist
     //    IMMER 400. Beide Fehl-Varianten sind entfernt.
     //  * Zusätzliche offizielle Upload-Wege als Fallback: die interne
@@ -2071,7 +2346,7 @@ class NextcloudDeckApi {
       for (final withIndex in [false, true]) {
         // OCS-Pfade laufen nie über index.php
         if (attempt.ocs && withIndex) continue;
-        if (cancelToken?.cancelled == true) return false;
+        if (cancelToken?.cancelled == true) return _UploadOutcome.aborted;
         final uri = _buildUri(baseUrl, attempt.path, withIndex);
         final t0 = DateTime.now();
         http.Response res;
@@ -2083,7 +2358,7 @@ class NextcloudDeckApi {
           // Basic-Auth-API-Calls vom CSRF-Check — ohne den Header
           // antwortet die interne Route mit 412 „CSRF check failed".
           req.headers['OCS-APIRequest'] = 'true';
-          req.fields['type'] = 'deck_file';
+          req.fields['type'] = type;
           // KRITISCH (Issue #83, finale Ursache): In Deck ≤ ~1.14 ist
           // `data` im Controller ein PFLICHT-Parameter ohne Default
           // (`create($cardId, $type, $data)`). Fehlt das Feld, scheitert
@@ -2109,7 +2384,7 @@ class NextcloudDeckApi {
           }
         } catch (e) {
           // Bewusster Abbruch durch den User: kein Fehler-Log nötig.
-          if (cancelToken?.cancelled == true) return false;
+          if (cancelToken?.cancelled == true) return _UploadOutcome.aborted;
           LogService().add(LogEntry(
             at: t0,
             method: 'POST',
@@ -2117,12 +2392,12 @@ class NextcloudDeckApi {
             status: null,
             durationMs: DateTime.now().difference(t0).inMilliseconds,
             requestBody:
-                'multipart attachment filename=$filename bytes=${bytes.length} type=deck_file',
+                'multipart attachment filename=$filename bytes=${bytes.length} type=$type',
             error: e.toString(),
           ));
           // Timeout/Netzwerkfehler: Server-Zustand unbekannt → Abbruch,
           // um Duplikate zu vermeiden. User kann bewusst neu versuchen.
-          return false;
+          return _UploadOutcome.aborted;
         }
         final dur = DateTime.now().difference(t0).inMilliseconds;
         final snippet = (res.body.length > 400)
@@ -2135,7 +2410,7 @@ class NextcloudDeckApi {
           status: res.statusCode,
           durationMs: dur,
           requestBody:
-              'multipart attachment filename=$filename bytes=${bytes.length} type=deck_file',
+              'multipart attachment filename=$filename bytes=${bytes.length} type=$type',
           responseSnippet: snippet,
         ));
         if (!_isOk(res)) {
@@ -2149,19 +2424,25 @@ class NextcloudDeckApi {
           final bodyStart = res.body.trimLeft();
           final looksLikeHtml = bodyStart.startsWith('<!DOCTYPE') ||
               bodyStart.startsWith('<html');
-          if (!looksLikeHtml) return true;
-          return false;
+          if (!looksLikeHtml) return _UploadOutcome.ok;
+          return _UploadOutcome.aborted;
         }
         if (res.statusCode == 401 || res.statusCode == 403) {
-          return false; // Auth-Problem — weitere Versuche sinnlos
+          return _UploadOutcome.aborted; // Auth-Problem — sinnlos
         }
         if (res.statusCode == 409) {
           // Datei existiert bereits an der Karte (ConflictException) —
           // aus User-Sicht ist der Anhang da: als Erfolg werten.
-          return true;
+          return _UploadOutcome.ok;
+        }
+        if (res.statusCode == 507) {
+          // Speicherquote voll: NICHTS gespeichert → Fallback erlaubt
+          // (type=file zählt gegen die User-Quote, deck_file nicht).
+          return _UploadOutcome.rejected;
         }
         if (res.statusCode >= 500) {
-          return false; // Server-Fehler — Duplikat-Risiko, abbrechen
+          // Server-Fehler — Duplikat-Risiko, abbrechen
+          return _UploadOutcome.aborted;
         }
         if (res.statusCode == 404 || res.statusCode == 405) {
           break; // Endpoint existiert nicht — nächster Pfad
@@ -2179,7 +2460,7 @@ class NextcloudDeckApi {
         '"$filename" (${(bytes.length / (1024 * 1024)).toStringAsFixed(1)} MB). '
         'Bei leeren 400-Bodies: Server-Upload-Limit prüfen '
         '(php.ini: post_max_size / upload_max_filesize).');
-    return false;
+    return _UploadOutcome.rejected;
   }
 
   Future<http.Response?> fetchAttachmentContent(
@@ -2188,10 +2469,17 @@ class NextcloudDeckApi {
       required int stackId,
       required int cardId,
       required int attachmentId,
+      String? type,
       TransferCancelToken? cancelToken}) async {
+    // 2.6: v1.1 erwartet den Anhang-Typ im Pfad (…/attachments/{type}/{id});
+    // v1.0 nimmt ihn als Parameter (Default 'deck_file'). Ohne Typ konnten
+    // Datei-Anhänge (type=file) hier nie geladen werden.
+    final t = (type == null || type.isEmpty) ? 'deck_file' : type;
+    final base =
+        '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/attachments';
     final candidates = <String>[
-      '/apps/deck/api/v1.1/boards/$boardId/stacks/$stackId/cards/$cardId/attachments/$attachmentId',
-      '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/attachments/$attachmentId',
+      '$base/$t/$attachmentId',
+      '/apps/deck/api/v1.0/boards/$boardId/stacks/$stackId/cards/$cardId/attachments/$attachmentId?type=$t',
     ];
     for (final p in candidates) {
       for (final withIndex in [false, true]) {

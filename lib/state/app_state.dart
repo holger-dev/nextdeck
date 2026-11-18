@@ -1055,19 +1055,30 @@ class AppState extends ChangeNotifier {
     // Nach dem Schreiben verifizieren wir den Passwort-Slot einmal per Read
     // und starten bei null einen Retry, damit ein einmaliger Fehlschlag nicht
     // schon reicht, um den User beim Neustart wieder in den Login zu zwingen.
-    await storage.write(key: 'local_mode', value: '0');
-    await storage.write(key: 'baseUrl', value: _baseUrl);
-    await storage.write(key: 'username', value: _username);
-    await storage.write(key: 'password', value: _password);
-    final verify = await storage.read(key: 'password');
-    if (verify != _password) {
-      debugPrint(
-          '[setCredentials] password verify returned "${verify == null ? "null" : "mismatch"}", retrying once');
-      await storage.write(key: 'password', value: _password);
-      final verify2 = await storage.read(key: 'password');
-      if (verify2 != _password) {
-        throw StateError(
-            'Keychain-Write für Passwort fehlgeschlagen (Slot lässt sich nach Retry nicht lesen).');
+    // 2.5: ALLE vier Slots schreiben UND verifizieren — nicht nur das
+    // Passwort. Wäre z. B. nur der baseUrl-Write still verloren gegangen
+    // (derselbe iOS-SecItem-Bug), lief die Session im RAM normal weiter,
+    // aber nach dem nächsten App-Start sprach die App die ALTE Adresse
+    // mit dem NEUEN Passwort an — unsichtbarer Mischzustand, der beim
+    // Account-Wechsel wie ein unerklärlicher 401 aussah.
+    final slots = <String, String>{
+      'local_mode': '0',
+      'baseUrl': _baseUrl!,
+      'username': _username!,
+      'password': _password!,
+    };
+    for (final e in slots.entries) {
+      await storage.write(key: e.key, value: e.value);
+      var verify = await storage.read(key: e.key);
+      if (verify != e.value) {
+        debugPrint(
+            '[setCredentials] keychain verify for "${e.key}" returned ${verify == null ? "null" : "mismatch"}, retrying once');
+        await storage.write(key: e.key, value: e.value);
+        verify = await storage.read(key: e.key);
+        if (verify != e.value) {
+          throw StateError(
+              'Keychain-Write für „${e.key}" fehlgeschlagen (Slot lässt sich nach Retry nicht lesen).');
+        }
       }
     }
     if (changedServer) {
@@ -1098,6 +1109,7 @@ class AppState extends ChangeNotifier {
             cache.delete(k);
           }
           if (k.startsWith('columns_') ||
+              k.startsWith('stacks_') ||
               k.startsWith('etag_stacks_') ||
               k.startsWith('board_members_') ||
               k.startsWith('board_lastmod_') ||
@@ -3018,6 +3030,14 @@ class AppState extends ChangeNotifier {
     _stacksLastFetchMsMem.clear();
     _protectStacksUntilMs.clear();
     _lastError = null;
+    // Rettungsanker-Semantik: Auch den (persistenten) Archiv-Modus
+    // zurücksetzen. Ein vergessener Archiv-Schalter plus still
+    // fehlschlagender Archiv-Abruf sah sonst dauerhaft wie „Spalten
+    // laden einfach nie" aus — und überlebte jeden Reset.
+    if (_boardArchivedOnly) {
+      _boardArchivedOnly = false;
+      unawaited(storage.write(key: 'board_archived_only', value: '0'));
+    }
     notifyListeners();
     if (_baseUrl != null && _username != null) {
       if (_password == null) {
@@ -3031,6 +3051,8 @@ class AppState extends ChangeNotifier {
               username: _username!,
               password: _password!,
               cache: cache);
+          // 429-Melder auch auf diesem Pfad verdrahten (fehlte in 2.4)
+          (_sync as SyncServiceImpl).onRateLimited = _registerRateLimit;
           await _sync!.initSyncOnAppStart();
           _hydrateFromCache();
           Board? board = _activeBoard;
