@@ -10,6 +10,7 @@ This changelog is based on `STORE.md` and links to detailed release notes in `ch
 - Attachment actions via ⋯ menu: details (storage, size, type, dates, creator), copy or move to any card on any board (download → upload → delete original only on success), delete with confirmation.
 - Fixed: attachments could not be deleted (the type was guessed as `file`/`link`; Deck defaults to `deck_file`) — the real type is now used, via the v1.1 typed route with v1.0 fallback.
 - Fixed: opening a Deck-internal attachment could open a same-named file from the user's Files root (WebDAV lookup by name); WebDAV is now used only for real Files attachments, downloads pass the attachment type.
+- Settings show an account status card at the top (signed in as user @ server / not signed in / sign-in rejected / local mode); account fields now refill once credentials are loaded from the keychain (previously empty when the page was built before keychain read).
 - Details: `changelog/2.6.md`.
 
 ## [2.5]
